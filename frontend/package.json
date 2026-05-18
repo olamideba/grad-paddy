@@ -1,0 +1,30 @@
+{
+  "name": "grad-paddy-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.4",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "lucide-react": "^1.16.0",
+    "clsx": "^2.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6"
+  }
+}
