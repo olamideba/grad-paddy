@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Star, CalendarDays, FileText } from "lucide-react";
+import { Icon } from "@iconify/react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
-  { href: "/chat",      label: "Chat",      icon: MessageSquare },
-  { href: "/shortlist", label: "Shortlist", icon: Star },
-  { href: "/tracker",   label: "Tracker",   icon: CalendarDays },
-  { href: "/drafts",    label: "Drafts",    icon: FileText },
+  { href: "/chat",      label: "Chat",      icon: "solar:chat-round-bold" },
+  { href: "/shortlist", label: "Shortlist", icon: "solar:star-bold" },
+  { href: "/tracker",   label: "Tracker",   icon: "solar:calendar-bold" },
+  { href: "/drafts",    label: "Drafts",    icon: "solar:document-text-bold" },
 ];
 
 export default function BottomNav() {
@@ -17,26 +17,26 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="bottom-nav-safe flex border-t-2"
-      style={{ background: "var(--surface)", borderColor: "var(--border-bright)" }}
+      className="bottom-nav-safe flex"
+      style={{ background: "#F7F0E3", borderTop: "2px solid #0D0D0D" }}
     >
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {NAV_ITEMS.map(({ href, label, icon }) => {
         const active = pathname === href || pathname.startsWith(href + "/");
         return (
           <Link
             key={href}
             href={href}
             className={clsx(
-              "flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-bold font-grotesk uppercase tracking-wide transition-colors",
-              active ? "text-[color:var(--violet-light)]" : "text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
+              "relative flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-semibold font-space tracking-wide bouncy",
             )}
+            style={{ color: active ? "#E8472A" : "#9CA3AF" }}
           >
-            <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+            <Icon icon={icon} width={20} />
             {label}
             {active && (
-              <div
-                className="absolute bottom-0 h-0.5 w-8"
-                style={{ background: "var(--violet)" }}
+              <span
+                className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8"
+                style={{ background: "#E8472A" }}
               />
             )}
           </Link>

@@ -1,22 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import {
-  FileText,
-  Plus,
-  Edit3,
-  CheckCircle2,
-  Clock,
-  RotateCcw,
-  Eye,
-  Mail,
-  BookOpen,
-  ChevronRight,
-  AlertTriangle,
-} from "lucide-react";
+import { Icon } from "@iconify/react";
 import clsx from "clsx";
 
-type DraftType = "sop" | "outreach-prep" | "research-narrative";
+type DraftType   = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
 
 type Draft = {
@@ -35,183 +23,152 @@ type Draft = {
 
 const DRAFTS: Draft[] = [
   {
-    id: "d1",
-    type: "sop",
-    targetProgram: "PhD Computer Science",
-    targetUniversity: "MIT",
-    targetFaculty: "Prof. Regina Barzilay",
-    status: "draft",
-    wordCount: 487,
-    excerpt:
-      "During my four years building production NLP systems at Acme Corp, I encountered a fundamental limitation: models optimised for benchmark performance consistently failed in clinical environments where distributional shift is not an edge case but the norm...",
+    id: "d1", type: "sop", targetProgram: "PhD Computer Science",
+    targetUniversity: "MIT", targetFaculty: "Prof. Regina Barzilay",
+    status: "draft", wordCount: 487,
+    excerpt: "During my four years building production NLP systems at Acme Corp, I encountered a fundamental limitation: models optimised for benchmark performance consistently failed in clinical environments where distributional shift is not an edge case but the norm...",
     lastEdited: new Date(Date.now() - 2 * 60 * 60 * 1000),
     groundedIn: ["Barzilay lab page", "CSAIL program requirements"],
     isAiDraft: true,
   },
   {
-    id: "d2",
-    type: "outreach-prep",
-    targetFaculty: "Prof. Christopher Manning",
-    targetUniversity: "Stanford",
-    status: "approved",
-    excerpt:
-      "PREP CARD — Paper: 'Emergent Linguistic Structure in LLMs' (2024). Key finding: syntactic competence emerges in layers 8-12 of 7B+ models, independent of training objective. Questions to ask: (1) How does this interact with RLHF fine-tuning? (2) Does this generalise to non-English...",
+    id: "d2", type: "outreach-prep", targetFaculty: "Prof. Christopher Manning",
+    targetUniversity: "Stanford", status: "approved",
+    excerpt: "PREP CARD — Paper: 'Emergent Linguistic Structure in LLMs' (2024). Key finding: syntactic competence emerges in layers 8-12 of 7B+ models. Questions to ask: (1) How does this interact with RLHF fine-tuning?...",
     lastEdited: new Date(Date.now() - 24 * 60 * 60 * 1000),
     groundedIn: ["Manning Google Scholar", "Stanford NLP lab page"],
     isAiDraft: true,
   },
   {
-    id: "d3",
-    type: "sop",
-    targetProgram: "PhD Language Technologies",
-    targetUniversity: "CMU",
-    targetFaculty: "Prof. Graham Neubig",
-    status: "draft",
-    wordCount: 210,
-    excerpt:
-      "My research interest sits at the intersection of low-resource NLP and code generation — a combination that, I believe, Prof. Neubig's work on cross-lingual transfer and SWE-bench directly anticipates...",
+    id: "d3", type: "sop", targetProgram: "PhD Language Technologies",
+    targetUniversity: "CMU", targetFaculty: "Prof. Graham Neubig",
+    status: "draft", wordCount: 210,
+    excerpt: "My research interest sits at the intersection of low-resource NLP and code generation — a combination that, I believe, Prof. Neubig's work on cross-lingual transfer and SWE-bench directly anticipates...",
     lastEdited: new Date(Date.now() - 4 * 60 * 60 * 1000),
     groundedIn: ["Neubig lab page", "CMU LTI admissions page"],
     isAiDraft: true,
   },
   {
-    id: "d4",
-    type: "research-narrative",
-    targetProgram: "General",
-    status: "in-review",
-    wordCount: 312,
-    excerpt:
-      "This is my personal research narrative — a translation of four years of production NLP work into academic framing. I've built: (1) a named-entity pipeline processing 40M docs/day, (2) a retrieval-augmented clinical decision support system, (3) a domain-adaptation framework for low-resource medical...",
+    id: "d4", type: "research-narrative", targetProgram: "General",
+    status: "in-review", wordCount: 312,
+    excerpt: "This is my personal research narrative — a translation of four years of production NLP work into academic framing. I've built: (1) a named-entity pipeline processing 40M docs/day, (2) a retrieval-augmented clinical decision support system...",
     lastEdited: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
     isAiDraft: false,
   },
 ];
 
-const TYPE_CONFIG: Record<DraftType, { label: string; icon: React.ElementType; color: string }> = {
-  sop: { label: "Statement of Purpose", icon: FileText, color: "bg-violet-paddy/20" },
-  "outreach-prep": { label: "Outreach Prep Card", icon: Mail, color: "bg-violet-paddy/30" },
-  "research-narrative": { label: "Research Narrative", icon: BookOpen, color: "bg-violet-paddy/20" },
+const TYPE_META: Record<DraftType, { label: string; icon: string }> = {
+  sop:                  { label: "Statement of Purpose", icon: "solar:document-text-bold" },
+  "outreach-prep":      { label: "Outreach Prep Card",   icon: "solar:letter-bold" },
+  "research-narrative": { label: "Research Narrative",   icon: "solar:book-bold" },
 };
 
-const STATUS_CONFIG: Record<DraftStatus, { label: string; bg: string; icon: React.ElementType }> = {
-  draft: { label: "Draft", bg: "bg-surface-2", icon: Edit3 },
-  "in-review": { label: "In Review", bg: "bg-violet-paddy/30", icon: Eye },
-  approved: { label: "Approved", bg: "bg-green-paddy", icon: CheckCircle2 },
-  archived: { label: "Archived", bg: "bg-surface-3", icon: Clock },
+const STATUS_META: Record<DraftStatus, { label: string; icon: string; bg: string; color: string; border: string }> = {
+  draft:       { label: "Draft",     icon: "solar:pen-bold",          bg: "#EDE6D3", color: "#5A5A5A",  border: "#0D0D0D" },
+  "in-review": { label: "In Review", icon: "solar:eye-bold",          bg: "#E8472A", color: "#FFFFFF",  border: "#0D0D0D" },
+  approved:    { label: "Approved",  icon: "solar:check-circle-bold", bg: "#4ECDC4", color: "#0D0D0D",  border: "#0D0D0D" },
+  archived:    { label: "Archived",  icon: "solar:clock-circle-bold", bg: "#F7F0E3", color: "#9CA3AF",  border: "#C8C0AF" },
 };
+
+function timeAgo(date: Date): string {
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (mins < 60)   return `${mins}m ago`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+  return `${Math.floor(mins / 1440)}d ago`;
+}
 
 function DraftCard({ draft }: { draft: Draft }) {
-  const { label: typeLabel, icon: TypeIcon, color: typeBg } = TYPE_CONFIG[draft.type];
-  const { label: statusLabel, bg: statusBg, icon: StatusIcon } = STATUS_CONFIG[draft.status];
-
-  const timeAgo = () => {
-    const mins = Math.floor((Date.now() - draft.lastEdited.getTime()) / 60000);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
+  const type   = TYPE_META[draft.type];
+  const status = STATUS_META[draft.status];
 
   return (
-    <div className="card-brutal flex flex-col">
-      {/* Header bar */}
-      <div className={clsx("flex items-center justify-between px-4 py-3 border-b-3 border-border-bright", typeBg)}>
+    <div className="card-brutal flex flex-col overflow-hidden p-0">
+      {/* Type header */}
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ background: "#EDE6D3", borderBottom: "2px solid #0D0D0D" }}
+      >
         <div className="flex items-center gap-2">
-          <TypeIcon size={14} strokeWidth={2.5} />
-          <span className="text-xs font-black uppercase tracking-wider font-grotesk">
-            {typeLabel}
+          <Icon icon={type.icon} width={12} style={{ color: "#5A5A5A" }} />
+          <span className="text-[10px] font-semibold uppercase tracking-wide font-space" style={{ color: "#5A5A5A" }}>
+            {type.label}
           </span>
         </div>
         <span
-          className={clsx(
-            "badge-brutal text-xs flex items-center gap-1",
-            statusBg
-          )}
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-semibold font-space"
+          style={{ background: status.bg, color: status.color, border: `1.5px solid ${status.border}` }}
         >
-          <StatusIcon size={10} strokeWidth={2.5} />
-          {statusLabel}
+          <Icon icon={status.icon} width={9} />
+          {status.label}
         </span>
       </div>
 
       {/* Body */}
       <div className="p-4 flex-1 flex flex-col gap-3">
-        {/* Target info */}
         <div>
           {draft.targetFaculty && (
-            <div className="text-sm font-black font-grotesk leading-tight">
-              → {draft.targetFaculty}
-            </div>
+            <p className="text-sm font-semibold font-space leading-tight" style={{ color: "#0D0D0D" }}>→ {draft.targetFaculty}</p>
           )}
-          <div className="text-xs font-grotesk text-fg-muted mt-0.5">
+          <p className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>
             {draft.targetUniversity}
-            {draft.targetProgram && draft.targetProgram !== "General" && (
-              <> · {draft.targetProgram}</>
-            )}
-          </div>
+            {draft.targetProgram && draft.targetProgram !== "General" && <> · {draft.targetProgram}</>}
+          </p>
         </div>
 
-        {/* Excerpt */}
-        <div className="border-l-4 border-border pl-3">
-          <p className="text-xs font-grotesk text-fg-muted leading-relaxed line-clamp-3 italic">
+        <div className="pl-3" style={{ borderLeft: "3px solid #0D0D0D" }}>
+          <p className="text-xs font-dm leading-relaxed line-clamp-3 italic" style={{ color: "#5A5A5A" }}>
             "{draft.excerpt}"
           </p>
         </div>
 
-        {/* Grounded in */}
         {draft.groundedIn && draft.groundedIn.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {draft.groundedIn.map((source) => (
+            {draft.groundedIn.map(source => (
               <span
                 key={source}
-                className="text-xs font-mono text-fg-muted border border-border px-1.5 py-0.5"
+                className="text-[10px] font-mono px-2 py-0.5"
+                style={{ background: "#F7F0E3", border: "1.5px solid #0D0D0D", color: "#5A5A5A" }}
               >
-                📄 {source}
+                {source}
               </span>
             ))}
           </div>
         )}
 
-        {/* AI draft warning */}
         {draft.isAiDraft && draft.status === "draft" && (
-          <div className="flex items-start gap-2 border-2 border-violet-paddy bg-violet-paddy/10 px-3 py-2">
-            <AlertTriangle size={12} className="text-violet-light flex-shrink-0 mt-0.5" strokeWidth={2.5} />
-            <p className="text-xs font-grotesk text-fg-muted">
-              <strong>AI draft — requires your review and personalisation</strong> before use.
+          <div
+            className="flex items-start gap-2 px-3 py-2"
+            style={{ border: "1.5px solid #D97706", background: "rgba(217,119,6,0.08)" }}
+          >
+            <Icon icon="solar:danger-triangle-bold" width={11} style={{ color: "#D97706" }} className="shrink-0 mt-px" />
+            <p className="text-[11px] font-dm leading-snug" style={{ color: "#5A5A5A" }}>
+              <span className="font-semibold" style={{ color: "#0D0D0D" }}>AI draft</span> — review and personalise before use.
             </p>
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="border-t-3 border-border-bright flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2 text-xs font-grotesk text-fg-muted">
-          <Clock size={11} />
-          <span>{timeAgo()}</span>
-          {draft.wordCount && (
-            <>
-              <span>·</span>
-              <span>{draft.wordCount} words</span>
-            </>
-          )}
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "2px solid #0D0D0D" }}>
+        <div className="flex items-center gap-2 text-[10px] font-dm" style={{ color: "#9CA3AF" }}>
+          <Icon icon="solar:clock-circle-bold" width={10} />
+          <span>{timeAgo(draft.lastEdited)}</span>
+          {draft.wordCount && <><span>·</span><span>{draft.wordCount}w</span></>}
         </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {draft.status !== "approved" && (
-            <button className="btn-brutal bg-violet-paddy text-white px-3 py-1.5 text-xs">
-              <Edit3 size={11} strokeWidth={2.5} />
-              Edit
+            <button className="btn-black btn-sm gap-1 text-xs">
+              <Icon icon="solar:pen-bold" width={10} />Edit
             </button>
           )}
           {draft.status === "draft" && (
-            <button className="btn-brutal bg-surface-2 text-fg px-3 py-1.5 text-xs">
-              <RotateCcw size={11} strokeWidth={2.5} />
-              Regenerate
+            <button className="btn-white btn-sm gap-1 text-xs">
+              <Icon icon="solar:refresh-bold" width={10} />Regen
             </button>
           )}
           {draft.status === "draft" && (
-            <button className="btn-brutal bg-green-paddy text-midnight px-3 py-1.5 text-xs">
-              <CheckCircle2 size={11} strokeWidth={2.5} />
-              Approve
+            <button className="btn-teal btn-sm gap-1 text-xs">
+              <Icon icon="solar:check-circle-bold" width={10} />Approve
             </button>
           )}
         </div>
@@ -221,78 +178,65 @@ function DraftCard({ draft }: { draft: Draft }) {
 }
 
 export default function DraftsPage() {
-  const [typeFilter, setTypeFilter] = useState<DraftType | "all">("all");
+  const [typeFilter,   setTypeFilter]   = useState<DraftType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<DraftStatus | "all">("all");
 
-  const filtered = DRAFTS.filter((d) => {
-    const matchesType = typeFilter === "all" || d.type === typeFilter;
-    const matchesStatus = statusFilter === "all" || d.status === statusFilter;
-    return matchesType && matchesStatus;
+  const filtered = DRAFTS.filter(d => {
+    const matchType   = typeFilter === "all"   || d.type === typeFilter;
+    const matchStatus = statusFilter === "all" || d.status === statusFilter;
+    return matchType && matchStatus;
   });
 
+  const aiDraftCount = DRAFTS.filter(d => d.isAiDraft && d.status === "draft").length;
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
       {/* Header */}
-      <div className="px-6 py-4 border-b-3 border-border-bright flex-shrink-0" style={{ background: "var(--surface)" }}>
+      <div className="px-6 py-4 shrink-0 bg-white" style={{ borderBottom: "2px solid #0D0D0D" }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-black uppercase tracking-tight font-grotesk flex items-center gap-2">
-              <FileText size={18} strokeWidth={2.5} />
+            <h1 className="text-sm font-semibold font-space flex items-center gap-2" style={{ color: "#0D0D0D" }}>
+              <Icon icon="solar:document-text-bold" width={15} style={{ color: "#E8472A" }} />
               Drafts
             </h1>
-            <p className="text-xs font-grotesk text-fg-muted">
-              {DRAFTS.filter((d) => d.status === "draft").length} drafts ·{" "}
-              {DRAFTS.filter((d) => d.status === "approved").length} approved ·{" "}
-              {DRAFTS.filter((d) => d.isAiDraft && d.status === "draft").length} need your review
+            <p className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>
+              {DRAFTS.filter(d => d.status === "draft").length} drafts ·{" "}
+              {DRAFTS.filter(d => d.status === "approved").length} approved
+              {aiDraftCount > 0 && (
+                <span className="font-semibold" style={{ color: "#E8472A" }}> · {aiDraftCount} need review</span>
+              )}
             </p>
           </div>
-          <a href="/chat" className="btn-yellow gap-2">
-            <Plus size={15} strokeWidth={2.5} />
-            <span className="text-sm font-bold">Generate Draft</span>
+          <a href="/chat" className="btn-coral btn-sm">
+            <Icon icon="solar:add-circle-bold" width={14} />
+            <span className="text-sm">Generate Draft</span>
           </a>
         </div>
 
         {/* Filters */}
         <div className="mt-4 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1 border-3 border-border-bright overflow-hidden"
-               style={{ boxShadow: "3px 3px 0 #7C3AED" }}>
-            <button
-              onClick={() => setTypeFilter("all")}
-              className={clsx(
-                "px-3 py-2 text-xs font-black font-grotesk uppercase tracking-wide transition-colors",
-                typeFilter === "all" ? "bg-violet-paddy text-white" : "bg-surface-2 text-fg hover:bg-violet-paddy/30"
-              )}
-            >
-              All Types
-            </button>
-            {(["sop", "outreach-prep", "research-narrative"] as DraftType[]).map((t) => {
-              const { label, icon: Icon } = TYPE_CONFIG[t];
-              return (
-                <button
-                  key={t}
-                  onClick={() => setTypeFilter(t)}
-                  className={clsx(
-                    "px-3 py-2 text-xs font-black font-grotesk uppercase tracking-wide transition-colors border-l-2 border-border-bright",
-                    typeFilter === t ? "bg-violet-paddy text-white" : "bg-surface-2 text-fg hover:bg-violet-paddy/30"
-                  )}
-                >
-                  {label === "Statement of Purpose" ? "SOP" : label === "Outreach Prep Card" ? "Outreach" : "Narrative"}
-                </button>
-              );
-            })}
+          <div className="flex overflow-hidden" style={{ border: "2px solid #0D0D0D" }}>
+            {(["all", "sop", "outreach-prep", "research-narrative"] as const).map((t, i) => (
+              <button key={t} onClick={() => setTypeFilter(t)}
+                      className={clsx("px-3 py-2 text-xs font-semibold font-space bouncy", i > 0 && "border-l-2")}
+                      style={{
+                        background: typeFilter === t ? "#E8472A" : "#FFFFFF",
+                        color: typeFilter === t ? "#FFFFFF" : "#5A5A5A",
+                        borderColor: "#0D0D0D",
+                      }}>
+                {t === "all" ? "All" : t === "sop" ? "SOP" : t === "outreach-prep" ? "Outreach" : "Narrative"}
+              </button>
+            ))}
           </div>
-
-          <div className="flex items-center gap-1 border-3 border-border-bright overflow-hidden">
-            {(["all", "draft", "in-review", "approved"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={clsx(
-                  "px-3 py-2 text-xs font-bold font-grotesk capitalize transition-colors",
-                  s !== "all" && "border-l-2 border-border-bright",
-                  statusFilter === s ? "bg-violet-paddy text-white" : "bg-surface-2 text-fg hover:bg-violet-paddy/30"
-                )}
-              >
+          <div className="flex overflow-hidden" style={{ border: "2px solid #0D0D0D" }}>
+            {(["all", "draft", "in-review", "approved"] as const).map((s, i) => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                      className={clsx("px-3 py-2 text-xs font-semibold font-space capitalize bouncy", i > 0 && "border-l-2")}
+                      style={{
+                        background: statusFilter === s ? "#E8472A" : "#FFFFFF",
+                        color: statusFilter === s ? "#FFFFFF" : "#5A5A5A",
+                        borderColor: "#0D0D0D",
+                      }}>
                 {s === "all" ? "All" : s === "in-review" ? "In Review" : s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}
@@ -302,45 +246,34 @@ export default function DraftsPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-6">
-        {/* AI draft notice */}
-        {DRAFTS.some((d) => d.isAiDraft && d.status === "draft") && (
+        {aiDraftCount > 0 && (
           <div
-            className="mb-5 border-3 border-violet-paddy bg-violet-paddy/20 p-4 flex items-center justify-between"
-            style={{ boxShadow: "4px 4px 0 #7C3AED" }}
+            className="mb-5 bg-white p-4 flex items-center gap-3"
+            style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D" }}
           >
-            <div className="flex items-center gap-3">
-              <AlertTriangle size={18} strokeWidth={2.5} className="text-violet-light" />
-              <div>
-                <p className="text-sm font-black font-grotesk">
-                  AI drafts require personalisation
-                </p>
-                <p className="text-xs font-grotesk text-fg-muted">
-                  Grad Paddy generates drafts grounded in indexed content, but{" "}
-                  <strong>you must review and personalise</strong> before submission.
-                  The agent never presents drafts as submission-ready.
-                </p>
-              </div>
+            <Icon icon="solar:danger-triangle-bold" width={15} style={{ color: "#D97706" }} className="shrink-0" />
+            <div>
+              <p className="text-sm font-semibold font-space" style={{ color: "#0D0D0D" }}>AI drafts require personalisation</p>
+              <p className="text-xs font-dm mt-0.5" style={{ color: "#5A5A5A" }}>
+                Generated from indexed content — <strong>review and personalise</strong> before submission.
+              </p>
             </div>
           </div>
         )}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <FileText size={36} className="text-fg-muted mb-3" />
-            <p className="font-bold text-fg-muted font-grotesk">No drafts yet</p>
-            <p className="text-sm text-fg-muted font-grotesk mt-1 mb-4">
-              Generate your first SOP or outreach prep in Agent Chat
-            </p>
-            <a href="/chat" className="btn-yellow gap-2">
-              <ChevronRight size={14} strokeWidth={2.5} />
-              <span className="text-sm font-bold">Go to Chat</span>
+            <Icon icon="solar:document-text-bold" width={32} style={{ color: "#B0A898" }} className="mb-3" />
+            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>No drafts yet</p>
+            <p className="text-xs font-dm mt-1 mb-4" style={{ color: "#9CA3AF" }}>Generate your first SOP in Agent Chat</p>
+            <a href="/chat" className="btn-coral btn-sm">
+              <Icon icon="solar:alt-arrow-right-bold" width={13} />
+              <span className="text-sm">Go to Chat</span>
             </a>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filtered.map((draft) => (
-              <DraftCard key={draft.id} draft={draft} />
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map(draft => <DraftCard key={draft.id} draft={draft} />)}
           </div>
         )}
       </div>

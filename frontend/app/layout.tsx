@@ -11,18 +11,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="flex h-screen overflow-hidden font-grotesk" style={{ background: "var(--midnight)", color: "var(--fg)" }}>
-        {/* Sidebar — desktop only */}
+      <body className="flex h-screen overflow-hidden font-dm" style={{ background: "#F7F0E3", color: "#0D0D0D" }}>
         <div className="hidden md:flex">
           <Sidebar />
         </div>
-
-        {/* Main content */}
         <main className="flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-hidden">
             {children}
           </div>
-          {/* Bottom nav — mobile only */}
           <div className="md:hidden flex-shrink-0">
             <BottomNav />
           </div>
