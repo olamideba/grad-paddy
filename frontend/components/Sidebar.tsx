@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/shortlist", label: "Shortlist",   icon: "solar:star-bold",          desc: "Saved faculty & programs" },
   { href: "/tracker",   label: "App Tracker", icon: "solar:calendar-bold",      desc: "Deadlines & status" },
   { href: "/drafts",    label: "Drafts",      icon: "solar:document-text-bold", desc: "SOPs & outreach prep" },
+  { href: "/settings",  label: "Settings",    icon: "solar:settings-bold",      desc: "Preferences & interests" },
 ];
 
 export default function Sidebar() {
@@ -189,14 +190,15 @@ export default function Sidebar() {
           )}
         </div>
         {!collapsed && (
-          <button
+          <Link
+            href="/settings"
             className="p-1.5 bouncy"
-            style={{ color: "#9CA3AF", border: "1.5px solid transparent" }}
-            onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); (e.currentTarget.style.border = "1.5px solid #0D0D0D"); (e.currentTarget.style.borderRadius = "4px"); }}
-            onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); (e.currentTarget.style.border = "1.5px solid transparent"); (e.currentTarget.style.borderRadius = "4px"); }}
+            style={{ color: "#9CA3AF", border: "1.5px solid transparent", borderRadius: "4px" }}
+            onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); (e.currentTarget.style.border = "1.5px solid #0D0D0D"); }}
+            onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); (e.currentTarget.style.border = "1.5px solid transparent"); }}
           >
             <Icon icon="solar:settings-bold" width={14} />
-          </button>
+          </Link>
         )}
       </div>
 
