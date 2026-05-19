@@ -1,0 +1,16 @@
+services:
+  app:
+    image: grad-paddy
+    container_name: grad-paddy-backend
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
+      - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI}
+      # This points to the path INSIDE the container
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/service-account.json
+    volumes:
+      # Mounted from local env to the internal container path (for local testing with docker), it is not actually in the container for security
+      - ./grad-paddy-firebase-adminsdk-fbsvc-5c475865e8.json:/app/secrets/service-account.json:ro
