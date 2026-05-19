@@ -28,90 +28,75 @@ const TOOL_META: Record<string, { label: string; icon: string }> = {
   llm:     { label: "Gemini 3",     icon: "solar:cpu-bolt-bold" },
 };
 
-function StepIcon({ status }: { status: StepStatus }) {
-  const base = "w-5 h-5 flex items-center justify-center shrink-0";
-  if (status === "done")
-    return (
-      <div className={base} style={{ background: "#4ECDC4", border: "1.5px solid #0D0D0D", borderRadius: "3px" }}>
-        <Icon icon="solar:check-bold" width={11} style={{ color: "#0D0D0D" }} />
-      </div>
-    );
-  if (status === "error")
-    return (
-      <div className={base} style={{ background: "#E8472A", border: "1.5px solid #0D0D0D", borderRadius: "3px" }}>
-        <Icon icon="solar:close-bold" width={11} style={{ color: "#FFFFFF" }} />
-      </div>
-    );
-  if (status === "running")
-    return (
-      <div className={base} style={{ background: "#E8472A", border: "1.5px solid #0D0D0D", borderRadius: "3px" }}>
-        <Icon icon="solar:spinner-bold" width={11} style={{ color: "#FFFFFF" }} className="animate-spin" />
-      </div>
-    );
-  return (
-    <div className={base} style={{ background: "#EDE6D3", border: "1.5px solid #B0A898", borderRadius: "3px" }}>
-      <Icon icon="solar:circle-bold" width={11} style={{ color: "#B0A898" }} />
-    </div>
-  );
-}
+function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>; number: number }) {
+  const meta = step.tool ? TOOL_META[step.tool] : null;
 
-function AgentStep({ item }: { item: Extract<ChatItem, { type: "step" }> }) {
-  const [open, setOpen] = useState(false);
-  const meta = item.tool ? TOOL_META[item.tool] : null;
-  const hasChildren = (item.children?.length ?? 0) > 0;
+  const numBox = {
+    done:    { bg: "#4ECDC4", border: "#0D0D0D", color: "#0D0D0D" },
+    running: { bg: "#E8472A", border: "#0D0D0D", color: "#FFFFFF" },
+    pending: { bg: "#EDE6D3", border: "#C8C0AF", color: "#9CA3AF" },
+    error:   { bg: "#E8472A", border: "#0D0D0D", color: "#FFFFFF" },
+  }[step.status];
+
+  const statusBadge = {
+    done:    { label: "Done",        bg: "#4ECDC4", color: "#0D0D0D", border: "#0D0D0D" },
+    running: { label: "In progress", bg: "#FFF0ED", color: "#E8472A", border: "#E8472A" },
+    pending: { label: "Waiting",     bg: "#EDE6D3", color: "#9CA3AF", border: "#C8C0AF" },
+    error:   { label: "Error",       bg: "#FFF0ED", color: "#E8472A", border: "#E8472A" },
+  }[step.status];
 
   return (
-    <div className="msg-enter">
+    <div
+      className="msg-enter flex items-center gap-3 px-3 py-2"
+      style={{
+        background: step.status === "running" ? "#FFFAF9" : "#FFFFFF",
+        borderTop: "1.5px solid #EDE6D3",
+      }}
+    >
+      {/* Number / status box */}
       <div
-        className={clsx(
-          "flex items-start gap-2 px-3 py-1.5",
-          hasChildren && "cursor-pointer",
-          item.status === "running" && "bg-[#FFF4F2]"
-        )}
-        style={item.status === "running" ? { borderLeft: "3px solid #E8472A" } : { borderLeft: "3px solid transparent" }}
-        onClick={() => hasChildren && setOpen(!open)}
+        className="w-6 h-6 flex items-center justify-center shrink-0 font-bold font-space text-xs"
+        style={{ background: numBox.bg, border: `2px solid ${numBox.border}`, borderRadius: "4px", color: numBox.color }}
       >
-        <div className="mt-0.5"><StepIcon status={item.status} /></div>
-        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+        {step.status === "done"
+          ? <Icon icon="solar:check-bold" width={14} />
+          : step.status === "running"
+          ? <Icon icon="solar:spinner-bold" width={14} className="animate-spin" />
+          : number}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <p
+          className="text-sm font-space leading-snug"
+          style={{
+            color: step.status === "pending" ? "#B0A898" : "#0D0D0D",
+            fontWeight: step.status === "running" ? 600 : 400,
+          }}
+        >
+          {step.label}
+        </p>
+        {step.detail && (
+          <p className="text-[10px] font-mono mt-0.5 truncate" style={{ color: "#B0A898" }}>{step.detail}</p>
+        )}
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          <span
+            className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold font-space"
+            style={{ background: statusBadge.bg, color: statusBadge.color, border: `1.5px solid ${statusBadge.border}`, borderRadius: "4px" }}
+          >
+            {statusBadge.label}
+          </span>
           {meta && (
             <span
-              className="inline-flex items-center gap-1 text-[10px] font-semibold font-space px-2 py-0.5"
-              style={{ background: "#EDE6D3", border: "1.5px solid #0D0D0D", color: "#5A5A5A", borderRadius: "4px" }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold font-space"
+              style={{ background: "#F7F0E3", border: "1.5px solid #C8C0AF", color: "#5A5A5A", borderRadius: "4px" }}
             >
               <Icon icon={meta.icon} width={9} />
               {meta.label}
             </span>
           )}
-          <span className={clsx(
-            "text-xs font-dm",
-            item.status === "done"    && "text-[#9CA3AF]",
-            item.status === "running" && "font-semibold text-[#0D0D0D]",
-            item.status === "pending" && "text-[#B0A898]",
-            item.status === "error"   && "font-semibold text-[#E8472A]",
-          )}>
-            {item.label}
-          </span>
-          {item.detail && (
-            <span className="text-[10px] font-mono text-[#B0A898] truncate max-w-[160px]">{item.detail}</span>
-          )}
-          {hasChildren && (
-            <Icon icon="solar:alt-arrow-down-bold" width={10}
-                  className={clsx("shrink-0 transition-transform", open && "rotate-180")}
-                  style={{ color: "#B0A898" }} />
-          )}
         </div>
       </div>
-      {open && item.children && (
-        <div className="ml-8 pl-3 py-1 space-y-1" style={{ borderLeft: "2px solid #0D0D0D" }}>
-          {item.children.map((child, i) => (
-            <div key={i} className="flex items-start gap-2 py-0.5">
-              <div className="mt-0.5"><StepIcon status={child.status} /></div>
-              <span className="text-xs font-dm text-[#9CA3AF]">{child.label}</span>
-              {child.detail && <span className="text-[10px] font-mono text-[#B0A898]">{child.detail}</span>}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -141,7 +126,7 @@ function groupStream(stream: ChatItem[]) {
   return out;
 }
 
-function PhaseGroupCard({ group, collapsed, onToggle }: {
+function AgentWorkCard({ group, collapsed, onToggle }: {
   group: PhaseGroup;
   collapsed: boolean;
   onToggle: () => void;
@@ -150,47 +135,89 @@ function PhaseGroupCard({ group, collapsed, onToggle }: {
   const doneCount   = steps.filter(s => s.status === "done").length;
   const runningStep = steps.find(s => s.status === "running");
 
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (phase.status !== "running") return;
+    const t = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [phase.status]);
+
+  const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+
   return (
-    <div className="msg-enter" style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "4px" }}>
-      {/* Header row — click to collapse/expand */}
+    <div className="msg-enter" style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "4px", overflow: "hidden" }}>
+      {/* Header */}
       <div
-        className="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none bouncy"
-        style={{
-          background: "#EDE6D3",
-          borderBottom: collapsed ? "none" : "2px solid #0D0D0D",
-          borderRadius: "4px 4px 0 0",
-        }}
+        className="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
+        style={{ background: "#E8472A", borderBottom: "2px solid #0D0D0D" }}
         onClick={onToggle}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <StepIcon status={phase.status} />
-          <span className="text-xs font-semibold font-space uppercase tracking-wide truncate" style={{ color: "#0D0D0D" }}>
-            {phase.label}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold font-space" style={{ color: "#FFFFFF" }}>
+            Agent · {phase.label}
           </span>
-          {runningStep && !collapsed && (
-            <span className="text-[10px] font-dm truncate hidden sm:block" style={{ color: "#9CA3AF" }}>
-              · {runningStep.label}
+        </div>
+        <div className="flex items-center gap-2">
+          {phase.status === "running" && (
+            <span
+              className="text-[10px] font-bold font-space px-2 py-0.5"
+              style={{ background: "#4ECDC4", color: "#0D0D0D", border: "1.5px solid #0D0D0D", borderRadius: "4px" }}
+            >
+              Running
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0 ml-2">
-          <span className="text-[10px] font-mono" style={{ color: "#9CA3AF" }}>
-            {doneCount}/{steps.length}
-          </span>
+          {phase.status === "done" && (
+            <span
+              className="text-[10px] font-bold font-space px-2 py-0.5"
+              style={{ background: "rgba(255,255,255,0.2)", color: "#FFFFFF", border: "1.5px solid rgba(255,255,255,0.4)", borderRadius: "4px" }}
+            >
+              Done
+            </span>
+          )}
           <Icon
             icon="solar:alt-arrow-down-bold"
-            width={11}
-            className={clsx("shrink-0 transition-transform duration-150", collapsed && "-rotate-90")}
-            style={{ color: "#5A5A5A" }}
+            width={12}
+            className={clsx("transition-transform duration-150", collapsed && "-rotate-90")}
+            style={{ color: "rgba(255,255,255,0.7)" }}
           />
         </div>
       </div>
 
-      {/* Steps — hidden when collapsed, scrollable fixed height */}
       {!collapsed && (
-        <div style={{ background: "#FFFFFF", height: "160px", overflowY: "auto" }}>
-          {steps.map(step => <AgentStep key={step.id} item={step} />)}
-        </div>
+        <>
+          {/* Stats bar */}
+          <div className="grid grid-cols-3" style={{ borderBottom: "2px solid #0D0D0D" }}>
+            <div className="px-3 py-2" style={{ background: "#F7F0E3", borderRight: "1.5px solid #0D0D0D" }}>
+              <p className="text-[9px] font-bold uppercase tracking-widest font-space" style={{ color: "#9CA3AF" }}>Steps Done</p>
+              <p className="text-lg font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>{doneCount}/{steps.length}</p>
+            </div>
+            <div
+              className="px-3 py-2"
+              style={{
+                background: runningStep ? "#FFF0ED" : "#F7F0E3",
+                borderRight: "1.5px solid #0D0D0D",
+                outline: runningStep ? "2px solid #E8472A" : undefined,
+                outlineOffset: "-2px",
+              }}
+            >
+              <p className="text-[9px] font-bold uppercase tracking-widest font-space" style={{ color: "#9CA3AF" }}>Active Tool</p>
+              <p className="text-xs font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>
+                {runningStep?.tool ? TOOL_META[runningStep.tool]?.label : "—"}
+              </p>
+            </div>
+            <div className="px-3 py-2" style={{ background: "#F7F0E3" }}>
+              <p className="text-[9px] font-bold uppercase tracking-widest font-space" style={{ color: "#9CA3AF" }}>Elapsed</p>
+              <p className="text-lg font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>{elapsedStr}</p>
+            </div>
+          </div>
+
+          {/* Step cards */}
+          <div style={{ background: "#FFFFFF" }}>
+            {steps.map((step, i) => (
+              <StepCard key={step.id} step={step} number={i + 1} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -436,7 +463,7 @@ export default function ChatPage() {
             if (!showEvents) return null;
             if (entry.kind === "group")
               return (
-                <PhaseGroupCard
+                <AgentWorkCard
                   key={entry.group.phase.id}
                   group={entry.group}
                   collapsed={collapsedPhases.has(entry.group.phase.id)}
@@ -444,7 +471,7 @@ export default function ChatPage() {
                 />
               );
             if (entry.kind === "orphan")
-              return <div key={entry.item.id} className="ml-10"><AgentStep item={entry.item} /></div>;
+              return <div key={entry.item.id}><StepCard step={entry.item} number={1} /></div>;
             return null;
           })}
           {isAgentRunning && (
