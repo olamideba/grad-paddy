@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Icon } from "@iconify/react";
-import clsx from "clsx";
-
 type DocStatus = "not-started" | "in-progress" | "ready";
 type AppStatus = "tracking" | "drafting" | "submitted" | "decision-pending" | "accepted" | "rejected" | "waitlisted";
 type RecommenderStatus = "not-asked" | "asked" | "confirmed" | "submitted";
@@ -81,10 +79,10 @@ function DeadlineBadge({ date }: { date: Date }) {
     <div className="flex flex-col gap-1">
       <span className="text-xs font-mono font-semibold" style={{ color: "#0D0D0D" }}>{formatted}</span>
       <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold font-space"
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold font-space w-fit"
         style={urgent
-          ? { background: "#E8472A", color: "#FFFFFF", border: "1.5px solid #0D0D0D" }
-          : { background: "#EDE6D3", color: "#5A5A5A", border: "1.5px solid #0D0D0D" }
+          ? { background: "#E8472A", color: "#FFFFFF", border: "1.5px solid #0D0D0D", borderRadius: "4px" }
+          : { background: "#EDE6D3", color: "#5A5A5A", border: "1.5px solid #0D0D0D", borderRadius: "4px" }
         }
       >
         <Icon icon="solar:clock-circle-bold" width={9} />
@@ -95,19 +93,19 @@ function DeadlineBadge({ date }: { date: Date }) {
 }
 
 const STATUS_META: Record<AppStatus, { label: string; bg: string; color: string; border: string }> = {
-  tracking:           { label: "Tracking",        bg: "#EDE6D3", color: "#5A5A5A",  border: "#0D0D0D" },
-  drafting:           { label: "Drafting",         bg: "#E8472A", color: "#FFFFFF",  border: "#0D0D0D" },
-  submitted:          { label: "Submitted",        bg: "#4ECDC4", color: "#0D0D0D",  border: "#0D0D0D" },
-  "decision-pending": { label: "Decision Pending", bg: "#0D0D0D", color: "#FFFFFF",  border: "#0D0D0D" },
-  accepted:           { label: "Accepted",         bg: "#4ECDC4", color: "#0D0D0D",  border: "#0D0D0D" },
-  rejected:           { label: "Rejected",         bg: "#E8472A", color: "#FFFFFF",  border: "#0D0D0D" },
-  waitlisted:         { label: "Waitlisted",       bg: "#F7F0E3", color: "#92400E",  border: "#D97706" },
+  tracking:           { label: "Tracking",         bg: "#EDE6D3", color: "#5A5A5A",  border: "#0D0D0D" },
+  drafting:           { label: "Drafting",          bg: "#E8472A", color: "#FFFFFF",  border: "#0D0D0D" },
+  submitted:          { label: "Submitted",         bg: "#4ECDC4", color: "#0D0D0D",  border: "#0D0D0D" },
+  "decision-pending": { label: "Decision Pending",  bg: "#0D0D0D", color: "#FFFFFF",  border: "#0D0D0D" },
+  accepted:           { label: "Accepted",          bg: "#4ECDC4", color: "#0D0D0D",  border: "#0D0D0D" },
+  rejected:           { label: "Rejected",          bg: "#E8472A", color: "#FFFFFF",  border: "#0D0D0D" },
+  waitlisted:         { label: "Waitlisted",        bg: "#F7F0E3", color: "#92400E",  border: "#D97706" },
 };
 
 const DOC_META: Record<DocStatus, { icon: string; color: string }> = {
-  "not-started": { icon: "solar:circle-bold",         color: "#B0A898" },
-  "in-progress": { icon: "solar:danger-triangle-bold", color: "#E8472A" },
-  ready:         { icon: "solar:check-circle-bold",    color: "#4ECDC4" },
+  "not-started": { icon: "solar:circle-bold",          color: "#C8C0AF" },
+  "in-progress": { icon: "solar:danger-triangle-bold",  color: "#E8472A" },
+  ready:         { icon: "solar:check-circle-bold",     color: "#4ECDC4" },
 };
 
 function DocCell({ status }: { status: DocStatus }) {
@@ -126,33 +124,86 @@ function RecDots({ recommenders }: { recommenders: Application["recommenders"] }
   return (
     <div className="flex items-center gap-1">
       {recommenders.map((r, i) => (
-        <div key={i} title={`${r.name}: ${r.status.replace("-", " ")}`}
-             className="w-3 h-3"
-             style={{ background: REC_STYLE[r.status].bg, border: `1px solid ${REC_STYLE[r.status].border}` }} />
+        <div
+          key={i}
+          title={`${r.name}: ${r.status.replace(/-/g, " ")}`}
+          className="w-3 h-3"
+          style={{ background: REC_STYLE[r.status].bg, border: `1px solid ${REC_STYLE[r.status].border}`, borderRadius: "2px" }}
+        />
       ))}
     </div>
   );
 }
 
-export default function TrackerPage() {
-  const [sort, setSort] = useState<"deadline" | "status">("deadline");
-  const sorted = [...APPS].sort((a, b) =>
-    sort === "deadline" ? a.deadline.getTime() - b.deadline.getTime() : a.status.localeCompare(b.status)
+const STAT_CARDS = [
+  {
+    label: "SOP Ready",
+    icon: "solar:document-text-bold",
+    getValue: () => `${APPS.filter(a => a.sop === "ready").length}/${APPS.length}`,
+    accent: "#4ECDC4",
+  },
+  {
+    label: "Recs Confirmed",
+    icon: "solar:users-group-two-rounded-bold",
+    getValue: () => {
+      const all = APPS.flatMap(a => a.recommenders);
+      const done = all.filter(r => r.status === "confirmed" || r.status === "submitted").length;
+      return `${done}/${all.length}`;
+    },
+    accent: "#0D0D0D",
+  },
+  {
+    label: "Funded Programs",
+    icon: "solar:dollar-minimalistic-bold",
+    getValue: () => `${APPS.filter(a => a.funded === true).length}/${APPS.length}`,
+    accent: "#E8472A",
+  },
+];
+
+type SortKey = "program" | "deadline" | "status";
+type SortDir = "asc" | "desc";
+
+function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
+  return (
+    <Icon
+      icon={active && dir === "desc" ? "solar:alt-arrow-up-bold" : "solar:alt-arrow-down-bold"}
+      width={10}
+      style={{ color: active ? "#E8472A" : "#C8C0AF", marginLeft: 3, flexShrink: 0 }}
+    />
   );
-  const totalDue30 = APPS.filter(a => daysUntil(a.deadline) < 30).length;
+}
+
+export default function TrackerPage() {
+  const [sortKey, setSortKey] = useState<SortKey>("deadline");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  const sorted = [...APPS].sort((a, b) => {
+    let cmp = 0;
+    if (sortKey === "deadline") cmp = a.deadline.getTime() - b.deadline.getTime();
+    else if (sortKey === "program") cmp = a.university.localeCompare(b.university);
+    else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+  const totalDue30   = APPS.filter(a => daysUntil(a.deadline) < 30).length;
+  const totalDrafting = APPS.filter(a => a.status === "drafting").length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
-      {/* Header */}
-      <div className="px-6 py-4 shrink-0 bg-white" style={{ borderBottom: "2px solid #0D0D0D" }}>
-        <div className="flex items-center justify-between">
+      {/* Header — black */}
+      <div className="px-6 py-4 shrink-0" style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}>
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-sm font-semibold font-space flex items-center gap-2" style={{ color: "#0D0D0D" }}>
+            <h1 className="text-sm font-bold font-space flex items-center gap-2" style={{ color: "#FFFFFF" }}>
               <Icon icon="solar:calendar-bold" width={15} style={{ color: "#E8472A" }} />
               Application Tracker
             </h1>
-            <p className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>
-              {APPS.length} applications
+            <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+              {APPS.length} applications · {totalDrafting} drafting
               {totalDue30 > 0 && (
                 <span style={{ color: "#E8472A" }}> · {totalDue30} deadline{totalDue30 > 1 ? "s" : ""} in &lt;30 days</span>
               )}
@@ -163,58 +214,80 @@ export default function TrackerPage() {
             <span className="text-sm">Add Application</span>
           </button>
         </div>
-
-        <div className="mt-4 flex items-center gap-6 flex-wrap">
-          {/* Legend */}
-          <div className="flex items-center gap-3 text-xs font-dm" style={{ color: "#9CA3AF" }}>
-            <span className="font-semibold font-space" style={{ color: "#5A5A5A" }}>Docs:</span>
-            {(["not-started", "in-progress", "ready"] as DocStatus[]).map(s => {
-              const { icon, color } = DOC_META[s];
-              return (
-                <div key={s} className="flex items-center gap-1">
-                  <Icon icon={icon} width={12} color={color} />
-                  <span>{s.replace(/-/g, " ")}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2 text-xs font-dm" style={{ color: "#9CA3AF" }}>
-            <span className="font-semibold font-space" style={{ color: "#5A5A5A" }}>Recs:</span>
-            {(["not-asked", "asked", "confirmed", "submitted"] as RecommenderStatus[]).map(s => (
-              <div key={s} className="w-3 h-3" title={s.replace(/-/g, " ")}
-                   style={{ background: REC_STYLE[s].bg, border: `1px solid ${REC_STYLE[s].border}` }} />
-            ))}
-          </div>
-          {/* Sort */}
-          <div className="ml-auto flex overflow-hidden" style={{ border: "2px solid #0D0D0D" }}>
-            {(["deadline", "status"] as const).map((s, i) => (
-              <button key={s} onClick={() => setSort(s)}
-                      className={clsx("px-3 py-1.5 text-xs font-semibold font-space uppercase tracking-wide bouncy", i > 0 && "border-l-2")}
-                      style={{
-                        background: sort === s ? "#E8472A" : "#FFFFFF",
-                        color: sort === s ? "#FFFFFF" : "#5A5A5A",
-                        borderColor: "#0D0D0D",
-                      }}>
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Table */}
+      {/* Filter / legend bar */}
+      <div className="px-6 py-3 shrink-0 flex items-center gap-6 flex-wrap" style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}>
+        {/* Doc legend */}
+        <div className="flex items-center gap-3 text-xs font-dm" style={{ color: "#9CA3AF" }}>
+          <span className="font-bold font-space text-[10px] uppercase tracking-wider" style={{ color: "#5A5A5A" }}>Docs</span>
+          {(["not-started", "in-progress", "ready"] as DocStatus[]).map(s => {
+            const { icon, color } = DOC_META[s];
+            return (
+              <div key={s} className="flex items-center gap-1">
+                <Icon icon={icon} width={12} color={color} />
+                <span className="text-[10px]">{s.replace(/-/g, " ")}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Rec legend */}
+        <div className="flex items-center gap-2 text-xs font-dm" style={{ color: "#9CA3AF" }}>
+          <span className="font-bold font-space text-[10px] uppercase tracking-wider" style={{ color: "#5A5A5A" }}>Recs</span>
+          {(["not-asked", "asked", "confirmed", "submitted"] as RecommenderStatus[]).map(s => (
+            <div key={s} className="flex items-center gap-1">
+              <div className="w-3 h-3" title={s.replace(/-/g, " ")}
+                   style={{ background: REC_STYLE[s].bg, border: `1px solid ${REC_STYLE[s].border}`, borderRadius: "2px" }} />
+              <span className="text-[10px]">{s.replace(/-/g, " ")}</span>
+            </div>
+          ))}
+        </div>
+
+      </div>
+
+      {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="overflow-hidden" style={{ border: "2px solid #0D0D0D", boxShadow: "4px 4px 0 #0D0D0D" }}>
+        {/* Summary stat cards */}
+        <div className="grid grid-cols-3 gap-4 mb-5">
+          {STAT_CARDS.map(({ label, icon, getValue, accent }) => (
+            <div
+              key={label}
+              className="p-4 flex items-center gap-4"
+              style={{ background: "#FFFFFF", border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "4px" }}
+            >
+              <div
+                className="w-10 h-10 flex items-center justify-center flex-shrink-0"
+                style={{ background: accent, border: "2px solid #0D0D0D", borderRadius: "4px" }}
+              >
+                <Icon icon={icon} width={18} style={{ color: accent === "#0D0D0D" ? "#FFFFFF" : "#0D0D0D" }} />
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono leading-none" style={{ color: "#0D0D0D" }}>{getValue()}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider font-space mt-1" style={{ color: "#9CA3AF" }}>{label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Table */}
+        <div className="overflow-hidden" style={{ border: "2px solid #0D0D0D", boxShadow: "4px 4px 0 #0D0D0D", borderRadius: "4px" }}>
           <table className="table-brutal w-full">
             <thead>
               <tr>
-                <th className="min-w-48">Program</th>
-                <th className="min-w-36">Deadline</th>
-                <th className="min-w-32">Status</th>
+                <th className="min-w-48 cursor-pointer select-none" onClick={() => toggleSort("program")}>
+                  <span className="inline-flex items-center">Program<SortArrow active={sortKey === "program"} dir={sortDir} /></span>
+                </th>
+                <th className="min-w-36 cursor-pointer select-none" onClick={() => toggleSort("deadline")}>
+                  <span className="inline-flex items-center">Deadline<SortArrow active={sortKey === "deadline"} dir={sortDir} /></span>
+                </th>
+                <th className="min-w-36 cursor-pointer select-none" onClick={() => toggleSort("status")}>
+                  <span className="inline-flex items-center">Status<SortArrow active={sortKey === "status"} dir={sortDir} /></span>
+                </th>
                 <th className="text-center w-14" title="Statement of Purpose">SOP</th>
-                <th className="text-center w-12" title="CV">CV</th>
+                <th className="text-center w-12" title="CV / Resume">CV</th>
                 <th className="text-center w-16" title="Writing Sample">WS</th>
-                <th className="min-w-28">Recs</th>
+                <th className="min-w-32">Recommenders</th>
                 <th className="w-20 text-center">Funded</th>
                 <th className="w-10" />
               </tr>
@@ -222,18 +295,23 @@ export default function TrackerPage() {
             <tbody>
               {sorted.map(app => {
                 const { label, bg, color, border } = STATUS_META[app.status];
+                const urgent = daysUntil(app.deadline) < 30;
                 return (
-                  <tr key={app.id} className="group">
+                  <tr
+                    key={app.id}
+                    className="group"
+                    style={urgent ? { borderLeft: "3px solid #E8472A" } : {}}
+                  >
                     <td>
-                      <div className="font-semibold text-sm font-space leading-tight" style={{ color: "#0D0D0D" }}>{app.university}</div>
+                      <div className="font-bold text-sm font-space leading-tight" style={{ color: "#0D0D0D" }}>{app.university}</div>
                       <div className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>{app.program}</div>
-                      {app.notes && <div className="text-xs font-dm mt-0.5 italic" style={{ color: "#5A5A5A" }}>{app.notes}</div>}
+                      {app.notes && <div className="text-xs font-dm mt-1 italic" style={{ color: "#5A5A5A" }}>{app.notes}</div>}
                     </td>
                     <td><DeadlineBadge date={app.deadline} /></td>
                     <td>
                       <span
-                        className="inline-flex items-center px-2.5 py-0.5 text-xs font-semibold font-space"
-                        style={{ background: bg, color, border: `1.5px solid ${border}` }}
+                        className="inline-flex items-center px-2.5 py-0.5 text-xs font-bold font-space"
+                        style={{ background: bg, color, border: `1.5px solid ${border}`, borderRadius: "4px" }}
                       >
                         {label}
                       </span>
@@ -248,15 +326,17 @@ export default function TrackerPage() {
                       </div>
                     </td>
                     <td className="text-center">
-                      {app.funded === true  && <span className="badge-teal">Yes</span>}
-                      {app.funded === false && <span className="badge-coral">No</span>}
+                      {app.funded === true    && <span className="badge-teal">Yes</span>}
+                      {app.funded === false   && <span className="badge-coral">No</span>}
                       {app.funded === "unknown" && <span className="badge-gray">?</span>}
                     </td>
                     <td>
-                      <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bouncy"
-                              style={{ border: "1.5px solid #0D0D0D", color: "#9CA3AF" }}
-                              onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); }}
-                              onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); }}>
+                      <button
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bouncy"
+                        style={{ border: "1.5px solid #0D0D0D", color: "#9CA3AF", borderRadius: "4px" }}
+                        onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); }}
+                        onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); }}
+                      >
                         <Icon icon="solar:menu-dots-bold" width={14} />
                       </button>
                     </td>
@@ -265,22 +345,6 @@ export default function TrackerPage() {
               })}
             </tbody>
           </table>
-        </div>
-
-        {/* Summary */}
-        <div className="mt-5 grid grid-cols-3 gap-4">
-          {[
-            { label: "SOP Ready",       value: `${APPS.filter(a => a.sop === "ready").length}/${APPS.length}` },
-            { label: "Recs Confirmed",  value: `${APPS.flatMap(a => a.recommenders).filter(r => r.status === "confirmed" || r.status === "submitted").length}/${APPS.flatMap(a => a.recommenders).length}` },
-            { label: "Funded Programs", value: `${APPS.filter(a => a.funded === true).length}/${APPS.length}` },
-          ].map(({ label, value }) => (
-            <div key={label} className="card-brutal p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider font-space" style={{ color: "#9CA3AF" }}>{label}</span>
-              </div>
-              <div className="text-2xl font-bold font-mono" style={{ color: "#0D0D0D" }}>{value}</div>
-            </div>
-          ))}
         </div>
       </div>
     </div>

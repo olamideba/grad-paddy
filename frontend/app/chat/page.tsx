@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
+import { useAgent } from "@/components/AgentProvider";
 
 type StepStatus = "pending" | "running" | "done" | "error";
 
@@ -31,24 +32,24 @@ function StepIcon({ status }: { status: StepStatus }) {
   const base = "w-5 h-5 flex items-center justify-center shrink-0";
   if (status === "done")
     return (
-      <div className={base} style={{ background: "#4ECDC4", border: "1.5px solid #0D0D0D" }}>
+      <div className={base} style={{ background: "#4ECDC4", border: "1.5px solid #0D0D0D", borderRadius: "3px" }}>
         <Icon icon="solar:check-bold" width={11} style={{ color: "#0D0D0D" }} />
       </div>
     );
   if (status === "error")
     return (
-      <div className={base} style={{ background: "#E8472A", border: "1.5px solid #0D0D0D" }}>
+      <div className={base} style={{ background: "#E8472A", border: "1.5px solid #0D0D0D", borderRadius: "3px" }}>
         <Icon icon="solar:close-bold" width={11} style={{ color: "#FFFFFF" }} />
       </div>
     );
   if (status === "running")
     return (
-      <div className={base} style={{ background: "#E8472A", border: "1.5px solid #0D0D0D" }}>
+      <div className={base} style={{ background: "#E8472A", border: "1.5px solid #0D0D0D", borderRadius: "3px" }}>
         <Icon icon="solar:spinner-bold" width={11} style={{ color: "#FFFFFF" }} className="animate-spin" />
       </div>
     );
   return (
-    <div className={base} style={{ background: "#EDE6D3", border: "1.5px solid #B0A898" }}>
+    <div className={base} style={{ background: "#EDE6D3", border: "1.5px solid #B0A898", borderRadius: "3px" }}>
       <Icon icon="solar:circle-bold" width={11} style={{ color: "#B0A898" }} />
     </div>
   );
@@ -75,7 +76,7 @@ function AgentStep({ item }: { item: Extract<ChatItem, { type: "step" }> }) {
           {meta && (
             <span
               className="inline-flex items-center gap-1 text-[10px] font-semibold font-space px-2 py-0.5"
-              style={{ background: "#EDE6D3", border: "1.5px solid #0D0D0D", color: "#5A5A5A" }}
+              style={{ background: "#EDE6D3", border: "1.5px solid #0D0D0D", color: "#5A5A5A", borderRadius: "4px" }}
             >
               <Icon icon={meta.icon} width={9} />
               {meta.label}
@@ -150,13 +151,14 @@ function PhaseGroupCard({ group, collapsed, onToggle }: {
   const runningStep = steps.find(s => s.status === "running");
 
   return (
-    <div className="msg-enter" style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D" }}>
+    <div className="msg-enter" style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "4px" }}>
       {/* Header row — click to collapse/expand */}
       <div
         className="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none bouncy"
         style={{
           background: "#EDE6D3",
           borderBottom: collapsed ? "none" : "2px solid #0D0D0D",
+          borderRadius: "4px 4px 0 0",
         }}
         onClick={onToggle}
       >
@@ -184,9 +186,9 @@ function PhaseGroupCard({ group, collapsed, onToggle }: {
         </div>
       </div>
 
-      {/* Steps — hidden when collapsed */}
+      {/* Steps — hidden when collapsed, scrollable fixed height */}
       {!collapsed && (
-        <div style={{ background: "#FFFFFF" }}>
+        <div style={{ background: "#FFFFFF", height: "160px", overflowY: "auto" }}>
           {steps.map(step => <AgentStep key={step.id} item={step} />)}
         </div>
       )}
@@ -200,55 +202,52 @@ function ApprovalGate({
   item: Extract<ChatItem, { type: "approval" }>;
   onResolve: (id: string, d: "approved" | "rejected") => void;
 }) {
-  if (item.resolved) {
-    return (
-      <div className="msg-enter">
-        <div
-          className="flex items-center gap-2 px-4 py-3 text-sm font-semibold font-space"
-          style={{
-            background: item.resolved === "approved" ? "#4ECDC4" : "#EDE6D3",
-            border: "2px solid #0D0D0D",
-            color: item.resolved === "approved" ? "#0D0D0D" : "#5A5A5A",
-          }}
-        >
-          <Icon icon={item.resolved === "approved" ? "solar:check-circle-bold" : "solar:close-circle-bold"} width={15} />
-          {item.resolved === "approved" ? "Approved — shortlist saved" : "Rejected — shortlist discarded"}
-        </div>
-      </div>
-    );
-  }
   return (
-    <div className="msg-enter approval-gate">
-      <div className="overflow-hidden bg-white" style={{ border: "2px solid #0D0D0D", boxShadow: "4px 4px 0 #0D0D0D" }}>
-        <div className="flex items-center gap-2 px-4 py-3" style={{ background: "#E8472A", borderBottom: "2px solid #0D0D0D" }}>
-          <Icon icon="solar:danger-triangle-bold" width={13} style={{ color: "rgba(255,255,255,0.8)" }} />
-          <span className="text-xs font-semibold uppercase tracking-widest font-space" style={{ color: "#FFFFFF" }}>
-            Human Approval Required
-          </span>
-        </div>
-        <div className="px-4 py-4">
-          <p className="text-sm font-semibold font-space mb-1" style={{ color: "#0D0D0D" }}>{item.title}</p>
-          <p className="text-xs font-dm mb-3 leading-relaxed" style={{ color: "#5A5A5A" }}>{item.description}</p>
+    <div className="flex gap-3 msg-enter">
+      <div
+        className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
+        style={{ background: "#EDE6D3", color: "#5A5A5A", border: "2px solid #0D0D0D", borderRadius: "50%" }}
+      >
+        <span className="text-xs leading-none">🎓</span>
+      </div>
+      <div className="flex flex-col gap-3 max-w-[75%]">
+        <div
+          className="px-4 py-3 text-sm font-dm leading-relaxed"
+          style={{ background: "#FFFFFF", color: "#0D0D0D", border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "8px" }}
+        >
+          <p className="font-semibold font-space mb-1" style={{ color: "#0D0D0D" }}>{item.title}</p>
+          <p className="text-xs font-dm mb-3" style={{ color: "#5A5A5A" }}>{item.description}</p>
           {item.items && (
-            <ul className="mb-4 space-y-1.5">
+            <ul className="space-y-1 mb-1">
               {item.items.map((it, i) => (
-                <li key={i} className="text-xs font-dm flex items-start gap-1.5" style={{ color: "#0D0D0D" }}>
-                  <span className="font-bold shrink-0" style={{ color: "#5A5A5A" }}>→</span>{it}
+                <li key={i} className="text-xs font-dm flex items-start gap-1.5" style={{ color: "#5A5A5A" }}>
+                  <span className="shrink-0" style={{ color: "#B0A898" }}>–</span>{it}
                 </li>
               ))}
             </ul>
           )}
+        </div>
+        {item.resolved ? (
+          <div className="flex items-center gap-2 text-xs font-semibold font-space" style={{ color: item.resolved === "approved" ? "#4ECDC4" : "#9CA3AF" }}>
+            <Icon icon={item.resolved === "approved" ? "solar:check-circle-bold" : "solar:close-circle-bold"} width={13} />
+            {item.resolved === "approved" ? "Approved" : "Rejected"}
+          </div>
+        ) : (
           <div className="flex gap-2">
-            <button onClick={() => onResolve(item.id, "approved")}
-                    className="btn-teal btn-sm flex-1 justify-center gap-1.5 text-xs font-semibold">
-              <Icon icon="solar:check-circle-bold" width={13} />Approve
+            <button
+              onClick={() => onResolve(item.id, "approved")}
+              className="btn-teal btn-sm gap-1.5 text-xs"
+            >
+              <Icon icon="solar:check-circle-bold" width={12} />Yes, save
             </button>
-            <button onClick={() => onResolve(item.id, "rejected")}
-                    className="btn-white btn-sm flex-1 justify-center gap-1.5 text-xs font-semibold">
-              <Icon icon="solar:close-circle-bold" width={13} />Reject
+            <button
+              onClick={() => onResolve(item.id, "rejected")}
+              className="btn-white btn-sm gap-1.5 text-xs"
+            >
+              <Icon icon="solar:close-circle-bold" width={12} />No, discard
             </button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -264,11 +263,12 @@ function MessageBubble({ item }: { item: Extract<ChatItem, { type: "user" | "age
           background: isUser ? "#0D0D0D" : "#EDE6D3",
           color: isUser ? "#fff" : "#5A5A5A",
           border: "2px solid #0D0D0D",
+          borderRadius: "50%",
         }}
       >
         {isUser
           ? <Icon icon="solar:user-bold" width={13} />
-          : <Icon icon="solar:graduation-cap-bold" width={13} />
+          : <span className="text-xs leading-none">🎓</span>
         }
       </div>
       <div className={clsx("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
@@ -279,6 +279,7 @@ function MessageBubble({ item }: { item: Extract<ChatItem, { type: "user" | "age
             color: isUser ? "#fff" : "#0D0D0D",
             border: "2px solid #0D0D0D",
             boxShadow: "3px 3px 0 #0D0D0D",
+            borderRadius: "8px",
           }}
         >
           {item.content.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
@@ -358,8 +359,19 @@ export default function ChatPage() {
   const textareaRef                     = useRef<HTMLTextAreaElement>(null);
 
   const isAgentRunning  = stream.some(i => i.type === "step" && i.status === "running");
+  const runningStep     = stream.find((i): i is Extract<ChatItem, { type: "step" }> => i.type === "step" && i.status === "running");
+  const AGENT_STATUS: Record<string, string> = {
+    scrape:  "Scraping web...",
+    search:  "Searching...",
+    elastic: "Querying index...",
+    llm:     "Thinking...",
+  };
+  const agentStatusText = runningStep?.tool ? (AGENT_STATUS[runningStep.tool] ?? "Working...") : "Working...";
   const pendingApproval = stream.some(i => i.type === "approval" && !("resolved" in i && i.resolved));
   const inputBlocked    = isAgentRunning || pendingApproval;
+
+  const { setRunning } = useAgent();
+  useEffect(() => { setRunning(isAgentRunning); }, [isAgentRunning, setRunning]);
 
   useEffect(() => {
     if (!inputBlocked && queue.length > 0) {
@@ -408,13 +420,6 @@ export default function ChatPage() {
           <h1 className="text-sm font-semibold font-space" style={{ color: "#FFFFFF" }}>Agent Chat</h1>
           <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>Faculty discovery · SOP generation · Outreach prep</p>
         </div>
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-semibold font-space"
-          style={{ background: "#4ECDC4", border: "1.5px solid #0D0D0D", color: "#0D0D0D" }}
-        >
-          <span className="w-1.5 h-1.5" style={{ background: "#0D0D0D", borderRadius: "50%", display: "inline-block" }} />
-          Agent online
-        </div>
       </div>
 
       {/* Stream */}
@@ -442,6 +447,17 @@ export default function ChatPage() {
               return <div key={entry.item.id} className="ml-10"><AgentStep item={entry.item} /></div>;
             return null;
           })}
+          {isAgentRunning && (
+            <div className="flex items-center gap-3 py-1 msg-enter">
+              <div
+                className="w-7 h-7 shrink-0 flex items-center justify-center logo-beat"
+                style={{ background: "#E8472A", border: "2px solid #C8381F", borderRadius: "50%" }}
+              >
+                <span className="text-xs leading-none">🎓</span>
+              </div>
+              <span className="text-xs font-dm" style={{ color: "#9CA3AF" }}>{agentStatusText}</span>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
       </div>
@@ -450,8 +466,8 @@ export default function ChatPage() {
       <div className="shrink-0 px-4 pb-4 pt-2 max-w-3xl mx-auto w-full">
         {/* Queue */}
         {queue.length > 0 && (
-          <div className="mb-2 overflow-hidden bg-white" style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D" }}>
-            <div className="flex items-center gap-2 px-3 py-2" style={{ background: "#0D0D0D", borderBottom: "2px solid #0D0D0D" }}>
+          <div className="mb-2 overflow-hidden bg-white" style={{ border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "4px" }}>
+            <div className="flex items-center gap-2 px-3 py-2" style={{ background: "#0D0D0D", borderBottom: "2px solid #0D0D0D", borderRadius: "4px 4px 0 0" }}>
               <Icon icon="solar:spinner-bold" width={11} className="animate-spin" style={{ color: "#9CA3AF" }} />
               <span className="text-xs font-semibold font-space tracking-wide text-white">
                 {queue.length} queued — sends when agent finishes
@@ -476,7 +492,7 @@ export default function ChatPage() {
           <div className="mb-2 flex flex-wrap gap-2">
             {urls.map((url, i) => (
               <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-white text-xs font-mono"
-                   style={{ border: "1.5px solid #0D0D0D", color: "#5A5A5A" }}>
+                   style={{ border: "1.5px solid #0D0D0D", color: "#5A5A5A", borderRadius: "4px" }}>
                 <Icon icon="solar:link-bold" width={10} />
                 <span className="truncate max-w-[180px]">{url}</span>
                 <button onClick={() => setUrls(p => p.filter((_, j) => j !== i))} style={{ color: "#B0A898" }}>
@@ -503,7 +519,7 @@ export default function ChatPage() {
 
         {/* Main input */}
         <div className="bg-white overflow-hidden"
-             style={{ border: "2px solid #0D0D0D", boxShadow: "4px 4px 0 #0D0D0D" }}>
+             style={{ border: "2px solid #0D0D0D", boxShadow: "4px 4px 0 #0D0D0D", borderRadius: "4px" }}>
           <textarea
             ref={textareaRef}
             value={input}
@@ -523,6 +539,7 @@ export default function ChatPage() {
                   border: "1.5px solid #0D0D0D",
                   background: showUrlInput ? "#0D0D0D" : "#F7F0E3",
                   color: showUrlInput ? "#fff" : "#9CA3AF",
+                  borderRadius: "4px",
                 }}
                 title="Add URL"
               >
@@ -535,6 +552,7 @@ export default function ChatPage() {
                   border: "1.5px solid #0D0D0D",
                   background: "#F7F0E3",
                   color: showEvents ? "#0D0D0D" : "#B0A898",
+                  borderRadius: "4px",
                 }}
                 title={showEvents ? "Hide agent events" : "Show agent events"}
               >

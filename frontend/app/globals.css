@@ -49,7 +49,7 @@ h1, h2, h3, h4, h5, h6,
            font-space font-semibold
            px-5 py-2.5 cursor-pointer select-none;
     border: 2px solid #0D0D0D;
-    border-radius: 0;
+    border-radius: 4px;
     box-shadow: var(--shadow-brutal);
     transition: all 100ms ease-out;
   }
@@ -73,6 +73,7 @@ h1, h2, h3, h4, h5, h6,
   .card-brutal {
     background: #FFFFFF;
     border: 2px solid #0D0D0D;
+    border-radius: 4px;
     box-shadow: 4px 4px 0 #0D0D0D;
     transition: box-shadow 100ms ease-out, transform 100ms ease-out;
   }
@@ -87,7 +88,7 @@ h1, h2, h3, h4, h5, h6,
   .input-brutal {
     @apply w-full px-4 py-2.5 bg-white font-dm outline-none;
     border: 2px solid #0D0D0D;
-    border-radius: 0;
+    border-radius: 4px;
     color: #0D0D0D;
   }
   .input-brutal::placeholder { color: #B0A898; }
@@ -97,7 +98,7 @@ h1, h2, h3, h4, h5, h6,
   .badge-brutal {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold font-space;
     border: 1.5px solid #0D0D0D;
-    border-radius: 2px;
+    border-radius: 4px;
     background: #F7F0E3;
     color: #0D0D0D;
   }
@@ -129,6 +130,15 @@ h1, h2, h3, h4, h5, h6,
 }
 
 /* ── Animations ── */
+@keyframes logoBeat {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0px rgba(232,71,42,0.7); }
+  40%  { transform: scale(1.09); box-shadow: 0 0 0 8px rgba(232,71,42,0.15); }
+  80%  { transform: scale(1);    box-shadow: 0 0 0 14px rgba(232,71,42,0); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0px rgba(232,71,42,0); }
+}
+.logo-beat { animation: logoBeat 1.4s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+
 .msg-enter { animation: slideIn 180ms ease-out forwards; }
 
 @keyframes slideIn {

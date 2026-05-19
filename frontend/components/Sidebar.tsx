@@ -6,7 +6,7 @@ import { useRef, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 
-const MIN_WIDTH     = 60;
+const MIN_WIDTH     = 72;
 const MAX_WIDTH     = 340;
 const DEFAULT_WIDTH = 256;
 const COLLAPSE_AT   = 130;
@@ -19,16 +19,19 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar() {
-  const pathname   = usePathname();
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
-  const dragging   = useRef(false);
-  const startX     = useRef(0);
-  const startWidth = useRef(DEFAULT_WIDTH);
+  const pathname       = usePathname();
+  const [width, setWidth]           = useState(DEFAULT_WIDTH);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragging    = useRef(false);
+  const startX      = useRef(0);
+  const startWidth  = useRef(DEFAULT_WIDTH);
+  const prevWidth   = useRef(DEFAULT_WIDTH);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current   = true;
     startX.current     = e.clientX;
     startWidth.current = width;
+    setIsDragging(true);
     document.body.style.cursor     = "col-resize";
     document.body.style.userSelect = "none";
 
@@ -38,6 +41,7 @@ export default function Sidebar() {
     }
     function onMouseUp() {
       dragging.current = false;
+      setIsDragging(false);
       document.body.style.cursor     = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
@@ -49,27 +53,60 @@ export default function Sidebar() {
 
   const collapsed = width < COLLAPSE_AT;
 
+  const toggleCollapse = useCallback(() => {
+    if (collapsed) {
+      setWidth(prevWidth.current >= COLLAPSE_AT ? prevWidth.current : DEFAULT_WIDTH);
+    } else {
+      prevWidth.current = width;
+      setWidth(MIN_WIDTH);
+    }
+  }, [collapsed, width]);
+
   return (
     <aside
       className="relative flex-shrink-0 flex flex-col h-screen overflow-hidden"
-      style={{ width, background: "#F7F0E3", borderRight: "2px solid #0D0D0D" }}
+      style={{
+        width,
+        background: "#F7F0E3",
+        borderRight: "2px solid #0D0D0D",
+        transition: isDragging ? "none" : "width 200ms ease-out",
+      }}
     >
       {/* Logo */}
       <div
-        className="p-4 flex-shrink-0 flex items-center gap-3"
+        className={`flex-shrink-0 flex ${collapsed ? "flex-row items-center justify-between px-2 py-2.5" : "flex-row items-center gap-3 p-4"}`}
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
-        <div
-          className="w-9 h-9 flex items-center justify-center flex-shrink-0"
-          style={{ background: "#E8472A", border: "2px solid #E8472A" }}
-        >
-          <Icon icon="solar:graduation-cap-bold" width={18} style={{ color: "#0D0D0D" }} />
-        </div>
+        <span className="flex-shrink-0 text-2xl leading-none select-none">🎓</span>
         {!collapsed && (
-          <div>
-            <div className="font-space font-bold text-base leading-none tracking-tight" style={{ color: "#FFFFFF" }}>Grad</div>
-            <div className="font-space font-bold text-base leading-none tracking-tight" style={{ color: "#E8472A" }}>Paddy</div>
-          </div>
+          <>
+            <div className="flex-1 min-w-0">
+              <div className="font-space font-bold text-base leading-none tracking-tight" style={{ color: "#FFFFFF" }}>Grad</div>
+              <div className="font-space font-bold text-base leading-none tracking-tight" style={{ color: "#E8472A" }}>Paddy</div>
+            </div>
+            <button
+              onClick={toggleCollapse}
+              className="bouncy flex-shrink-0 p-1"
+              style={{ color: "rgba(255,255,255,0.4)", borderRadius: "4px" }}
+              onMouseEnter={e => { (e.currentTarget.style.background = "rgba(255,255,255,0.1)"); (e.currentTarget.style.color = "#FFFFFF"); }}
+              onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "rgba(255,255,255,0.4)"); }}
+              title="Collapse sidebar"
+            >
+              <Icon icon="solar:double-alt-arrow-left-bold" width={14} />
+            </button>
+          </>
+        )}
+        {collapsed && (
+          <button
+            onClick={toggleCollapse}
+            className="bouncy flex items-center justify-center w-6 h-6 flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.08)", border: "1.5px solid rgba(255,255,255,0.2)", borderRadius: "50%", color: "rgba(255,255,255,0.6)" }}
+            onMouseEnter={e => { (e.currentTarget.style.background = "rgba(255,255,255,0.18)"); (e.currentTarget.style.borderColor = "rgba(255,255,255,0.5)"); (e.currentTarget.style.color = "#FFFFFF"); }}
+            onMouseLeave={e => { (e.currentTarget.style.background = "rgba(255,255,255,0.08)"); (e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"); (e.currentTarget.style.color = "rgba(255,255,255,0.6)"); }}
+            title="Expand sidebar"
+          >
+            <Icon icon="solar:double-alt-arrow-right-bold" width={12} />
+          </button>
         )}
       </div>
 
@@ -95,7 +132,7 @@ export default function Sidebar() {
               )}
               style={
                 active
-                  ? { background: "#0D0D0D", color: "#FFFFFF", border: "2px solid #0D0D0D", outline: "none" }
+                  ? { background: "#0D0D0D", color: "#FFFFFF", border: "2px solid #0D0D0D", outline: "none", borderRadius: "4px" }
                   : { color: "#5A5A5A", border: "2px solid transparent" }
               }
               onMouseEnter={e => {
@@ -121,7 +158,7 @@ export default function Sidebar() {
       {!collapsed && (
         <div
           className="mx-3 mb-3 p-3 flex-shrink-0"
-          style={{ background: "#EDE6D3", border: "2px solid #0D0D0D" }}
+          style={{ background: "#EDE6D3", border: "2px solid #0D0D0D", borderRadius: "4px" }}
         >
           <div className="flex items-center gap-2 mb-1">
             <Icon icon="solar:bolt-bold" width={12} style={{ color: "#9CA3AF" }} />
@@ -140,7 +177,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-2 min-w-0">
           <div
             className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-xs font-bold"
-            style={{ background: "#E8472A", color: "#FFFFFF", border: "2px solid #0D0D0D" }}
+            style={{ background: "#E8472A", color: "#FFFFFF", border: "2px solid #0D0D0D", borderRadius: "4px" }}
           >
             U
           </div>
@@ -151,14 +188,16 @@ export default function Sidebar() {
             </div>
           )}
         </div>
-        <button
-          className="p-1.5 bouncy"
-          style={{ color: "#9CA3AF", border: "1.5px solid transparent" }}
-          onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); (e.currentTarget.style.border = "1.5px solid #0D0D0D"); }}
-          onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); (e.currentTarget.style.border = "1.5px solid transparent"); }}
-        >
-          <Icon icon="solar:settings-bold" width={14} />
-        </button>
+        {!collapsed && (
+          <button
+            className="p-1.5 bouncy"
+            style={{ color: "#9CA3AF", border: "1.5px solid transparent" }}
+            onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); (e.currentTarget.style.border = "1.5px solid #0D0D0D"); (e.currentTarget.style.borderRadius = "4px"); }}
+            onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); (e.currentTarget.style.border = "1.5px solid transparent"); (e.currentTarget.style.borderRadius = "4px"); }}
+          >
+            <Icon icon="solar:settings-bold" width={14} />
+          </button>
+        )}
       </div>
 
       {/* Drag handle */}
