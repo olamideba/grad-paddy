@@ -216,3 +216,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+grad-paddy-firebase-adminsdk-fbsvc-5c475865e8.json
+.vscode/
