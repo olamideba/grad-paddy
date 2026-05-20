@@ -3,9 +3,12 @@ from pathlib import Path
 
 import firebase_admin
 from firebase_admin import auth, credentials
-from fastapi import Header, HTTPException, status
+from fastapi import HTTPException, Request, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.core.config import Settings
+
+security_scheme = HTTPBearer()
 
 def initialize_firebase(settings: Settings) -> None:
     try:
@@ -29,20 +32,9 @@ def initialize_firebase(settings: Settings) -> None:
 
 
 async def get_current_user_id(
-    authorization: str | None = Header(default=None),
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
 ) -> str:
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header.",
-        )
-
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Authorization header.",
-        )
+    token = credentials.credentials 
 
     try:
         decoded_token = auth.verify_id_token(token)
@@ -60,3 +52,10 @@ async def get_current_user_id(
         )
 
     return uid
+
+async def verify_firebase_auth(
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+) -> str:
+    request.state.user_id = user_id
+    return user_id

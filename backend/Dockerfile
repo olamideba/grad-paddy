@@ -20,3 +20,6 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080", \
      "--timeout-keep-alive", "75", \
      "--ws-ping-interval", "20", \
      "--ws-ping-timeout", "60"]
+
+HEALTHCHECK --interval=3h --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
