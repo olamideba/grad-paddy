@@ -216,5 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
+backend/grad-paddy-firebase-adminsdk-fbsvc-5c475865e8.json
 backend/tests/test_google_signin.html
+.vscode
