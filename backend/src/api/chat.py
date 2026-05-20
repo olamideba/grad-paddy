@@ -1,5 +1,5 @@
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -7,8 +7,9 @@ from google.genai import types
 
 from src.agents.root import root_agent
 from src.core.config import get_settings
+from src.core.firebase import get_current_user_id
 
-router = APIRouter(tags=["chat"])
+router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user_id)])
 
 
 def build_chat_agent() -> ADKAgent:

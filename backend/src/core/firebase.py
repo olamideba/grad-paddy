@@ -3,7 +3,7 @@ from pathlib import Path
 
 import firebase_admin
 from firebase_admin import auth, credentials
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, Request, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.core.config import Settings
@@ -52,3 +52,10 @@ async def get_current_user_id(
         )
 
     return uid
+
+async def verify_firebase_auth(
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+) -> str:
+    request.state.user_id = user_id
+    return user_id
