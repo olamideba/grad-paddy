@@ -5,6 +5,8 @@ on:
     branches: [dev, frontend-branch]
     paths:
       - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:   # allow manual trigger from GitHub UI
 
 env:
   REGION: us-central1
@@ -62,12 +64,17 @@ jobs:
           password: ${{ steps.auth.outputs.access_token }}
           registry: ${{ env.REGION }}-docker.pkg.dev
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
           tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2

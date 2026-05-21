@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint .",
+    "prepare": "git config core.hooksPath .husky || true"
   },
   "dependencies": {
     "@ag-ui/client": "^0.0.53",
@@ -24,6 +25,9 @@
     "remark-gfm": "^4.0.1",
     "rxjs": "^7.8.2"
   },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,css,json,md}": "prettier --write"
+  },
   "devDependencies": {
     "@types/node": "^25.9.0",
     "@types/react": "^19.2.14",
@@ -31,7 +35,10 @@
     "autoprefixer": "^10.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
     "postcss": "^8.5.14",
+    "prettier": "^3.8.3",
     "tailwindcss": "^3.4.1",
     "typescript": "^6.0.3"
   }
