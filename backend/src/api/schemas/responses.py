@@ -39,7 +39,6 @@ class PreferencesResponse(BaseModel):
 class SessionResponse(BaseModel):
     id: str
     title: str
-    user_id: str
     created_at: datetime
     updated_at: datetime
 

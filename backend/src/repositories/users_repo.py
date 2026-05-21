@@ -19,14 +19,17 @@ class UserRepository:
             .collection(settings.DOC_PROFILE)
             .document(settings.DOC_PROFILE)
         )
+
+        now = datetime.now(timezone.utc)
         
         profile = {
             "id": user_id,
             "email": data.get("email", ""),
             "name": data.get("name", ""),
             "avatar_url": data.get("avatar_url"),
-            "created_at": data.get("created_at") or datetime.now(timezone.utc),
-            "onboarded": data.get("onboarded", False),
+            "onboarded": data.get("onboarded", False),            
+            "created_at": data.get("created_at") or now,
+            "updated_at": data.get("updated_at") or now,
         }
         await doc_ref.set(profile)
         return profile
