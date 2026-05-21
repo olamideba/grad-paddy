@@ -45,7 +45,6 @@ class SessionResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     id: str
-    session_id: str
     role: str
     content: str
     ai_ui_events: list[dict] = Field(default_factory=list)
