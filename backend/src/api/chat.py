@@ -9,7 +9,7 @@ from src.agents.root import root_agent
 from src.core.config import get_settings
 from src.core.firebase import get_current_user_id
 
-router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user_id)])
+router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(get_current_user_id)])
 
 
 def build_chat_agent() -> ADKAgent:
@@ -23,7 +23,7 @@ def build_chat_agent() -> ADKAgent:
     )
 
 
-add_adk_fastapi_endpoint(router, build_chat_agent(), path="/chat")
+add_adk_fastapi_endpoint(router, build_chat_agent(), path="/")
 
 
 class DebugChatRequest(BaseModel):
@@ -55,7 +55,7 @@ def _extract_text(content: types.Content | None) -> str:
 
 
 @router.post(
-    "/chat/debug",
+    "/debug",
     response_model=DebugChatResponse,
     summary="Swagger-friendly chat endpoint",
     description=(
