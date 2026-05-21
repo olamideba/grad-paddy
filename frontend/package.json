@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "prepare": "git config core.hooksPath .husky"
+    "prepare": "git config core.hooksPath .husky || true"
   },
   "dependencies": {
     "@ag-ui/client": "^0.0.53",
