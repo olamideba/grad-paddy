@@ -6,7 +6,7 @@ import clsx from "clsx";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAgent } from "@/components/AgentProvider";
-import type { Message, BaseEvent } from "@/lib/ag-ui";
+import type { Message, BaseEvent } from "../../lib/ag-ui";
 import { useChatSessions } from "@/context/ChatSessionsContext";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -336,7 +336,7 @@ export default function ChatPage() {
     }
 
     threadId.current = activeSessionId;
-    import("@/lib/api").then(({ sessionsApi }) =>
+    import("../../lib/api").then(({ sessionsApi }) =>
       sessionsApi.listMessages(activeSessionId).then(res => {
         const items: ChatItem[] = [];
         const restored: Message[] = [];
@@ -421,7 +421,7 @@ export default function ChatPage() {
 
   async function checkHITL() {
     try {
-      const { hitlApi } = await import("@/lib/api");
+      const { hitlApi } = await import("../../lib/api");
       const res = await hitlApi.getPending(threadId.current);
       if (!res.data) return;
       const hitl = res.data;
@@ -443,7 +443,7 @@ export default function ChatPage() {
       item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
     ));
     try {
-      const { hitlApi } = await import("@/lib/api");
+      const { hitlApi } = await import("../../lib/api");
       await hitlApi.resolve(id, decision === "approved");
     } catch {}
   }
@@ -465,7 +465,7 @@ export default function ChatPage() {
     // Create session on first message of a new chat
     if (!activeSessionId) {
       try {
-        const { sessionsApi } = await import("@/lib/api");
+        const { sessionsApi } = await import("../../lib/api");
         const res = await sessionsApi.create(content);
         threadId.current = res.data.id;
         setActiveSessionId(res.data.id);
@@ -476,7 +476,7 @@ export default function ChatPage() {
     }
 
     try {
-      const { createChatAgent } = await import("@/lib/ag-ui");
+      const { createChatAgent } = await import("../../lib/ag-ui");
       const agent = await createChatAgent(agMessages.current, threadId.current);
 
       subscription.current = agent.run({

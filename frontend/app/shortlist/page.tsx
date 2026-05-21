@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
-import type { Faculty as ApiFaculty, ShortlistStats } from "@/lib/api";
+import type { Faculty as ApiFaculty, ShortlistStats } from "../../lib/api";
 
 type OutreachStatus = "none" | "drafted" | "sent" | "responded";
 type PositionStatus = boolean | "unknown";
@@ -210,7 +210,7 @@ export default function ShortlistPage() {
   const [filter, setFilter]   = useState<"all" | "open" | "outreach">("all");
 
   useEffect(() => {
-    import("@/lib/api").then(({ shortlistApi }) =>
+    import("../../lib/api").then(({ shortlistApi }) =>
       Promise.all([shortlistApi.list(), shortlistApi.stats()])
         .then(([listRes, statsRes]) => {
           setFaculty(listRes.data.map(mapFaculty));

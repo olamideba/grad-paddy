@@ -7,8 +7,8 @@ import {
   onAuthStateChanged, signInWithPopup, signOut as fbSignOut,
   User,
 } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase";
-import { usersApi } from "@/lib/api";
+import { auth, googleProvider } from "../lib/firebase";
+import { usersApi } from "../lib/api";
 
 interface AuthCtx {
   user: User | null;

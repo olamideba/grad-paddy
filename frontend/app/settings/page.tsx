@@ -320,7 +320,7 @@ export default function SettingsPage() {
   const savedRef = useRef({ interests: [] as string[], universities: [] as string[], countries: [] as string[] });
 
   useEffect(() => {
-    import("@/lib/api").then(({ usersApi }) =>
+    import("../../lib/api").then(({ usersApi }) =>
       usersApi.getPreferences()
         .then(res => {
           const p = res.data;
@@ -345,7 +345,7 @@ export default function SettingsPage() {
   async function save() {
     setSaving(true);
     try {
-      const { usersApi } = await import("@/lib/api");
+      const { usersApi } = await import("../../lib/api");
       await usersApi.upsertPreferences({
         research_interests: interests,
         target_universities: universities,
