@@ -23,7 +23,7 @@ def build_chat_agent() -> ADKAgent:
     )
 
 
-add_adk_fastapi_endpoint(router, build_chat_agent(), path="/")
+add_adk_fastapi_endpoint(router, build_chat_agent(), path="")
 
 
 class DebugChatRequest(BaseModel):
