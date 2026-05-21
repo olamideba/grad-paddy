@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useRef, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
+import { useChatSessions } from "@/context/ChatSessionsContext";
 
 const MIN_WIDTH     = 72;
 const MAX_WIDTH     = 340;
@@ -20,7 +21,9 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar() {
-  const pathname       = usePathname();
+  const pathname = usePathname();
+  const { sessions, activeSessionId, setActiveSessionId, sessionsLoading } = useChatSessions();
+  const onChat = pathname === "/chat";
   const [width, setWidth]           = useState(DEFAULT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
   const dragging    = useRef(false);
@@ -93,7 +96,7 @@ export default function Sidebar() {
               onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "rgba(255,255,255,0.4)"); }}
               title="Collapse sidebar"
             >
-              <Icon icon="solar:double-alt-arrow-left-bold" width={14} />
+              <Icon icon="solar:sidebar-minimalistic-bold" width={14} />
             </button>
           </>
         )}
@@ -106,7 +109,7 @@ export default function Sidebar() {
             onMouseLeave={e => { (e.currentTarget.style.background = "rgba(255,255,255,0.08)"); (e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"); (e.currentTarget.style.color = "rgba(255,255,255,0.6)"); }}
             title="Expand sidebar"
           >
-            <Icon icon="solar:double-alt-arrow-right-bold" width={12} />
+            <Icon icon="solar:sidebar-minimalistic-bold" width={12} />
           </button>
         )}
       </div>
@@ -155,20 +158,51 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* AI badge */}
-      {!collapsed && (
-        <div
-          className="mx-3 mb-3 p-3 flex-shrink-0"
-          style={{ background: "#EDE6D3", border: "2px solid #0D0D0D", borderRadius: "4px" }}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <Icon icon="solar:bolt-bold" width={12} style={{ color: "#9CA3AF" }} />
+      {/* Chat history — shown at bottom when on /chat */}
+      {onChat && !collapsed && (
+        <div className="flex-shrink-0 flex flex-col" style={{ borderTop: "2px solid #0D0D0D", maxHeight: "40vh" }}>
+          <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
             <span className="text-[10px] font-semibold uppercase tracking-widest font-space" style={{ color: "#9CA3AF" }}>
-              Powered By
+              Chats
             </span>
+            <button
+              onClick={() => setActiveSessionId(null)}
+              className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
+              style={{ color: "#9CA3AF", borderRadius: "4px", border: "1.5px solid transparent" }}
+              onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); (e.currentTarget.style.border = "1.5px solid #0D0D0D"); }}
+              onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#9CA3AF"); (e.currentTarget.style.border = "1.5px solid transparent"); }}
+            >
+              <Icon icon="solar:add-circle-bold" width={11} />
+              New Chat
+            </button>
           </div>
-          <div className="text-xs font-mono leading-relaxed" style={{ color: "#5A5A5A" }}>
-            Gemini 3 · Elastic MCP<br />Agent Builder · Cloud Run
+          <div className="overflow-y-auto">
+            {sessionsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#E8472A", borderTopColor: "transparent" }} />
+              </div>
+            ) : sessions.length === 0 ? (
+              <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>No chats yet</p>
+            ) : (
+              sessions.map(s => (
+                <Link
+                  key={s.id}
+                  href="/chat"
+                  onClick={() => setActiveSessionId(s.id)}
+                  className="group flex items-center gap-2 px-4 py-1.5 bouncy"
+                  style={{
+                    borderLeft: `3px solid ${activeSessionId === s.id ? "#E8472A" : "transparent"}`,
+                    background: activeSessionId === s.id ? "#EDE6D3" : "transparent",
+                  }}
+                  onMouseEnter={e => { if (activeSessionId !== s.id) (e.currentTarget.style.background = "#F7F0E3"); }}
+                  onMouseLeave={e => { if (activeSessionId !== s.id) (e.currentTarget.style.background = ""); }}
+                >
+                  <span className="flex-1 min-w-0 text-[12px] font-dm truncate" style={{ color: activeSessionId === s.id ? "#0D0D0D" : "#5A5A5A" }}>
+                    {s.title}
+                  </span>
+                </Link>
+              ))
+            )}
           </div>
         </div>
       )}
