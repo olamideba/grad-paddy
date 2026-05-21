@@ -2,7 +2,7 @@ name: Deploy frontend to Cloud Run
 
 on:
   push:
-    branches: [main]
+    branches: [dev, frontend-branch]
     paths:
       - 'frontend/**'
 
