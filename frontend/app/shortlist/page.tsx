@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
+import type { Faculty as ApiFaculty, ShortlistStats } from "@/lib/api";
+
+type OutreachStatus = "none" | "drafted" | "sent" | "responded";
+type PositionStatus = boolean | "unknown";
 
 type Faculty = {
   id: string;
@@ -11,52 +15,44 @@ type Faculty = {
   department: string;
   researchAreas: string[];
   fitScore: number;
-  recentPaper: string;
-  paperYear: number;
-  profileUrl: string;
-  openPositions: boolean | "unknown";
-  outreachStatus: "none" | "drafted" | "sent" | "responded";
+  researchSummary: string;
+  profileUrl: string | null;
+  openPositions: PositionStatus;
+  outreachStatus: OutreachStatus;
 };
 
-const MOCK_FACULTY: Faculty[] = [
-  {
-    id: "f1", name: "Regina Barzilay", university: "MIT", department: "CSAIL",
-    researchAreas: ["Clinical NLP", "Cancer AI", "Drug Discovery"],
-    fitScore: 94, recentPaper: "Empowering biomedical discovery with AI agents (2024)",
-    paperYear: 2024, profileUrl: "https://www.regina.csail.mit.edu/",
-    openPositions: true, outreachStatus: "drafted",
-  },
-  {
-    id: "f2", name: "Christopher Manning", university: "Stanford", department: "CS / Linguistics",
-    researchAreas: ["NLP", "Deep Learning", "Information Extraction"],
-    fitScore: 88, recentPaper: "Emergent Linguistic Structure in LLMs (2024)",
-    paperYear: 2024, profileUrl: "https://nlp.stanford.edu/~manning/",
-    openPositions: "unknown", outreachStatus: "none",
-  },
-  {
-    id: "f3", name: "Graham Neubig", university: "CMU", department: "LTI",
-    researchAreas: ["NLP", "Low-resource Languages", "Code Generation"],
-    fitScore: 82, recentPaper: "SWE-bench: Can LLMs Resolve Github Issues? (2024)",
-    paperYear: 2024, profileUrl: "http://www.phontron.com/",
-    openPositions: false, outreachStatus: "none",
-  },
-  {
-    id: "f4", name: "Percy Liang", university: "Stanford", department: "CS / HAI",
-    researchAreas: ["Foundation Models", "Robustness", "Evaluation"],
-    fitScore: 79, recentPaper: "HELM: Holistic Evaluation of Language Models (2023)",
-    paperYear: 2023, profileUrl: "https://cs.stanford.edu/~pliang/",
-    openPositions: true, outreachStatus: "none",
-  },
-  {
-    id: "f5", name: "Noah Smith", university: "UW / AI2", department: "Paul G. Allen School",
-    researchAreas: ["NLP", "Social Media", "Computational Social Science"],
-    fitScore: 71, recentPaper: "Reasoning about Moral Situations (2024)",
-    paperYear: 2024, profileUrl: "https://nasmith.github.io/",
-    openPositions: true, outreachStatus: "sent",
-  },
-];
+function mapOutreachStatus(s: string): OutreachStatus {
+  if (s === "drafted") return "drafted";
+  if (s === "sent" || s === "emailed") return "sent";
+  if (s === "responded" || s === "replied") return "responded";
+  return "none";
+}
 
-const OUTREACH_META: Record<Faculty["outreachStatus"], { label: string; bg: string; color: string }> = {
+function mapPositionStatus(s: string): PositionStatus {
+  if (s === "open") return true;
+  if (s === "closed") return false;
+  return "unknown";
+}
+
+function mapFaculty(a: ApiFaculty): Faculty {
+  const areas = a.research_summary
+    ? a.research_summary.split(/[,\n]/).map(t => t.trim()).filter(Boolean).slice(0, 5)
+    : [];
+  return {
+    id: a.id,
+    name: a.name,
+    university: a.university,
+    department: a.department,
+    researchAreas: areas,
+    fitScore: Math.round(a.fit_score),
+    researchSummary: a.research_summary ?? "",
+    profileUrl: a.webpage,
+    openPositions: mapPositionStatus(a.position_status),
+    outreachStatus: mapOutreachStatus(a.outreach_status),
+  };
+}
+
+const OUTREACH_META: Record<OutreachStatus, { label: string; bg: string; color: string }> = {
   none:      { label: "No outreach", bg: "#EDE6D3", color: "#5A5A5A" },
   drafted:   { label: "Draft ready", bg: "#F7F0E3", color: "#0D0D0D" },
   sent:      { label: "Email sent",  bg: "#0D0D0D", color: "#FFFFFF" },
@@ -76,7 +72,7 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
-function PositionBadge({ status }: { status: Faculty["openPositions"] }) {
+function PositionBadge({ status }: { status: PositionStatus }) {
   if (status === true)  return <span className="badge-teal">Open</span>;
   if (status === false) return <span className="badge-coral">Closed</span>;
   return <span className="badge-gray">?</span>;
@@ -131,18 +127,19 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
 
       {/* Body */}
       <div className="p-4 flex-1 flex flex-col gap-3">
-        {/* Research areas */}
-        <div className="flex flex-wrap gap-1">
-          {faculty.researchAreas.map(area => (
-            <span
-              key={area}
-              className="text-[10px] px-2 py-0.5 font-dm"
-              style={{ background: "#F7F0E3", border: "1.5px solid #C8C0AF", color: "#5A5A5A", borderRadius: "4px" }}
-            >
-              {area}
-            </span>
-          ))}
-        </div>
+        {faculty.researchAreas.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {faculty.researchAreas.map(area => (
+              <span
+                key={area}
+                className="text-[10px] px-2 py-0.5 font-dm"
+                style={{ background: "#F7F0E3", border: "1.5px solid #C8C0AF", color: "#5A5A5A", borderRadius: "4px" }}
+              >
+                {area}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Fit bar */}
         <div>
@@ -153,11 +150,13 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
           <FitBar score={faculty.fitScore} />
         </div>
 
-        {/* Recent paper */}
-        <div className="flex items-start gap-2 pt-3" style={{ borderTop: "1px solid #EDE6D3" }}>
-          <Icon icon="solar:document-text-bold" width={11} className="shrink-0 mt-0.5" style={{ color: "#C8C0AF" }} />
-          <p className="text-[11px] font-dm leading-snug line-clamp-2" style={{ color: "#9CA3AF" }}>{faculty.recentPaper}</p>
-        </div>
+        {/* Research summary */}
+        {faculty.researchSummary && (
+          <div className="flex items-start gap-2 pt-3" style={{ borderTop: "1px solid #EDE6D3" }}>
+            <Icon icon="solar:document-text-bold" width={11} className="shrink-0 mt-0.5" style={{ color: "#C8C0AF" }} />
+            <p className="text-[11px] font-dm leading-snug line-clamp-2" style={{ color: "#9CA3AF" }}>{faculty.researchSummary}</p>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -171,17 +170,24 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
           </span>
         </div>
         <div className="flex flex-1">
-          <a
-            href={faculty.profileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
-            style={{ color: "#5A5A5A", borderRight: "1px solid #EDE6D3" }}
-            onMouseEnter={e => { (e.currentTarget.style.background = "#0D0D0D"); (e.currentTarget.style.color = "#fff"); }}
-            onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#5A5A5A"); }}
-          >
-            <Icon icon="solar:arrow-right-up-bold" width={10} />Profile
-          </a>
+          {faculty.profileUrl ? (
+            <a
+              href={faculty.profileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
+              style={{ color: "#5A5A5A", borderRight: "1px solid #EDE6D3" }}
+              onMouseEnter={e => { (e.currentTarget.style.background = "#0D0D0D"); (e.currentTarget.style.color = "#fff"); }}
+              onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#5A5A5A"); }}
+            >
+              <Icon icon="solar:arrow-right-up-bold" width={10} />Profile
+            </a>
+          ) : (
+            <span className="flex-1 flex items-center justify-center py-2 text-[11px] font-space"
+                  style={{ color: "#C8C0AF", borderRight: "1px solid #EDE6D3" }}>
+              No link
+            </span>
+          )}
           <button
             className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
             style={{ color: "#5A5A5A" }}
@@ -197,10 +203,25 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
 }
 
 export default function ShortlistPage() {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "open" | "outreach">("all");
+  const [faculty, setFaculty] = useState<Faculty[]>([]);
+  const [stats, setStats]     = useState<ShortlistStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState("");
+  const [filter, setFilter]   = useState<"all" | "open" | "outreach">("all");
 
-  const filtered = MOCK_FACULTY.filter(f => {
+  useEffect(() => {
+    import("@/lib/api").then(({ shortlistApi }) =>
+      Promise.all([shortlistApi.list(), shortlistApi.stats()])
+        .then(([listRes, statsRes]) => {
+          setFaculty(listRes.data.map(mapFaculty));
+          setStats(statsRes.data);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    );
+  }, []);
+
+  const filtered = faculty.filter(f => {
     const matchSearch =
       search === "" ||
       f.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -224,7 +245,9 @@ export default function ShortlistPage() {
               Faculty Shortlist
             </h1>
             <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {MOCK_FACULTY.length} saved · {MOCK_FACULTY.filter(f => f.openPositions === true).length} open positions · {MOCK_FACULTY.filter(f => f.outreachStatus !== "none").length} contacted
+              {loading ? "Loading…" : stats
+                ? `${stats.total} saved · ${stats.open_positions} open positions · ${stats.contacted} contacted`
+                : `${faculty.length} saved`}
             </p>
           </div>
           <button className="btn-coral btn-sm">
@@ -267,11 +290,19 @@ export default function ShortlistPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-6">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color: "#E8472A" }} />
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
             <Icon icon="solar:graduation-cap-bold" width={32} style={{ color: "#B0A898" }} className="mb-3" />
-            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>No faculty found</p>
-            <p className="text-sm font-dm mt-1" style={{ color: "#9CA3AF" }}>Adjust search or filters</p>
+            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>
+              {faculty.length === 0 ? "No faculty saved yet" : "No faculty found"}
+            </p>
+            <p className="text-sm font-dm mt-1" style={{ color: "#9CA3AF" }}>
+              {faculty.length === 0 ? "Ask the agent to find professors matching your interests" : "Adjust search or filters"}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

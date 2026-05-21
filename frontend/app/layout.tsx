@@ -3,6 +3,9 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import BottomNav from "@/components/BottomNav";
 import { AgentProvider } from "@/components/AgentProvider";
+import { AuthProvider } from "@/context/AuthContext";
+import { ChatSessionsProvider } from "@/context/ChatSessionsContext";
+import AuthGate from "@/components/AuthGate";
 
 export const metadata: Metadata = {
   title: "Grad Paddy — AI Graduate School Agent",
@@ -13,19 +16,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="flex h-screen overflow-hidden font-dm" style={{ background: "#F7F0E3", color: "#0D0D0D" }}>
-        <AgentProvider>
-          <div className="hidden md:flex">
-            <Sidebar />
-          </div>
-          <main className="flex-1 overflow-hidden flex flex-col">
-            <div className="flex-1 overflow-y-auto">
-              {children}
-            </div>
-            <div className="md:hidden flex-shrink-0">
-              <BottomNav />
-            </div>
-          </main>
-        </AgentProvider>
+        <AuthProvider>
+          <AgentProvider>
+            <ChatSessionsProvider>
+            <AuthGate>
+              <div className="hidden md:flex">
+                <Sidebar />
+              </div>
+              <main className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto">
+                  {children}
+                </div>
+                <div className="md:hidden flex-shrink-0">
+                  <BottomNav />
+                </div>
+              </main>
+            </AuthGate>
+            </ChatSessionsProvider>
+          </AgentProvider>
+        </AuthProvider>
       </body>
     </html>
   );

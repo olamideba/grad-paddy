@@ -310,28 +310,57 @@ function UniversityPicker({ selected, onAdd, onRemove }: {
 }
 
 /* ── Page ── */
-const DEFAULTS = {
-  interests:    ["NLP", "LLM Alignment"],
-  universities: ["MIT", "Stanford", "CMU"],
-  countries:    ["United States"],
-};
-
 export default function SettingsPage() {
-  const [interests, setInterests]       = useState<string[]>(DEFAULTS.interests);
-  const [universities, setUniversities] = useState<string[]>(DEFAULTS.universities);
-  const [countries, setCountries]       = useState<string[]>(DEFAULTS.countries);
+  const [interests, setInterests]       = useState<string[]>([]);
+  const [universities, setUniversities] = useState<string[]>([]);
+  const [countries, setCountries]       = useState<string[]>([]);
   const [saved, setSaved]               = useState(false);
-  const savedRef = useRef({ ...DEFAULTS });
+  const [saving, setSaving]             = useState(false);
+  const [loadError, setLoadError]       = useState<string | null>(null);
+  const savedRef = useRef({ interests: [] as string[], universities: [] as string[], countries: [] as string[] });
+
+  useEffect(() => {
+    import("@/lib/api").then(({ usersApi }) =>
+      usersApi.getPreferences()
+        .then(res => {
+          const p = res.data;
+          setInterests(p.research_interests);
+          setUniversities(p.target_universities);
+          setCountries(p.target_countries);
+          savedRef.current = {
+            interests: p.research_interests,
+            universities: p.target_universities,
+            countries: p.target_countries,
+          };
+        })
+        .catch(() => setLoadError("Could not load preferences."))
+    );
+  }, []);
 
   const isDirty =
     JSON.stringify(interests)    !== JSON.stringify(savedRef.current.interests) ||
     JSON.stringify(universities) !== JSON.stringify(savedRef.current.universities) ||
     JSON.stringify(countries)    !== JSON.stringify(savedRef.current.countries);
 
-  function save() {
-    savedRef.current = { interests, universities, countries };
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function save() {
+    setSaving(true);
+    try {
+      const { usersApi } = await import("@/lib/api");
+      await usersApi.upsertPreferences({
+        research_interests: interests,
+        target_universities: universities,
+        target_countries: countries,
+        degree_type: "Either",
+        funding_required: false,
+      });
+      savedRef.current = { interests, universities, countries };
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // keep dirty state so user can retry
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -402,6 +431,12 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {loadError && (
+        <div className="sticky bottom-0 px-6 py-3" style={{ background: "#E8472A" }}>
+          <p className="text-xs font-dm text-white">{loadError}</p>
+        </div>
+      )}
+
       {/* Sticky save bar */}
       {(isDirty || saved) && (
         <div
@@ -411,9 +446,9 @@ export default function SettingsPage() {
           <p className="text-xs font-dm" style={{ color: "rgba(255,255,255,0.5)" }}>
             {saved ? "Preferences saved." : "You have unsaved changes."}
           </p>
-          <button onClick={save} className={saved ? "btn-teal btn-sm" : "btn-coral btn-sm"}>
-            <Icon icon={saved ? "solar:check-circle-bold" : "solar:floppy-disk-bold"} width={14} />
-            <span className="text-sm">{saved ? "Saved!" : "Save changes"}</span>
+          <button onClick={save} disabled={saving} className={saved ? "btn-teal btn-sm" : "btn-coral btn-sm"}>
+            <Icon icon={saving ? "solar:refresh-bold" : saved ? "solar:check-circle-bold" : "solar:floppy-disk-bold"} width={14} />
+            <span className="text-sm">{saving ? "Saving…" : saved ? "Saved!" : "Save changes"}</span>
           </button>
         </div>
       )}

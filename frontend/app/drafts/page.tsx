@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
+import type { Draft as ApiDraft, DraftStats } from "@/lib/api";
 
 type DraftType   = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
@@ -10,52 +11,43 @@ type DraftStatus = "draft" | "in-review" | "approved" | "archived";
 type Draft = {
   id: string;
   type: DraftType;
-  targetProgram?: string;
-  targetFaculty?: string;
-  targetUniversity?: string;
+  title: string;
   status: DraftStatus;
-  wordCount?: number;
+  wordCount: number;
   excerpt: string;
   lastEdited: Date;
-  groundedIn?: string[];
+  sourceTags: string[];
   isAiDraft: boolean;
 };
 
-const DRAFTS: Draft[] = [
-  {
-    id: "d1", type: "sop", targetProgram: "PhD Computer Science",
-    targetUniversity: "MIT", targetFaculty: "Prof. Regina Barzilay",
-    status: "draft", wordCount: 487,
-    excerpt: "During my four years building production NLP systems at Acme Corp, I encountered a fundamental limitation: models optimised for benchmark performance consistently failed in clinical environments where distributional shift is not an edge case but the norm...",
-    lastEdited: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    groundedIn: ["Barzilay lab page", "CSAIL program requirements"],
-    isAiDraft: true,
-  },
-  {
-    id: "d2", type: "outreach-prep", targetFaculty: "Prof. Christopher Manning",
-    targetUniversity: "Stanford", status: "approved",
-    excerpt: "PREP CARD — Paper: 'Emergent Linguistic Structure in LLMs' (2024). Key finding: syntactic competence emerges in layers 8-12 of 7B+ models. Questions to ask: (1) How does this interact with RLHF fine-tuning?...",
-    lastEdited: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    groundedIn: ["Manning Google Scholar", "Stanford NLP lab page"],
-    isAiDraft: true,
-  },
-  {
-    id: "d3", type: "sop", targetProgram: "PhD Language Technologies",
-    targetUniversity: "CMU", targetFaculty: "Prof. Graham Neubig",
-    status: "draft", wordCount: 210,
-    excerpt: "My research interest sits at the intersection of low-resource NLP and code generation — a combination that, I believe, Prof. Neubig's work on cross-lingual transfer and SWE-bench directly anticipates...",
-    lastEdited: new Date(Date.now() - 4 * 60 * 60 * 1000),
-    groundedIn: ["Neubig lab page", "CMU LTI admissions page"],
-    isAiDraft: true,
-  },
-  {
-    id: "d4", type: "research-narrative", targetProgram: "General",
-    status: "in-review", wordCount: 312,
-    excerpt: "This is my personal research narrative — a translation of four years of production NLP work into academic framing. I've built: (1) a named-entity pipeline processing 40M docs/day, (2) a retrieval-augmented clinical decision support system...",
-    lastEdited: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    isAiDraft: false,
-  },
-];
+function normalizeDraftType(s: string): DraftType {
+  if (s === "sop") return "sop";
+  if (s === "outreach-prep" || s === "outreach_prep" || s === "outreach") return "outreach-prep";
+  if (s === "research-narrative" || s === "research_narrative" || s === "narrative") return "research-narrative";
+  return "sop";
+}
+
+function normalizeDraftStatus(s: string): DraftStatus {
+  if (s === "approved") return "approved";
+  if (s === "in-review" || s === "in_review") return "in-review";
+  if (s === "archived") return "archived";
+  return "draft";
+}
+
+function mapDraft(a: ApiDraft): Draft {
+  const excerpt = a.content.slice(0, 320) + (a.content.length > 320 ? "…" : "");
+  return {
+    id: a.id,
+    type: normalizeDraftType(a.type),
+    title: a.title,
+    status: normalizeDraftStatus(a.status),
+    wordCount: a.word_count,
+    excerpt: excerpt || a.title,
+    lastEdited: new Date(a.updated_at),
+    sourceTags: a.source_tags,
+    isAiDraft: a.ai_generated,
+  };
+}
 
 const TYPE_META: Record<DraftType, { label: string; icon: string; accent: string; iconColor: string }> = {
   sop:                  { label: "Statement of Purpose", icon: "solar:document-text-bold", accent: "#E8472A", iconColor: "#FFFFFF" },
@@ -85,15 +77,12 @@ function DraftCard({ draft }: { draft: Draft }) {
     <div className="card-brutal flex flex-col overflow-hidden p-0">
       {/* Header */}
       <div className="p-4 flex items-start gap-3" style={{ borderBottom: "2px solid #0D0D0D" }}>
-        {/* Type icon */}
         <div
           className="w-10 h-10 flex items-center justify-center flex-shrink-0"
           style={{ background: type.accent, border: "2px solid #0D0D0D", borderRadius: "4px" }}
         >
           <Icon icon={type.icon} width={16} style={{ color: type.iconColor }} />
         </div>
-
-        {/* Title + target */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider font-space" style={{ color: "#9CA3AF" }}>
@@ -107,14 +96,8 @@ function DraftCard({ draft }: { draft: Draft }) {
             </span>
           </div>
           <p className="text-sm font-bold font-space leading-tight mt-0.5" style={{ color: "#0D0D0D" }}>
-            {draft.targetFaculty ?? draft.targetProgram ?? "General"}
+            {draft.title}
           </p>
-          {(draft.targetUniversity || draft.targetProgram) && (
-            <p className="text-[11px] font-dm mt-0.5" style={{ color: "#9CA3AF" }}>
-              {draft.targetUniversity}
-              {draft.targetProgram && draft.targetProgram !== "General" && <> · {draft.targetProgram}</>}
-            </p>
-          )}
         </div>
       </div>
 
@@ -126,7 +109,7 @@ function DraftCard({ draft }: { draft: Draft }) {
       </div>
 
       {/* Sources + AI warning */}
-      {(draft.groundedIn?.length || (draft.isAiDraft && draft.status === "draft")) && (
+      {(draft.sourceTags.length > 0 || (draft.isAiDraft && draft.status === "draft")) && (
         <div className="px-4 py-3 flex flex-col gap-2" style={{ borderBottom: "2px solid #0D0D0D", background: "#FAFAF8" }}>
           {draft.isAiDraft && draft.status === "draft" && (
             <div className="flex items-center gap-1.5">
@@ -136,9 +119,9 @@ function DraftCard({ draft }: { draft: Draft }) {
               </p>
             </div>
           )}
-          {draft.groundedIn && draft.groundedIn.length > 0 && (
+          {draft.sourceTags.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {draft.groundedIn.map(source => (
+              {draft.sourceTags.map(source => (
                 <span
                   key={source}
                   className="text-[10px] font-mono px-2 py-0.5"
@@ -157,7 +140,7 @@ function DraftCard({ draft }: { draft: Draft }) {
         <div className="flex items-center gap-1.5 text-[10px] font-dm" style={{ color: "#B0A898" }}>
           <Icon icon="solar:clock-circle-bold" width={10} />
           <span>{timeAgo(draft.lastEdited)}</span>
-          {draft.wordCount && <><span>·</span><span>{draft.wordCount}w</span></>}
+          {draft.wordCount > 0 && <><span>·</span><span>{draft.wordCount}w</span></>}
         </div>
         <div className="flex items-center gap-1.5">
           {draft.status !== "approved" && (
@@ -177,16 +160,31 @@ function DraftCard({ draft }: { draft: Draft }) {
 }
 
 export default function DraftsPage() {
+  const [drafts, setDrafts]   = useState<Draft[]>([]);
+  const [stats, setStats]     = useState<DraftStats | null>(null);
+  const [loading, setLoading] = useState(true);
   const [typeFilter,   setTypeFilter]   = useState<DraftType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<DraftStatus | "all">("all");
 
-  const filtered = DRAFTS.filter(d => {
+  useEffect(() => {
+    import("@/lib/api").then(({ draftsApi }) =>
+      Promise.all([draftsApi.list(), draftsApi.stats()])
+        .then(([listRes, statsRes]) => {
+          setDrafts(listRes.data.map(mapDraft));
+          setStats(statsRes.data);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    );
+  }, []);
+
+  const filtered = drafts.filter(d => {
     const matchType   = typeFilter === "all"   || d.type === typeFilter;
     const matchStatus = statusFilter === "all" || d.status === statusFilter;
     return matchType && matchStatus;
   });
 
-  const aiDraftCount = DRAFTS.filter(d => d.isAiDraft && d.status === "draft").length;
+  const aiDraftCount = drafts.filter(d => d.isAiDraft && d.status === "draft").length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
@@ -199,10 +197,9 @@ export default function DraftsPage() {
               Drafts
             </h1>
             <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {DRAFTS.filter(d => d.status === "draft").length} drafts · {DRAFTS.filter(d => d.status === "approved").length} approved
-              {aiDraftCount > 0 && (
-                <span style={{ color: "#E8472A" }}> · {aiDraftCount} need review</span>
-              )}
+              {loading ? "Loading…" : stats
+                ? `${stats.total - stats.approved} drafts · ${stats.approved} approved${stats.need_review > 0 ? ` · ${stats.need_review} need review` : ""}`
+                : `${drafts.length} drafts`}
             </p>
           </div>
           <a href="/chat" className="btn-coral btn-sm">
@@ -244,7 +241,7 @@ export default function DraftsPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-6">
-        {aiDraftCount > 0 && (
+        {!loading && aiDraftCount > 0 && (
           <div
             className="mb-5 p-4 flex items-center gap-3"
             style={{ background: "#FFFFFF", border: "2px solid #0D0D0D", boxShadow: "3px 3px 0 #0D0D0D", borderRadius: "4px" }}
@@ -264,7 +261,11 @@ export default function DraftsPage() {
           </div>
         )}
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color: "#E8472A" }} />
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
             <Icon icon="solar:document-text-bold" width={32} style={{ color: "#B0A898" }} className="mb-3" />
             <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>No drafts yet</p>
