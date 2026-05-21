@@ -15,7 +15,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Grad Paddy Backend", lifespan=lifespan)
+app = FastAPI(title="Grad Paddy Backend", lifespan=lifespan, redirect_slashes=False)
 
 @app.get("/", tags=["root"])
 async def root() -> StandardResponse[dict[str, str]]:

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
-import type { Draft as ApiDraft, DraftStats } from "@/lib/api";
+import type { Draft as ApiDraft, DraftStats } from "../../lib/api";
 
 type DraftType   = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
@@ -167,7 +167,7 @@ export default function DraftsPage() {
   const [statusFilter, setStatusFilter] = useState<DraftStatus | "all">("all");
 
   useEffect(() => {
-    import("@/lib/api").then(({ draftsApi }) =>
+    import("../../lib/api").then(({ draftsApi }) =>
       Promise.all([draftsApi.list(), draftsApi.stats()])
         .then(([listRes, statsRes]) => {
           setDrafts(listRes.data.map(mapDraft));

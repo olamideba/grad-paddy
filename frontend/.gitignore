@@ -16,6 +16,9 @@ dist/
 .env.test.local
 .env.production.local
 
+# TypeScript
+tsconfig.tsbuildinfo
+
 # pnpm
 pnpm-debug.log*
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
-import type { Application as ApiApp, TrackerStats } from "@/lib/api";
+import type { Application as ApiApp, TrackerStats } from "../../lib/api";
 
 type DocStatus = "not-started" | "in-progress" | "ready";
 type AppStatus = "tracking" | "drafting" | "submitted" | "decision-pending" | "accepted" | "rejected" | "waitlisted";
@@ -140,7 +140,7 @@ export default function TrackerPage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
-    import("@/lib/api").then(({ trackerApi }) =>
+    import("../../lib/api").then(({ trackerApi }) =>
       Promise.all([trackerApi.list(), trackerApi.stats()])
         .then(([listRes, statsRes]) => {
           setApps(listRes.data.map(mapApp));

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import type { Session as ApiSession } from "@/lib/api";
+import type { Session as ApiSession } from "../lib/api";
 
 interface ChatSessionsCtx {
   sessions: ApiSession[];
@@ -19,7 +19,7 @@ export function ChatSessionsProvider({ children }: { children: React.ReactNode }
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
   useEffect(() => {
-    import("@/lib/api").then(({ sessionsApi }) =>
+    import("../lib/api").then(({ sessionsApi }) =>
       sessionsApi.list()
         .then(r => setSessions(r.data))
         .catch(() => {})
