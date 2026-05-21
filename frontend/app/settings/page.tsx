@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { Icon } from "@iconify/react";
 import { getCountryDataList, getEmojiFlag } from "countries-list";
+import { useAuth } from "@/context/AuthContext";
 
 /* ── Country data ── */
 const ALL_COUNTRIES = getCountryDataList()
@@ -437,6 +438,8 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { signOut } = useAuth();
+
   const [savedSnapshot, setSavedSnapshot] = useState({
     interests: [] as string[],
     universities: [] as string[],
@@ -492,19 +495,42 @@ export default function SettingsPage() {
     <div style={{ background: "#F7F0E3" }}>
       {/* Header */}
       <div
-        className="px-6 py-4 sticky top-0 z-10"
+        className="px-6 py-4 sticky top-0 z-10 flex items-center justify-between gap-4"
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
-        <h1
-          className="text-sm font-bold font-space flex items-center gap-2"
-          style={{ color: "#FFFFFF" }}
+        <div>
+          <h1
+            className="text-sm font-bold font-space flex items-center gap-2"
+            style={{ color: "#FFFFFF" }}
+          >
+            <Icon icon="solar:settings-bold" width={15} style={{ color: "#E8472A" }} />
+            Preferences
+          </h1>
+          <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+            Grad Paddy uses these to personalise search and SOP generation
+          </p>
+        </div>
+        <button
+          onClick={signOut}
+          className="bouncy flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold font-space flex-shrink-0"
+          style={{
+            background: "rgba(232,71,42,0.15)",
+            color: "#E8472A",
+            border: "1.5px solid #E8472A",
+            borderRadius: "4px",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "#E8472A";
+            e.currentTarget.style.color = "#FFFFFF";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(232,71,42,0.15)";
+            e.currentTarget.style.color = "#E8472A";
+          }}
         >
-          <Icon icon="solar:settings-bold" width={15} style={{ color: "#E8472A" }} />
-          Preferences
-        </h1>
-        <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-          Grad Paddy uses these to personalise search and SOP generation
-        </p>
+          <Icon icon="solar:logout-2-bold" width={13} />
+          Sign out
+        </button>
       </div>
 
       {/* Content */}

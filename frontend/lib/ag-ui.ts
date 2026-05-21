@@ -20,16 +20,13 @@ export type {
   BaseEvent,
 } from "@ag-ui/core";
 
-export async function createChatAgent(
-  messages: Message[],
-  threadId: string,
-): Promise<HttpAgent> {
+export async function createChatAgent(messages: Message[], threadId: string): Promise<HttpAgent> {
   const user = auth.currentUser;
   if (!user) throw new Error("Not authenticated");
   const token = await user.getIdToken();
 
   return new HttpAgent({
-    url: `${BASE}/chat`,
+    url: `${BASE}/api/chat`,
     headers: { Authorization: `Bearer ${token}` },
     threadId,
     initialMessages: messages,
