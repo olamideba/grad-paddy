@@ -30,8 +30,13 @@ type Std<T> = { success: boolean; data: T; message: string };
 // ── Users / Preferences ──────────────────────────────────────────────────────
 
 export interface Profile {
-  id: string; email: string; name: string; avatar_url: string | null;
-  onboarded: boolean; created_at: string; updated_at: string;
+  id: string;
+  email: string;
+  name: string;
+  avatar_url: string | null;
+  onboarded: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Preferences {
@@ -66,13 +71,25 @@ export const usersApi = {
 // ── Shortlist ─────────────────────────────────────────────────────────────────
 
 export interface Faculty {
-  id: string; name: string; university: string; department: string;
-  email: string | null; webpage: string | null; research_summary: string | null;
-  fit_score: number; position_status: string; outreach_status: string;
-  created_at: string; updated_at: string;
+  id: string;
+  name: string;
+  university: string;
+  department: string;
+  email: string | null;
+  webpage: string | null;
+  research_summary: string | null;
+  fit_score: number;
+  position_status: string;
+  outreach_status: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ShortlistStats { total: number; open_positions: number; contacted: number; }
+export interface ShortlistStats {
+  total: number;
+  open_positions: number;
+  contacted: number;
+}
 
 export const shortlistApi = {
   list: (filters?: { position_status?: string; outreach_status?: string }) => {
@@ -85,15 +102,22 @@ export const shortlistApi = {
   get: (id: string) => request<Std<Faculty>>(`/api/shortlist/${id}`),
   stats: () => request<Std<ShortlistStats>>("/api/shortlist/stats"),
   add: (data: {
-    name: string; university: string; department: string;
-    email?: string; webpage?: string; research_summary?: string;
-    fit_score?: number; position_status?: string; outreach_status?: string;
+    name: string;
+    university: string;
+    department: string;
+    email?: string;
+    webpage?: string;
+    research_summary?: string;
+    fit_score?: number;
+    position_status?: string;
+    outreach_status?: string;
   }) => request<Std<Faculty>>("/api/shortlist/", { method: "POST", body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Omit<Faculty, "id" | "created_at" | "updated_at">>) =>
     request<Std<Faculty>>(`/api/shortlist/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   updateOutreach: (id: string, status: string) =>
     request<Std<{ status: string }>>(`/api/shortlist/${id}/outreach-status`, {
-      method: "PATCH", body: JSON.stringify({ status }),
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/shortlist/${id}`, { method: "DELETE" }),
@@ -102,50 +126,82 @@ export const shortlistApi = {
 // ── Tracker ───────────────────────────────────────────────────────────────────
 
 export interface Application {
-  id: string; university: string; program: string; department: string;
-  deadline: string; status: string; sop_status: string; cv_status: string;
+  id: string;
+  university: string;
+  program: string;
+  department: string;
+  deadline: string;
+  status: string;
+  sop_status: string;
+  cv_status: string;
   recommenders: { name: string; status: string }[];
-  funded: string; notes: string | null; created_at: string; updated_at: string;
+  funded: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface TrackerStats { sop_ready: number; recs_confirmed: number; funded_programs: number; total: number; }
+export interface TrackerStats {
+  sop_ready: number;
+  recs_confirmed: number;
+  funded_programs: number;
+  total: number;
+}
 
 export const trackerApi = {
   list: () => request<Std<Application[]>>("/api/tracker/"),
   get: (id: string) => request<Std<Application>>(`/api/tracker/${id}`),
   stats: () => request<Std<TrackerStats>>("/api/tracker/stats"),
   create: (data: {
-    university: string; program: string; department: string;
-    deadline?: string; status?: string; sop_status?: string; cv_status?: string;
+    university: string;
+    program: string;
+    department: string;
+    deadline?: string;
+    status?: string;
+    sop_status?: string;
+    cv_status?: string;
     recommenders?: { name: string; status: string }[];
-    funded?: string; notes?: string;
+    funded?: string;
+    notes?: string;
   }) => request<Std<Application>>("/api/tracker/", { method: "POST", body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Omit<Application, "id" | "created_at" | "updated_at">>) =>
-    request<Std<Application>>(`/api/tracker/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    request<Std<Application>>(`/api/tracker/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   updateStatus: (id: string, status: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}/status`, {
-      method: "PATCH", body: JSON.stringify({ status }),
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     }),
   updateSopStatus: (id: string, sop_status: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}/sop-status`, {
-      method: "PATCH", body: JSON.stringify({ sop_status }),
+      method: "PATCH",
+      body: JSON.stringify({ sop_status }),
     }),
   updateCvStatus: (id: string, cv_status: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}/cv-status`, {
-      method: "PATCH", body: JSON.stringify({ cv_status }),
+      method: "PATCH",
+      body: JSON.stringify({ cv_status }),
     }),
   updateFunded: (id: string, funded: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}/funded`, {
-      method: "PATCH", body: JSON.stringify({ funded }),
+      method: "PATCH",
+      body: JSON.stringify({ funded }),
     }),
   addRecommender: (id: string, name: string, status = "not_asked") =>
     request<Std<{ status: string }>>(`/api/tracker/${id}/recommenders`, {
-      method: "POST", body: JSON.stringify({ name, status }),
+      method: "POST",
+      body: JSON.stringify({ name, status }),
     }),
   updateRecommenderStatus: (id: string, name: string, status: string) =>
-    request<Std<{ status: string }>>(`/api/tracker/${id}/recommenders/${encodeURIComponent(name)}/status`, {
-      method: "PATCH", body: JSON.stringify({ status }),
-    }),
+    request<Std<{ status: string }>>(
+      `/api/tracker/${id}/recommenders/${encodeURIComponent(name)}/status`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }
+    ),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}`, { method: "DELETE" }),
 };
@@ -153,13 +209,25 @@ export const trackerApi = {
 // ── Drafts ────────────────────────────────────────────────────────────────────
 
 export interface Draft {
-  id: string; type: string; title: string; content: string; word_count: number;
-  status: string; ai_generated: boolean; source_tags: string[];
-  linked_faculty_id: string | null; linked_application_id: string | null;
-  created_at: string; updated_at: string;
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  word_count: number;
+  status: string;
+  ai_generated: boolean;
+  source_tags: string[];
+  linked_faculty_id: string | null;
+  linked_application_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface DraftStats { total: number; approved: number; need_review: number; }
+export interface DraftStats {
+  total: number;
+  approved: number;
+  need_review: number;
+}
 
 export const draftsApi = {
   list: (filters?: { type?: string; status?: string }) => {
@@ -172,16 +240,23 @@ export const draftsApi = {
   get: (id: string) => request<Std<Draft>>(`/api/drafts/${id}`),
   stats: () => request<Std<DraftStats>>("/api/drafts/stats"),
   create: (data: {
-    type: string; title: string; content?: string; ai_generated?: boolean;
-    source_tags?: string[]; linked_faculty_id?: string; linked_application_id?: string;
+    type: string;
+    title: string;
+    content?: string;
+    ai_generated?: boolean;
+    source_tags?: string[];
+    linked_faculty_id?: string;
+    linked_application_id?: string;
   }) => request<Std<Draft>>("/api/drafts/", { method: "POST", body: JSON.stringify(data) }),
   updateContent: (id: string, content: string) =>
     request<Std<Draft>>(`/api/drafts/${id}/content`, {
-      method: "PATCH", body: JSON.stringify({ content }),
+      method: "PATCH",
+      body: JSON.stringify({ content }),
     }),
   updateStatus: (id: string, status: string) =>
     request<Std<{ status: string }>>(`/api/drafts/${id}/status`, {
-      method: "PATCH", body: JSON.stringify({ status }),
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/drafts/${id}`, { method: "DELETE" }),
@@ -190,22 +265,38 @@ export const draftsApi = {
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 export interface Session {
-  id: string; title: string; user_id: string; created_at: string; updated_at: string;
+  id: string;
+  title: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Message {
-  id: string; session_id: string; role: string; content: string;
-  ai_ui_events: object[]; created_at: string;
+  id: string;
+  session_id: string;
+  role: string;
+  content: string;
+  ai_ui_events: object[];
+  created_at: string;
 }
 
 export const sessionsApi = {
   list: () => request<Std<Session[]>>("/api/sessions/"),
   create: (first_message: string) =>
-    request<Std<Session>>("/api/sessions/", { method: "POST", body: JSON.stringify({ first_message }) }),
+    request<Std<Session>>("/api/sessions/", {
+      method: "POST",
+      body: JSON.stringify({ first_message }),
+    }),
   get: (id: string) => request<Std<Session>>(`/api/sessions/${id}`),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/sessions/${id}`, { method: "DELETE" }),
   listMessages: (id: string) => request<Std<Message[]>>(`/api/sessions/${id}/messages`),
+  createMessage: (id: string, role: string, content: string) =>
+    request<Std<Message>>(`/api/sessions/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ role, content }),
+    }),
 };
 
 // ── HITL ──────────────────────────────────────────────────────────────────────
