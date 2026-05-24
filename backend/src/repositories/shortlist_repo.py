@@ -28,6 +28,8 @@ class ShortlistRepository:
             "outreach_status": data.get("outreach_status", "none"),
             "source_url": data.get("source_url"),
             "added_at": data.get("added_at") or now,
+            "created_at": data.get("created_at") or now,
+            "updated_at": data.get("updated_at") or now,
         }
         
         await (
