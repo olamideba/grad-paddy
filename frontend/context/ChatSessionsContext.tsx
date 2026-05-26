@@ -23,7 +23,7 @@ export function ChatSessionsProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
-      setSessionsLoading(false);
+      queueMicrotask(() => setSessionsLoading(false));
       return;
     }
     import("../lib/api").then(({ sessionsApi }) =>
