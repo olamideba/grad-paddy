@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useRef, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
@@ -43,11 +43,11 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { sessions, activeSessionId, setActiveSessionId, sessionsLoading } = useChatSessions();
   const { user } = useAuth();
   const displayName = user?.displayName ?? user?.email ?? "User";
   const avatarLetter = displayName.charAt(0).toUpperCase();
-  const onChat = pathname === "/chat";
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
   const dragging = useRef(false);
@@ -232,8 +232,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Chat history — shown at bottom when on /chat */}
-      {onChat && !collapsed && (
+      {/* Chat history */}
+      {!collapsed && (
         <div
           className="flex-shrink-0 flex flex-col"
           style={{ borderTop: "2px solid #0D0D0D", maxHeight: "40vh" }}
@@ -246,7 +246,10 @@ export default function Sidebar() {
               Chats
             </span>
             <button
-              onClick={() => setActiveSessionId(null)}
+              onClick={() => {
+                setActiveSessionId(null);
+                router.push("/chat");
+              }}
               className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
               style={{ color: "#9CA3AF", borderRadius: "4px", border: "1.5px solid transparent" }}
               onMouseEnter={(e) => {
@@ -278,11 +281,13 @@ export default function Sidebar() {
               </p>
             ) : (
               sessions.map((s) => (
-                <Link
+                <button
                   key={s.id}
-                  href="/chat"
-                  onClick={() => setActiveSessionId(s.id)}
-                  className="group flex items-center gap-2 px-4 py-1.5 bouncy"
+                  onClick={() => {
+                    setActiveSessionId(s.id);
+                    router.push("/chat");
+                  }}
+                  className="group flex items-center gap-2 px-4 py-1.5 bouncy w-full text-left"
                   style={{
                     borderLeft: `3px solid ${activeSessionId === s.id ? "#E8472A" : "transparent"}`,
                     background: activeSessionId === s.id ? "#EDE6D3" : "transparent",
@@ -300,7 +305,7 @@ export default function Sidebar() {
                   >
                     {s.title}
                   </span>
-                </Link>
+                </button>
               ))
             )}
           </div>
