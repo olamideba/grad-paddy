@@ -277,7 +277,7 @@ export interface Message {
   session_id: string;
   role: string;
   content: string;
-  ai_ui_events: object[];
+  ag_ui_events: Record<string, unknown>[];
   created_at: string;
 }
 

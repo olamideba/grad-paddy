@@ -36,6 +36,32 @@ type ChatItem =
       resolved?: "approved" | "rejected";
     };
 
+// Reconstruct phase/step items from persisted AG-UI events for a restored session.
+// TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
+function replayEventsToItems(events: Record<string, unknown>[], messageId: string): ChatItem[] {
+  const items: ChatItem[] = [];
+  for (const e of events) {
+    const type = e.type as string;
+    if (type === "RUN_STARTED") {
+      items.push({ type: "phase", id: `run-${messageId}`, label: "Processing", status: "done" });
+    } else if (type === "STEP_STARTED") {
+      const name = e.stepName as string;
+      items.push({ type: "phase", id: `step-${name}-${messageId}`, label: name, status: "done" });
+    } else if (type === "TOOL_CALL_START") {
+      const toolName = (e.toolCallName as string) ?? "";
+      items.push({
+        type: "step",
+        id: (e.toolCallId as string) ?? `tc-${messageId}-${items.length}`,
+        label: toolName.replace(/_/g, " "),
+        status: "done",
+        tool: toolName,
+        detail: toolName,
+      });
+    }
+  }
+  return items;
+}
+
 // ── Visual sub-components ─────────────────────────────────────────────────────
 
 function StepIndicator({ status }: { status: StepStatus }) {
@@ -70,13 +96,7 @@ function StepIndicator({ status }: { status: StepStatus }) {
   );
 }
 
-function StepCard({
-  step,
-  number: _number,
-}: {
-  step: Extract<ChatItem, { type: "step" }>;
-  number: number;
-}) {
+function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>; number: number }) {
   const statusBadge = {
     done: { label: "Done", bg: "#4ECDC4", color: "#0D0D0D", border: "#0D0D0D" },
     running: { label: "In progress", bg: "#FFF0ED", color: "#E8472A", border: "#E8472A" },
@@ -488,6 +508,7 @@ export default function ChatPage() {
   const subscription = useRef<{ unsubscribe(): void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const justCreatedSession = useRef(false);
 
   const { setRunning } = useAgent();
 
@@ -536,6 +557,12 @@ export default function ChatPage() {
 
   // React to session selection from sidebar
   useEffect(() => {
+    // Skip reset when sendToBackend just created this session — stream is live
+    if (justCreatedSession.current) {
+      justCreatedSession.current = false;
+      return;
+    }
+
     subscription.current?.unsubscribe();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalRunning(false);
@@ -559,6 +586,9 @@ export default function ChatPage() {
           for (const m of res.data) {
             if (m.role !== "user" && m.role !== "assistant") continue;
             const ts = new Date(m.created_at);
+            if (m.role === "assistant" && m.ag_ui_events?.length) {
+              items.push(...replayEventsToItems(m.ag_ui_events, m.id));
+            }
             items.push(
               m.role === "user"
                 ? { type: "user", id: m.id, content: m.content, timestamp: ts }
@@ -711,9 +741,6 @@ export default function ChatPage() {
     subscription.current?.unsubscribe();
     setLocalRunning(true);
 
-    const prevLength = agMessages.current.length;
-    const isFirstMessage = !activeSessionId;
-
     const userMsg = { id: msgId, role: "user", content } as Message;
     agMessages.current = [...agMessages.current, userMsg];
 
@@ -727,17 +754,24 @@ export default function ChatPage() {
       setLocalRunning(false);
     };
 
-    // Create session on first message of a new chat
+    // Persist user message before running agent so ordering is correct in DB
     if (!activeSessionId) {
+      // First message: create session (backend saves first user msg automatically)
       try {
         const { sessionsApi } = await import("../../lib/api");
         const res = await sessionsApi.create(content);
         threadId.current = res.data.id;
+        justCreatedSession.current = true;
         setActiveSessionId(res.data.id);
         setSessions((prev) => [res.data, ...prev]);
       } catch (err) {
         console.error("[chat] create session error", err);
       }
+    } else {
+      // Subsequent messages: save user msg now, before agent runs
+      import("../../lib/api").then(({ sessionsApi }) =>
+        sessionsApi.createMessage(threadId.current, "user", content).catch(() => {})
+      );
     }
 
     try {
@@ -763,18 +797,8 @@ export default function ChatPage() {
           complete: () => {
             setLocalRunning(false);
             checkHITL();
-            // Save new messages — first-message user msg already saved by sessionsApi.create
-            const startIdx = isFirstMessage ? prevLength + 1 : prevLength;
-            const toSave = agMessages.current.slice(startIdx);
-            if (toSave.length > 0) {
-              import("../../lib/api").then(({ sessionsApi }) => {
-                toSave.forEach((m) =>
-                  sessionsApi
-                    .createMessage(threadId.current, m.role as string, m.content as string)
-                    .catch(() => {})
-                );
-              });
-            }
+            // Assistant messages are saved by PersistentChatAgent.upsert_message on the backend.
+            // User messages are saved before the agent runs. Nothing to do here.
           },
         });
     } catch (err) {
