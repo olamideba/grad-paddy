@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from uuid6 import uuid7
+from google.api_core.exceptions import NotFound
 from google.cloud import firestore
 from src.core.config import get_settings
 from src.repositories.base import get_db
@@ -140,6 +141,9 @@ class ShortlistRepository:
             .collection(settings.COLLECTION_SHORTLIST)
             .document(faculty_id)
         )
+        doc = await doc_ref.get()
+        if not doc.exists:
+            raise NotFound("Shortlist record not found")
         await doc_ref.delete()
     
     @staticmethod

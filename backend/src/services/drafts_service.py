@@ -1,3 +1,4 @@
+from google.api_core.exceptions import NotFound
 from src.repositories.drafts_repo import DraftsRepository
 
 
@@ -31,17 +32,26 @@ class DraftsService:
     @staticmethod
     async def update_content(user_id: str, draft_id: str, content: str) -> dict:
         """Update draft content and recalculate word count."""
-        return await DraftsRepository.update_draft_content(user_id, draft_id, content)
+        try:
+            return await DraftsRepository.update_draft_content(user_id, draft_id, content)
+        except NotFound as e:
+            raise ValueError("Draft record not found") from e
 
     @staticmethod
     async def update_status(user_id: str, draft_id: str, status: str) -> None:
         """Update draft approval/review status."""
-        await DraftsRepository.update_status(user_id, draft_id, status)
+        try:
+            await DraftsRepository.update_status(user_id, draft_id, status)
+        except NotFound as e:
+            raise ValueError("Draft record not found") from e
 
     @staticmethod
     async def delete_draft(user_id: str, draft_id: str) -> None:
         """Delete a draft."""
-        await DraftsRepository.delete_draft(user_id, draft_id)
+        try:
+            await DraftsRepository.delete_draft(user_id, draft_id)
+        except NotFound as e:
+            raise ValueError("Draft record not found") from e
 
     @staticmethod
     async def get_stats(user_id: str) -> dict:

@@ -50,19 +50,28 @@ async def get_draft(request: Request, draft_id: str) -> dict:
 @router.patch("/{draft_id}/content", response_model=StandardResponse[DraftResponse])
 async def update_content(request: Request, draft_id: str, body: ContentUpdateRequest) -> dict:
     user_id = request.state.user_id
-    draft = await DraftsService.update_content(user_id, draft_id, body.content)
-    return {"success": True, "data": draft, "message": "Draft content updated successfully"}
+    try:
+        draft = await DraftsService.update_content(user_id, draft_id, body.content)
+        return {"success": True, "data": draft, "message": "Draft content updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.patch("/{draft_id}/status", response_model=StandardResponse[SuccessStatusResponse])
 async def update_status(request: Request, draft_id: str, body: StatusUpdateRequest) -> dict:
     user_id = request.state.user_id
-    await DraftsService.update_status(user_id, draft_id, body.status)
-    return {"success": True, "data": {"status": "success"}, "message": "Draft status updated successfully"}
+    try:
+        await DraftsService.update_status(user_id, draft_id, body.status)
+        return {"success": True, "data": {"status": "success"}, "message": "Draft status updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/{draft_id}", response_model=StandardResponse[SuccessStatusResponse])
 async def delete_draft(request: Request, draft_id: str) -> dict:
     user_id = request.state.user_id
-    await DraftsService.delete_draft(user_id, draft_id)
-    return {"success": True, "data": {"status": "success"}, "message": "Draft deleted successfully"}
+    try:
+        await DraftsService.delete_draft(user_id, draft_id)
+        return {"success": True, "data": {"status": "success"}, "message": "Draft deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

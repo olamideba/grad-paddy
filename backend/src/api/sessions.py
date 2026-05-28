@@ -53,5 +53,8 @@ async def list_messages(request: Request, session_id: str) -> dict:
 @router.post("/{session_id}/messages", response_model=StandardResponse[MessageResponse])
 async def create_message(request: Request, session_id: str, body: MessageCreateRequest) -> dict:
     user_id = request.state.user_id
-    message = await SessionService.create_message(user_id, session_id, body.role, body.content)
-    return {"success": True, "data": message, "message": "Message created successfully"}
+    try:
+        message = await SessionService.create_message(user_id, session_id, body.role, body.content)
+        return {"success": True, "data": message, "message": "Message created successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
