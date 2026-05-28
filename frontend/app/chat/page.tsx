@@ -564,12 +564,12 @@ export default function ChatPage() {
     }
 
     subscription.current?.unsubscribe();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalRunning(false);
     setQueue([]);
     agMsgContent.current = new Map();
 
     if (!activeSessionId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStream([]);
       agMessages.current = [];
       threadId.current = crypto.randomUUID();
