@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import ReactMarkdown from "react-markdown";
@@ -22,7 +23,7 @@ type ChatItem =
       label: string;
       status: StepStatus;
       detail?: string;
-      tool?: "elastic" | "search" | "scrape" | "llm";
+      tool?: string;
       children?: { label: string; status: StepStatus; detail?: string }[];
     }
   | { type: "phase"; id: string; label: string; status: StepStatus }
@@ -35,36 +36,47 @@ type ChatItem =
       resolved?: "approved" | "rejected";
     };
 
-// ── Tool name → icon bucket ───────────────────────────────────────────────────
+// ── Visual sub-components ─────────────────────────────────────────────────────
 
-function mapToolIcon(name: string): "elastic" | "search" | "scrape" | "llm" | undefined {
-  const n = name.toLowerCase();
-  if (n.includes("elastic") || n.includes("index") || n.includes("store")) return "elastic";
-  if (n.includes("search") || n.includes("query") || n.includes("find")) return "search";
-  if (n.includes("scrape") || n.includes("fetch") || n.includes("web") || n.includes("crawl"))
-    return "scrape";
-  if (n.includes("generat") || n.includes("draft") || n.includes("llm") || n.includes("summar"))
-    return "llm";
-  return undefined;
+function StepIndicator({ status }: { status: StepStatus }) {
+  if (status === "running")
+    return (
+      <Icon
+        icon="solar:spinner-bold"
+        width={16}
+        className="animate-spin shrink-0"
+        style={{ color: "#E8472A" }}
+      />
+    );
+  if (status === "done")
+    return (
+      <div
+        className="w-3 h-3 rounded-full shrink-0"
+        style={{ background: "#4ECDC4", border: "2px solid #0D0D0D" }}
+      />
+    );
+  if (status === "error")
+    return (
+      <div
+        className="w-3 h-3 rounded-full shrink-0"
+        style={{ background: "#E8472A", border: "2px solid #0D0D0D" }}
+      />
+    );
+  return (
+    <div
+      className="w-3 h-3 rounded-full shrink-0"
+      style={{ background: "#EDE6D3", border: "2px solid #C8C0AF" }}
+    />
+  );
 }
 
-// ── Visual sub-components (unchanged) ────────────────────────────────────────
-
-const TOOL_META: Record<string, { label: string; icon: string }> = {
-  elastic: { label: "Elastic MCP", icon: "solar:database-bold" },
-  search: { label: "ES|QL Search", icon: "solar:magnifer-bold" },
-  scrape: { label: "Web Scraper", icon: "solar:global-bold" },
-  llm: { label: "Gemini", icon: "solar:cpu-bolt-bold" },
-};
-
-function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>; number: number }) {
-  const meta = step.tool ? TOOL_META[step.tool] : null;
-  const numBox = {
-    done: { bg: "#4ECDC4", border: "#0D0D0D", color: "#0D0D0D" },
-    running: { bg: "#E8472A", border: "#0D0D0D", color: "#FFFFFF" },
-    pending: { bg: "#EDE6D3", border: "#C8C0AF", color: "#9CA3AF" },
-    error: { bg: "#E8472A", border: "#0D0D0D", color: "#FFFFFF" },
-  }[step.status];
+function StepCard({
+  step,
+  number: _number,
+}: {
+  step: Extract<ChatItem, { type: "step" }>;
+  number: number;
+}) {
   const statusBadge = {
     done: { label: "Done", bg: "#4ECDC4", color: "#0D0D0D", border: "#0D0D0D" },
     running: { label: "In progress", bg: "#FFF0ED", color: "#E8472A", border: "#E8472A" },
@@ -79,23 +91,7 @@ function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>;
         borderTop: "1.5px solid #EDE6D3",
       }}
     >
-      <div
-        className="w-6 h-6 flex items-center justify-center shrink-0 font-bold font-space text-xs"
-        style={{
-          background: numBox.bg,
-          border: `2px solid ${numBox.border}`,
-          borderRadius: "4px",
-          color: numBox.color,
-        }}
-      >
-        {step.status === "done" ? (
-          <Icon icon="solar:check-bold" width={14} />
-        ) : step.status === "running" ? (
-          <Icon icon="solar:spinner-bold" width={14} className="animate-spin" />
-        ) : (
-          number
-        )}
-      </div>
+      <StepIndicator status={step.status} />
       <div className="flex-1 min-w-0">
         <p
           className="text-sm font-space leading-snug"
@@ -123,20 +119,6 @@ function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>;
           >
             {statusBadge.label}
           </span>
-          {meta && (
-            <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold font-space"
-              style={{
-                background: "#F7F0E3",
-                border: "1.5px solid #C8C0AF",
-                color: "#5A5A5A",
-                borderRadius: "4px",
-              }}
-            >
-              <Icon icon={meta.icon} width={9} />
-              {meta.label}
-            </span>
-          )}
         </div>
       </div>
     </div>
@@ -180,6 +162,7 @@ function AgentWorkCard({
   const { phase, steps } = group;
   const doneCount = steps.filter((s) => s.status === "done").length;
   const runningStep = steps.find((s) => s.status === "running");
+  const lastActiveTool = [...steps].reverse().find((s) => s.tool)?.tool;
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (phase.status !== "running") return;
@@ -273,7 +256,7 @@ function AgentWorkCard({
                 Active Tool
               </p>
               <p className="text-xs font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>
-                {runningStep?.tool ? TOOL_META[runningStep.tool]?.label : "—"}
+                {lastActiveTool ? lastActiveTool.replace(/_/g, " ") : "—"}
               </p>
             </div>
             <div className="px-3 py-2" style={{ background: "#F7F0E3" }}>
@@ -512,14 +495,8 @@ export default function ChatPage() {
   const runningStep = stream.find(
     (i): i is Extract<ChatItem, { type: "step" }> => i.type === "step" && i.status === "running"
   );
-  const AGENT_STATUS: Record<string, string> = {
-    scrape: "Scraping web...",
-    search: "Searching...",
-    elastic: "Querying index...",
-    llm: "Thinking...",
-  };
   const agentStatusText = runningStep?.tool
-    ? (AGENT_STATUS[runningStep.tool] ?? "Working...")
+    ? `${runningStep.tool.replace(/_/g, " ")}...`
     : "Working...";
   const pendingApproval = stream.some(
     (i) => i.type === "approval" && !("resolved" in i && i.resolved)
@@ -644,17 +621,19 @@ export default function ChatPage() {
       ];
     } else if (type === "TOOL_CALL_START") {
       const e = event as unknown as { toolCallId: string; toolCallName: string };
-      setStream((p) => [
-        ...p,
-        {
-          type: "step",
-          id: e.toolCallId,
-          label: e.toolCallName.replace(/_/g, " "),
-          status: "running",
-          tool: mapToolIcon(e.toolCallName),
-          detail: e.toolCallName,
-        },
-      ]);
+      flushSync(() => {
+        setStream((p) => [
+          ...p,
+          {
+            type: "step",
+            id: e.toolCallId,
+            label: e.toolCallName.replace(/_/g, " "),
+            status: "running",
+            tool: e.toolCallName,
+            detail: e.toolCallName,
+          },
+        ]);
+      });
     } else if (type === "TOOL_CALL_END") {
       const e = event as unknown as { toolCallId: string };
       setStream((p) =>
@@ -664,10 +643,12 @@ export default function ChatPage() {
       );
     } else if (type === "STEP_STARTED") {
       const e = event as unknown as { stepName: string };
-      setStream((p) => [
-        ...p,
-        { type: "phase", id: `step-${e.stepName}`, label: e.stepName, status: "running" },
-      ]);
+      flushSync(() => {
+        setStream((p) => [
+          ...p,
+          { type: "phase", id: `step-${e.stepName}`, label: e.stepName, status: "running" },
+        ]);
+      });
     } else if (type === "STEP_FINISHED") {
       const e = event as unknown as { stepName: string };
       setStream((p) =>
@@ -730,6 +711,9 @@ export default function ChatPage() {
     subscription.current?.unsubscribe();
     setLocalRunning(true);
 
+    const prevLength = agMessages.current.length;
+    const isFirstMessage = !activeSessionId;
+
     const userMsg = { id: msgId, role: "user", content } as Message;
     agMessages.current = [...agMessages.current, userMsg];
 
@@ -779,6 +763,18 @@ export default function ChatPage() {
           complete: () => {
             setLocalRunning(false);
             checkHITL();
+            // Save new messages — first-message user msg already saved by sessionsApi.create
+            const startIdx = isFirstMessage ? prevLength + 1 : prevLength;
+            const toSave = agMessages.current.slice(startIdx);
+            if (toSave.length > 0) {
+              import("../../lib/api").then(({ sessionsApi }) => {
+                toSave.forEach((m) =>
+                  sessionsApi
+                    .createMessage(threadId.current, m.role as string, m.content as string)
+                    .catch(() => {})
+                );
+              });
+            }
           },
         });
     } catch (err) {

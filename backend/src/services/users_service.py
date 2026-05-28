@@ -1,3 +1,4 @@
+from google.api_core.exceptions import NotFound
 from src.repositories.users_repo import UserRepository
 
 
@@ -38,7 +39,10 @@ class UserService:
     @staticmethod
     async def update_profile(user_id: str, data: dict) -> dict:
         """Update profile fields."""
-        return await UserRepository.update_profile(user_id, data)
+        try:
+            return await UserRepository.update_profile(user_id, data)
+        except NotFound as e:
+            raise ValueError("User profile not found") from e
 
     @staticmethod
     async def get_preferences(user_id: str) -> dict | None:
@@ -51,46 +55,67 @@ class UserService:
         pref = await UserRepository.get_preferences(user_id)
         if pref is None:
             return await UserRepository.create_preferences(user_id, data)
-        return await UserRepository.update_preferences(user_id, data)
+        try:
+            return await UserRepository.update_preferences(user_id, data)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
 
     @staticmethod
     async def append_research_interest(user_id: str, interest: str) -> dict:
         """Append one interest and return updated preferences."""
-        await UserRepository.append_research_interest(user_id, interest)
+        try:
+            await UserRepository.append_research_interest(user_id, interest)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
         pref = await UserRepository.get_preferences(user_id)
         return pref or {}
 
     @staticmethod
     async def remove_research_interest(user_id: str, interest: str) -> dict:
         """Remove one interest and return updated preferences."""
-        await UserRepository.remove_research_interest(user_id, interest)
+        try:
+            await UserRepository.remove_research_interest(user_id, interest)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
         pref = await UserRepository.get_preferences(user_id)
         return pref or {}
 
     @staticmethod
     async def append_target_country(user_id: str, country: str) -> dict:
         """Append one country and return updated preferences."""
-        await UserRepository.append_target_country(user_id, country)
+        try:
+            await UserRepository.append_target_country(user_id, country)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
         pref = await UserRepository.get_preferences(user_id)
         return pref or {}
 
     @staticmethod
     async def remove_target_country(user_id: str, country: str) -> dict:
         """Remove one country and return updated preferences."""
-        await UserRepository.remove_target_country(user_id, country)
+        try:
+            await UserRepository.remove_target_country(user_id, country)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
         pref = await UserRepository.get_preferences(user_id)
         return pref or {}
 
     @staticmethod
     async def append_target_university(user_id: str, university: str) -> dict:
         """Append one university and return updated preferences."""
-        await UserRepository.append_target_university(user_id, university)
+        try:
+            await UserRepository.append_target_university(user_id, university)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
         pref = await UserRepository.get_preferences(user_id)
         return pref or {}
 
     @staticmethod
     async def remove_target_university(user_id: str, university: str) -> dict:
         """Remove one university and return updated preferences."""
-        await UserRepository.remove_target_university(user_id, university)
+        try:
+            await UserRepository.remove_target_university(user_id, university)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
         pref = await UserRepository.get_preferences(user_id)
         return pref or {}

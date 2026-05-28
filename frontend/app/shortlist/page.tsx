@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import type { Faculty as ApiFaculty, ShortlistStats } from "../../lib/api";
@@ -36,7 +36,11 @@ function mapPositionStatus(s: string): PositionStatus {
 
 function mapFaculty(a: ApiFaculty): Faculty {
   const areas = a.research_summary
-    ? a.research_summary.split(/[,\n]/).map(t => t.trim()).filter(Boolean).slice(0, 5)
+    ? a.research_summary
+        .split(/[,\n]/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 5)
     : [];
   return {
     id: a.id,
@@ -53,27 +57,35 @@ function mapFaculty(a: ApiFaculty): Faculty {
 }
 
 const OUTREACH_META: Record<OutreachStatus, { label: string; bg: string; color: string }> = {
-  none:      { label: "No outreach", bg: "#EDE6D3", color: "#5A5A5A" },
-  drafted:   { label: "Draft ready", bg: "#F7F0E3", color: "#0D0D0D" },
-  sent:      { label: "Email sent",  bg: "#0D0D0D", color: "#FFFFFF" },
-  responded: { label: "Responded",   bg: "#4ECDC4", color: "#0D0D0D" },
+  none: { label: "No outreach", bg: "#EDE6D3", color: "#5A5A5A" },
+  drafted: { label: "Draft ready", bg: "#F7F0E3", color: "#0D0D0D" },
+  sent: { label: "Email sent", bg: "#0D0D0D", color: "#FFFFFF" },
+  responded: { label: "Responded", bg: "#4ECDC4", color: "#0D0D0D" },
 };
 
 function ScoreBadge({ score }: { score: number }) {
-  const bg    = score >= 85 ? "#4ECDC4" : score >= 70 ? "#0D0D0D" : "#B0A898";
+  const bg = score >= 85 ? "#4ECDC4" : score >= 70 ? "#0D0D0D" : "#B0A898";
   const color = score >= 85 ? "#0D0D0D" : "#FFFFFF";
   return (
     <div
       className="flex-shrink-0 flex items-center justify-center"
-      style={{ width: 48, height: 48, background: bg, border: "2px solid #0D0D0D", borderRadius: "4px" }}
+      style={{
+        width: 48,
+        height: 48,
+        background: bg,
+        border: "2px solid #0D0D0D",
+        borderRadius: "4px",
+      }}
     >
-      <span className="font-space font-bold text-base leading-none" style={{ color }}>{score}</span>
+      <span className="font-space font-bold text-base leading-none" style={{ color }}>
+        {score}
+      </span>
     </div>
   );
 }
 
 function PositionBadge({ status }: { status: PositionStatus }) {
-  if (status === true)  return <span className="badge-teal">Open</span>;
+  if (status === true) return <span className="badge-teal">Open</span>;
   if (status === false) return <span className="badge-coral">Closed</span>;
   return <span className="badge-gray">?</span>;
 }
@@ -82,8 +94,14 @@ function FitBar({ score }: { score: number }) {
   const fill = score >= 85 ? "#4ECDC4" : score >= 70 ? "#0D0D0D" : "#B0A898";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 overflow-hidden" style={{ background: "#EDE6D3", border: "1px solid #C8C0AF", borderRadius: "2px" }}>
-        <div className="h-full" style={{ width: `${score}%`, background: fill, borderRadius: "2px" }} />
+      <div
+        className="flex-1 h-1.5 overflow-hidden"
+        style={{ background: "#EDE6D3", border: "1px solid #C8C0AF", borderRadius: "2px" }}
+      >
+        <div
+          className="h-full"
+          style={{ width: `${score}%`, background: fill, borderRadius: "2px" }}
+        />
       </div>
     </div>
   );
@@ -104,8 +122,16 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
             <button
               className="bouncy shrink-0 p-1"
               style={{ color: "#C8C0AF", border: "1.5px solid transparent", borderRadius: "4px" }}
-              onMouseEnter={e => { (e.currentTarget.style.color = "#E8472A"); (e.currentTarget.style.borderColor = "#0D0D0D"); (e.currentTarget.style.background = "#FFF0ED"); }}
-              onMouseLeave={e => { (e.currentTarget.style.color = "#C8C0AF"); (e.currentTarget.style.borderColor = "transparent"); (e.currentTarget.style.background = ""); }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#E8472A";
+                e.currentTarget.style.borderColor = "#0D0D0D";
+                e.currentTarget.style.background = "#FFF0ED";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "#C8C0AF";
+                e.currentTarget.style.borderColor = "transparent";
+                e.currentTarget.style.background = "";
+              }}
             >
               <Icon icon="solar:trash-bin-trash-bold" width={12} />
             </button>
@@ -117,7 +143,9 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
             >
               {faculty.university}
             </span>
-            <span className="text-[10px] font-dm truncate" style={{ color: "#9CA3AF" }}>{faculty.department}</span>
+            <span className="text-[10px] font-dm truncate" style={{ color: "#9CA3AF" }}>
+              {faculty.department}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 mt-1.5">
             <PositionBadge status={faculty.openPositions} />
@@ -129,11 +157,16 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
       <div className="p-4 flex-1 flex flex-col gap-3">
         {faculty.researchAreas.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {faculty.researchAreas.map(area => (
+            {faculty.researchAreas.map((area) => (
               <span
                 key={area}
                 className="text-[10px] px-2 py-0.5 font-dm"
-                style={{ background: "#F7F0E3", border: "1.5px solid #C8C0AF", color: "#5A5A5A", borderRadius: "4px" }}
+                style={{
+                  background: "#F7F0E3",
+                  border: "1.5px solid #C8C0AF",
+                  color: "#5A5A5A",
+                  borderRadius: "4px",
+                }}
               >
                 {area}
               </span>
@@ -144,8 +177,15 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
         {/* Fit bar */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider font-space" style={{ color: "#9CA3AF" }}>Research Fit</span>
-            <span className="text-[10px] font-bold font-mono" style={{ color: "#0D0D0D" }}>{faculty.fitScore}%</span>
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wider font-space"
+              style={{ color: "#9CA3AF" }}
+            >
+              Research Fit
+            </span>
+            <span className="text-[10px] font-bold font-mono" style={{ color: "#0D0D0D" }}>
+              {faculty.fitScore}%
+            </span>
           </div>
           <FitBar score={faculty.fitScore} />
         </div>
@@ -153,19 +193,35 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
         {/* Research summary */}
         {faculty.researchSummary && (
           <div className="flex items-start gap-2 pt-3" style={{ borderTop: "1px solid #EDE6D3" }}>
-            <Icon icon="solar:document-text-bold" width={11} className="shrink-0 mt-0.5" style={{ color: "#C8C0AF" }} />
-            <p className="text-[11px] font-dm leading-snug line-clamp-2" style={{ color: "#9CA3AF" }}>{faculty.researchSummary}</p>
+            <Icon
+              icon="solar:document-text-bold"
+              width={11}
+              className="shrink-0 mt-0.5"
+              style={{ color: "#C8C0AF" }}
+            />
+            <p
+              className="text-[11px] font-dm leading-snug line-clamp-2"
+              style={{ color: "#9CA3AF" }}
+            >
+              {faculty.researchSummary}
+            </p>
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="flex" style={{ borderTop: "2px solid #0D0D0D", borderRadius: "0 0 4px 4px", overflow: "hidden" }}>
+      <div
+        className="flex"
+        style={{ borderTop: "2px solid #0D0D0D", borderRadius: "0 0 4px 4px", overflow: "hidden" }}
+      >
         <div
           className="px-3 py-2 shrink-0 flex items-center"
           style={{ background: outreach.bg, borderRight: "2px solid #0D0D0D" }}
         >
-          <span className="text-[10px] font-bold font-space whitespace-nowrap" style={{ color: outreach.color }}>
+          <span
+            className="text-[10px] font-bold font-space whitespace-nowrap"
+            style={{ color: outreach.color }}
+          >
             {outreach.label}
           </span>
         </div>
@@ -177,24 +233,40 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
               rel="noopener noreferrer"
               className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
               style={{ color: "#5A5A5A", borderRight: "1px solid #EDE6D3" }}
-              onMouseEnter={e => { (e.currentTarget.style.background = "#0D0D0D"); (e.currentTarget.style.color = "#fff"); }}
-              onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#5A5A5A"); }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#0D0D0D";
+                e.currentTarget.style.color = "#fff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "";
+                e.currentTarget.style.color = "#5A5A5A";
+              }}
             >
-              <Icon icon="solar:arrow-right-up-bold" width={10} />Profile
+              <Icon icon="solar:arrow-right-up-bold" width={10} />
+              Profile
             </a>
           ) : (
-            <span className="flex-1 flex items-center justify-center py-2 text-[11px] font-space"
-                  style={{ color: "#C8C0AF", borderRight: "1px solid #EDE6D3" }}>
+            <span
+              className="flex-1 flex items-center justify-center py-2 text-[11px] font-space"
+              style={{ color: "#C8C0AF", borderRight: "1px solid #EDE6D3" }}
+            >
               No link
             </span>
           )}
           <button
             className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
             style={{ color: "#5A5A5A" }}
-            onMouseEnter={e => { (e.currentTarget.style.background = "#EDE6D3"); (e.currentTarget.style.color = "#0D0D0D"); }}
-            onMouseLeave={e => { (e.currentTarget.style.background = ""); (e.currentTarget.style.color = "#5A5A5A"); }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#EDE6D3";
+              e.currentTarget.style.color = "#0D0D0D";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "";
+              e.currentTarget.style.color = "#5A5A5A";
+            }}
           >
-            <Icon icon="solar:letter-bold" width={10} />Email
+            <Icon icon="solar:letter-bold" width={10} />
+            Email
           </button>
         </div>
       </div>
@@ -202,12 +274,245 @@ function FacultyCard({ faculty }: { faculty: Faculty }) {
   );
 }
 
+type AddFacultyForm = {
+  name: string;
+  university: string;
+  department: string;
+  email: string;
+  webpage: string;
+  research_summary: string;
+  fit_score: string;
+  position_status: string;
+};
+
+const EMPTY_FORM: AddFacultyForm = {
+  name: "",
+  university: "",
+  department: "",
+  email: "",
+  webpage: "",
+  research_summary: "",
+  fit_score: "50",
+  position_status: "unknown",
+};
+
+function AddFacultyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (f: Faculty) => void }) {
+  const [form, setForm] = useState<AddFacultyForm>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+  }, []);
+
+  function set(key: keyof AddFacultyForm, value: string) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.university.trim() || !form.department.trim()) {
+      setError("Name, university, and department are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const { shortlistApi } = await import("../../lib/api");
+      const res = await shortlistApi.add({
+        name: form.name.trim(),
+        university: form.university.trim(),
+        department: form.department.trim(),
+        ...(form.email.trim() && { email: form.email.trim() }),
+        ...(form.webpage.trim() && { webpage: form.webpage.trim() }),
+        ...(form.research_summary.trim() && { research_summary: form.research_summary.trim() }),
+        fit_score: Number(form.fit_score) || 50,
+        position_status: form.position_status,
+      });
+      onAdd(mapFaculty(res.data));
+      onClose();
+    } catch {
+      setError("Failed to add faculty. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(13,13,13,0.6)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-md flex flex-col"
+        style={{
+          background: "#F7F0E3",
+          border: "2px solid #0D0D0D",
+          boxShadow: "6px 6px 0 #0D0D0D",
+          borderRadius: "4px",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="px-5 py-4 flex items-center justify-between"
+          style={{ background: "#0D0D0D", borderRadius: "2px 2px 0 0" }}
+        >
+          <span className="font-bold font-space text-sm" style={{ color: "#FFFFFF" }}>
+            Add Faculty
+          </span>
+          <button onClick={onClose} className="bouncy" style={{ color: "rgba(255,255,255,0.5)" }}>
+            <Icon icon="solar:close-circle-bold" width={18} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-3">
+          {(["name", "university", "department"] as const).map((key) => (
+            <div key={key}>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                {key} <span style={{ color: "#E8472A" }}>*</span>
+              </label>
+              <input
+                ref={key === "name" ? firstRef : undefined}
+                type="text"
+                value={form[key]}
+                onChange={(e) => set(key, e.target.value)}
+                className="input-brutal w-full text-sm"
+                placeholder={
+                  key === "name"
+                    ? "Prof. Jane Smith"
+                    : key === "university"
+                      ? "MIT"
+                      : "Computer Science"
+                }
+              />
+            </div>
+          ))}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                Email
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => set("email", e.target.value)}
+                className="input-brutal w-full text-sm"
+                placeholder="prof@mit.edu"
+              />
+            </div>
+            <div>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                Fit Score
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={form.fit_score}
+                onChange={(e) => set("fit_score", e.target.value)}
+                className="input-brutal w-full text-sm"
+                placeholder="50"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Profile URL
+            </label>
+            <input
+              type="url"
+              value={form.webpage}
+              onChange={(e) => set("webpage", e.target.value)}
+              className="input-brutal w-full text-sm"
+              placeholder="https://mit.edu/~jsmith"
+            />
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Position Status
+            </label>
+            <select
+              value={form.position_status}
+              onChange={(e) => set("position_status", e.target.value)}
+              className="input-brutal w-full text-sm"
+            >
+              <option value="unknown">Unknown</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Research Summary
+            </label>
+            <textarea
+              value={form.research_summary}
+              onChange={(e) => set("research_summary", e.target.value)}
+              className="input-brutal w-full text-sm resize-none"
+              rows={3}
+              placeholder="Brief description of research interests..."
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs font-dm font-semibold" style={{ color: "#E8472A" }}>
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={saving} className="btn-coral btn-sm flex-1">
+              {saving ? (
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+              ) : (
+                <Icon icon="solar:add-circle-bold" width={14} />
+              )}
+              <span className="text-sm">{saving ? "Saving…" : "Add Faculty"}</span>
+            </button>
+            <button type="button" onClick={onClose} className="btn-white btn-sm">
+              <span className="text-sm">Cancel</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function ShortlistPage() {
   const [faculty, setFaculty] = useState<Faculty[]>([]);
-  const [stats, setStats]     = useState<ShortlistStats | null>(null);
+  const [stats, setStats] = useState<ShortlistStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState("");
-  const [filter, setFilter]   = useState<"all" | "open" | "outreach">("all");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "open" | "outreach">("all");
+  const [showAddModal, setShowAddModal] = useState(false);
 
   useEffect(() => {
     import("../../lib/api").then(({ shortlistApi }) =>
@@ -221,12 +526,12 @@ export default function ShortlistPage() {
     );
   }, []);
 
-  const filtered = faculty.filter(f => {
+  const filtered = faculty.filter((f) => {
     const matchSearch =
       search === "" ||
       f.name.toLowerCase().includes(search.toLowerCase()) ||
       f.university.toLowerCase().includes(search.toLowerCase()) ||
-      f.researchAreas.some(a => a.toLowerCase().includes(search.toLowerCase()));
+      f.researchAreas.some((a) => a.toLowerCase().includes(search.toLowerCase()));
     const matchFilter =
       filter === "all" ||
       (filter === "open" && f.openPositions === true) ||
@@ -237,20 +542,28 @@ export default function ShortlistPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
       {/* Header — black */}
-      <div className="px-6 py-4 shrink-0" style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}>
+      <div
+        className="px-6 py-4 shrink-0"
+        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
+      >
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-sm font-bold font-space flex items-center gap-2" style={{ color: "#FFFFFF" }}>
+            <h1
+              className="text-sm font-bold font-space flex items-center gap-2"
+              style={{ color: "#FFFFFF" }}
+            >
               <Icon icon="solar:star-bold" width={15} style={{ color: "#E8472A" }} />
               Faculty Shortlist
             </h1>
             <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {loading ? "Loading…" : stats
-                ? `${stats.total} saved · ${stats.open_positions} open positions · ${stats.contacted} contacted`
-                : `${faculty.length} saved`}
+              {loading
+                ? "Loading…"
+                : stats
+                  ? `${stats.total} saved · ${stats.open_positions} open positions · ${stats.contacted} contacted`
+                  : `${faculty.length} saved`}
             </p>
           </div>
-          <button className="btn-coral btn-sm">
+          <button className="btn-coral btn-sm" onClick={() => setShowAddModal(true)}>
             <Icon icon="solar:add-circle-bold" width={14} />
             <span className="text-sm">Add Faculty</span>
           </button>
@@ -258,24 +571,37 @@ export default function ShortlistPage() {
       </div>
 
       {/* Search + filter bar */}
-      <div className="px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap" style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}>
+      <div
+        className="px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
+        style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
+      >
         <div className="relative flex-1 min-w-48">
-          <Icon icon="solar:magnifer-bold" width={13}
-                className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#B0A898" }} />
+          <Icon
+            icon="solar:magnifer-bold"
+            width={13}
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: "#B0A898" }}
+          />
           <input
             type="text"
             placeholder="Search faculty, university, research area..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="input-brutal pl-8 text-sm w-full"
           />
         </div>
-        <div className="flex overflow-hidden" style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}>
+        <div
+          className="flex overflow-hidden"
+          style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}
+        >
           {(["all", "open", "outreach"] as const).map((f, i) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={clsx("px-3 py-2 text-xs font-semibold font-space bouncy", i > 0 && "border-l-2")}
+              className={clsx(
+                "px-3 py-2 text-xs font-semibold font-space bouncy",
+                i > 0 && "border-l-2"
+              )}
               style={{
                 background: filter === f ? "#E8472A" : "#FFFFFF",
                 color: filter === f ? "#FFFFFF" : "#5A5A5A",
@@ -292,32 +618,53 @@ export default function ShortlistPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color: "#E8472A" }} />
+            <div
+              className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
+              style={{ color: "#E8472A" }}
+            />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <Icon icon="solar:graduation-cap-bold" width={32} style={{ color: "#B0A898" }} className="mb-3" />
+            <Icon
+              icon="solar:graduation-cap-bold"
+              width={32}
+              style={{ color: "#B0A898" }}
+              className="mb-3"
+            />
             <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>
               {faculty.length === 0 ? "No faculty saved yet" : "No faculty found"}
             </p>
             <p className="text-sm font-dm mt-1" style={{ color: "#9CA3AF" }}>
-              {faculty.length === 0 ? "Ask the agent to find professors matching your interests" : "Adjust search or filters"}
+              {faculty.length === 0
+                ? "Ask the agent to find professors matching your interests"
+                : "Adjust search or filters"}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filtered.map(f => <FacultyCard key={f.id} faculty={f} />)}
+            {filtered.map((f) => (
+              <FacultyCard key={f.id} faculty={f} />
+            ))}
           </div>
         )}
 
         {/* CTA */}
         <div
           className="mt-6 p-5 flex items-center justify-between"
-          style={{ background: "#FFFFFF", border: "2px solid #0D0D0D", boxShadow: "4px 4px 0 #0D0D0D", borderRadius: "4px" }}
+          style={{
+            background: "#FFFFFF",
+            border: "2px solid #0D0D0D",
+            boxShadow: "4px 4px 0 #0D0D0D",
+            borderRadius: "4px",
+          }}
         >
           <div>
-            <p className="font-bold font-space text-sm" style={{ color: "#0D0D0D" }}>Want more faculty matches?</p>
-            <p className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>Paste program URLs in Agent Chat.</p>
+            <p className="font-bold font-space text-sm" style={{ color: "#0D0D0D" }}>
+              Want more faculty matches?
+            </p>
+            <p className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>
+              Paste program URLs in Agent Chat.
+            </p>
           </div>
           <a href="/chat" className="btn-coral btn-sm ml-4 shrink-0">
             <span className="text-sm">Open Chat</span>
@@ -325,6 +672,13 @@ export default function ShortlistPage() {
           </a>
         </div>
       </div>
+
+      {showAddModal && (
+        <AddFacultyModal
+          onClose={() => setShowAddModal(false)}
+          onAdd={(f) => setFaculty((prev) => [f, ...prev])}
+        />
+      )}
     </div>
   );
 }

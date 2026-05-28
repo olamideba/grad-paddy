@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Body, HTTPException, Query
+from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from src.core.firebase import verify_firebase_auth
 from src.services.shortlist_service import ShortlistService
 from src.api.schemas.requests import (
@@ -54,19 +54,27 @@ async def get_faculty(request: Request, faculty_id: str) -> dict:
 @router.patch("/{faculty_id}", response_model=StandardResponse[FacultyResponse])
 async def update_faculty(request: Request, faculty_id: str, body: FacultyUpdateRequest) -> dict:
     user_id = request.state.user_id
-    faculty = await ShortlistService.update_faculty(user_id, faculty_id, body.model_dump(exclude_unset=True))
-    return {"success": True, "data": faculty, "message": "Faculty member updated successfully"}
-
+    try:
+        faculty = await ShortlistService.update_faculty(user_id, faculty_id, body.model_dump(exclude_unset=True))
+        return {"success": True, "data": faculty, "message": "Faculty member updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.patch("/{faculty_id}/outreach-status", response_model=StandardResponse[SuccessStatusResponse])
 async def update_outreach_status(request: Request, faculty_id: str, body: OutreachStatusUpdateRequest) -> dict:
     user_id = request.state.user_id
-    await ShortlistService.update_outreach_status(user_id, faculty_id, body.status)
-    return {"success": True, "data": {"status": "success"}, "message": "Outreach status updated successfully"}
+    try:
+        await ShortlistService.update_outreach_status(user_id, faculty_id, body.status)
+        return {"success": True, "data": {"status": "success"}, "message": "Outreach status updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/{faculty_id}", response_model=StandardResponse[SuccessStatusResponse])
 async def delete_faculty(request: Request, faculty_id: str) -> dict:
     user_id = request.state.user_id
-    await ShortlistService.delete_faculty(user_id, faculty_id)
-    return {"success": True, "data": {"status": "success"}, "message": "Faculty member deleted successfully"}
+    try:
+        await ShortlistService.delete_faculty(user_id, faculty_id)
+        return {"success": True, "data": {"status": "success"}, "message": "Faculty member deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

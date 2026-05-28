@@ -1,5 +1,10 @@
+import logging
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
-from fastapi import APIRouter, Depends
+from ag_ui.core import BaseEvent, EventType
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -7,23 +12,120 @@ from google.genai import types
 
 from src.agents.root import root_agent
 from src.core.config import get_settings
-from src.core.firebase import get_current_user_id
+from src.core.firebase import verify_firebase_auth
+from src.repositories.sessions_repo import SessionRepository
 
-router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(get_current_user_id)])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(verify_firebase_auth)])
+
+
+class PersistentChatAgent(ADKAgent):
+    """ADK agent wrapper that persists completed AG-UI message streams."""
+
+    async def run(self, input: Any) -> AsyncGenerator[BaseEvent, None]:
+        user_id = self._get_user_id(input)
+        session_id = input.thread_id
+
+        pending_events: list[dict[str, Any]] = []
+        current_message_id: str | None = None
+        current_text_parts: list[str] = []
+        current_message_events: list[dict[str, Any]] = []
+        current_message_complete = False
+
+        async for event in super().run(input):
+            try:
+                event_payload = event.model_dump(by_alias=True, exclude_none=True)
+            except Exception:
+                event_payload = {"type": str(getattr(event, "type", ""))}
+
+            pending_events.append(event_payload)
+
+            event_type = getattr(event, "type", None)
+            if event_type == EventType.TEXT_MESSAGE_START:
+                current_message_id = getattr(event, "message_id", None)
+                current_text_parts = []
+                current_message_events = list(pending_events)
+                current_message_complete = False
+            elif current_message_id is not None:
+                current_message_events.append(event_payload)
+
+            if (
+                event_type == EventType.TEXT_MESSAGE_CONTENT
+                and current_message_id
+                and getattr(event, "message_id", None) == current_message_id
+            ):
+                delta = getattr(event, "delta", "")
+                if delta:
+                    current_text_parts.append(delta)
+
+            if (
+                event_type == EventType.TEXT_MESSAGE_END
+                and current_message_id
+                and getattr(event, "message_id", None) == current_message_id
+            ):
+                current_message_complete = True
+
+            if event_type in {EventType.RUN_FINISHED, EventType.RUN_ERROR}:
+                if current_message_id and current_message_complete:
+                    content = "".join(current_text_parts).strip()
+                    try:
+                        await SessionRepository.upsert_message(
+                            user_id=user_id,
+                            session_id=session_id,
+                            message_id=current_message_id,
+                            data={
+                                "role": "assistant",
+                                "content": content,
+                                "ag_ui_events": current_message_events,
+                            },
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to persist AG-UI events for session %s, message %s: %s",
+                            session_id,
+                            current_message_id,
+                            exc,
+                            exc_info=True,
+                        )
+                current_message_id = None
+                current_text_parts = []
+                current_message_events = []
+                current_message_complete = False
+                pending_events = []
+
+            yield event
+
+
+async def _extract_chat_state(request: Request, input_data: Any) -> dict[str, Any]:
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        return {}
+    return {"user_id": user_id}
 
 
 def build_chat_agent() -> ADKAgent:
     settings = get_settings()
-    return ADKAgent(
+    return PersistentChatAgent(
         adk_agent=root_agent,
         app_name=settings.AG_UI_APP_NAME,
-        user_id=settings.AG_UI_USER_ID,
+        user_id_extractor=lambda input_data: (
+            input_data.state.get("user_id")
+            if isinstance(input_data.state, dict)
+            else None
+        )
+        or settings.AG_UI_USER_ID,
         session_timeout_seconds=settings.AG_UI_SESSION_TIMEOUT_SECONDS,
         use_in_memory_services=True,
     )
 
 
-add_adk_fastapi_endpoint(router, build_chat_agent(), path="")
+add_adk_fastapi_endpoint(
+    router,
+    build_chat_agent(),
+    path="",
+    extract_state_from_request=_extract_chat_state,
+)
 
 
 class DebugChatRequest(BaseModel):

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from "react";
 import type { Session as ApiSession } from "../lib/api";
+import { useAuth } from "./AuthContext";
 
 interface ChatSessionsCtx {
   sessions: ApiSession[];
@@ -14,21 +15,30 @@ interface ChatSessionsCtx {
 const ChatSessionsContext = createContext<ChatSessionsCtx | null>(null);
 
 export function ChatSessionsProvider({ children }: { children: React.ReactNode }) {
-  const [sessions, setSessions]           = useState<ApiSession[]>([]);
+  const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      queueMicrotask(() => setSessionsLoading(false));
+      return;
+    }
     import("../lib/api").then(({ sessionsApi }) =>
-      sessionsApi.list()
-        .then(r => setSessions(r.data))
+      sessionsApi
+        .list()
+        .then((r) => setSessions(r.data))
         .catch(() => {})
         .finally(() => setSessionsLoading(false))
     );
-  }, []);
+  }, [authLoading, user]);
 
   return (
-    <ChatSessionsContext.Provider value={{ sessions, setSessions, activeSessionId, setActiveSessionId, sessionsLoading }}>
+    <ChatSessionsContext.Provider
+      value={{ sessions, setSessions, activeSessionId, setActiveSessionId, sessionsLoading }}
+    >
       {children}
     </ChatSessionsContext.Provider>
   );

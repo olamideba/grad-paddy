@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Request, Body, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 from src.core.firebase import verify_firebase_auth
 from src.services.hitl_service import HITLService
 from src.api.schemas.requests import HITLResolveRequest
@@ -18,5 +18,8 @@ async def get_pending_hitl(request: Request, session_id: str) -> dict:
 @router.post("/{hitl_id}/resolve", response_model=StandardResponse[HITLResponse])
 async def resolve_hitl(request: Request, hitl_id: str, body: HITLResolveRequest) -> dict:
     user_id = request.state.user_id
-    resolved = await HITLService.resolve_hitl(user_id, hitl_id, body.approved)
-    return {"success": True, "data": resolved, "message": "HITL resolved successfully"}
+    try:
+        resolved = await HITLService.resolve_hitl(user_id, hitl_id, body.approved)
+        return {"success": True, "data": resolved, "message": "HITL resolved successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
