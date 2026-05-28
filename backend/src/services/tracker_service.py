@@ -1,3 +1,4 @@
+from google.api_core.exceptions import NotFound
 from src.repositories.tracker_repo import TrackerRepository
 
 
@@ -24,27 +25,42 @@ class TrackerService:
     @staticmethod
     async def update_application(user_id: str, application_id: str, data: dict) -> dict:
         """Partial update on a tracker entry."""
-        return await TrackerRepository.update_application(user_id, application_id, data)
+        try:
+            return await TrackerRepository.update_application(user_id, application_id, data)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def update_status(user_id: str, application_id: str, status: str) -> None:
         """Update application status."""
-        await TrackerRepository.update_status(user_id, application_id, status)
+        try:
+            await TrackerRepository.update_status(user_id, application_id, status)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def update_sop_status(user_id: str, application_id: str, sop_status: str) -> None:
         """Update sop_status field."""
-        await TrackerRepository.update_sop_status(user_id, application_id, sop_status)
+        try:
+            await TrackerRepository.update_sop_status(user_id, application_id, sop_status)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def update_cv_status(user_id: str, application_id: str, cv_status: str) -> None:
         """Update cv_status field."""
-        await TrackerRepository.update_cv_status(user_id, application_id, cv_status)
+        try:
+            await TrackerRepository.update_cv_status(user_id, application_id, cv_status)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def update_funded(user_id: str, application_id: str, funded: str) -> None:
         """Update funded field: 'yes' | 'no' | 'unknown'."""
-        await TrackerRepository.update_funded(user_id, application_id, funded)
+        try:
+            await TrackerRepository.update_funded(user_id, application_id, funded)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def add_recommender(user_id: str, application_id: str, recommender: dict) -> None:
@@ -56,12 +72,18 @@ class TrackerService:
         user_id: str, application_id: str, recommender_name: str, status: str
     ) -> None:
         """Update the status of a specific recommender within the list."""
-        await TrackerRepository.update_recommender_status(user_id, application_id, recommender_name, status)
+        try:
+            await TrackerRepository.update_recommender_status(user_id, application_id, recommender_name, status)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def delete_application(user_id: str, application_id: str) -> None:
         """Delete a tracker entry."""
-        await TrackerRepository.delete_application(user_id, application_id)
+        try:
+            await TrackerRepository.delete_application(user_id, application_id)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
 
     @staticmethod
     async def get_stats(user_id: str) -> dict:

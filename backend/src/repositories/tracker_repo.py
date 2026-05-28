@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from uuid6 import uuid7
+from google.api_core.exceptions import NotFound
 from google.cloud import firestore
 from src.core.config import get_settings
 from src.repositories.base import get_db
@@ -238,6 +239,9 @@ class TrackerRepository:
             .collection(settings.COLLECTION_TRACKER)
             .document(application_id)
         )
+        doc = await doc_ref.get()
+        if not doc.exists:
+            raise NotFound("Application record not found")
         await doc_ref.delete()
     
     @staticmethod

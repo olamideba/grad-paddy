@@ -1,3 +1,4 @@
+from google.api_core.exceptions import NotFound
 from src.repositories.hitl_repo import HITLRepository
 
 
@@ -16,4 +17,7 @@ class HITLService:
     @staticmethod
     async def resolve_hitl(user_id: str, hitl_id: str, approved: bool) -> dict:
         """Resolve a HITL record by approving or rejecting it."""
-        return await HITLRepository.resolve_hitl(user_id, hitl_id, approved)
+        try:
+            return await HITLRepository.resolve_hitl(user_id, hitl_id, approved)
+        except NotFound as e:
+            raise ValueError("HITL record not found") from e

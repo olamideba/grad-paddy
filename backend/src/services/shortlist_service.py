@@ -1,3 +1,4 @@
+from google.api_core.exceptions import NotFound
 from src.repositories.shortlist_repo import ShortlistRepository
 
 
@@ -30,17 +31,26 @@ class ShortlistService:
     @staticmethod
     async def update_faculty(user_id: str, faculty_id: str, data: dict) -> dict:
         """Partial update on a faculty entry."""
-        return await ShortlistRepository.update_faculty(user_id, faculty_id, data)
+        try:
+            return await ShortlistRepository.update_faculty(user_id, faculty_id, data)
+        except NotFound as e:
+            raise ValueError("Shortlist record not found") from e
 
     @staticmethod
     async def update_outreach_status(user_id: str, faculty_id: str, status: str) -> None:
         """Update outreach_status."""
-        await ShortlistRepository.update_outreach_status(user_id, faculty_id, status)
+        try:
+            await ShortlistRepository.update_outreach_status(user_id, faculty_id, status)
+        except NotFound as e:
+            raise ValueError("Shortlist record not found") from e
 
     @staticmethod
     async def delete_faculty(user_id: str, faculty_id: str) -> None:
         """Remove a faculty entry from the shortlist."""
-        await ShortlistRepository.delete_faculty(user_id, faculty_id)
+        try:
+            await ShortlistRepository.delete_faculty(user_id, faculty_id)
+        except NotFound as e:
+            raise ValueError("Shortlist record not found") from e
 
     @staticmethod
     async def get_stats(user_id: str) -> dict:

@@ -1,3 +1,4 @@
+from google.api_core.exceptions import NotFound
 from src.repositories.sessions_repo import SessionRepository
 
 
@@ -41,10 +42,13 @@ class SessionService:
     @staticmethod
     async def create_message(user_id: str, session_id: str, role: str, content: str) -> dict:
         """Append a message to a session and touch the session."""
-        return await SessionRepository.create_message(user_id, session_id, {
-            "role": role,
-            "content": content,
-        })
+        try:
+            return await SessionRepository.create_message(user_id, session_id, {
+                "role": role,
+                "content": content,
+            })
+        except NotFound as e:
+            raise ValueError("Session not found") from e
 
     @staticmethod
     async def list_messages(user_id: str, session_id: str) -> list[dict]:
