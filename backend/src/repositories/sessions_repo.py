@@ -144,6 +144,44 @@ class SessionRepository:
         await SessionRepository.touch_session(user_id, session_id)
         
         return message
+
+    @staticmethod
+    async def upsert_message(
+        user_id: str, session_id: str, message_id: str, data: dict
+    ) -> dict:
+        """Create or update a message using a known message id.
+
+        This is used for AG-UI assistant turns, where the streamed
+        TEXT_MESSAGE_START/TEXT_MESSAGE_END pair already carries the final
+        message id and the backend needs to persist the completed event buffer
+        against that document.
+        """
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_SESSIONS)
+            .document(session_id)
+            .collection(settings.COLLECTION_MESSAGES)
+            .document(message_id)
+        )
+
+        existing_doc = await doc_ref.get()
+        existing = existing_doc.to_dict() if existing_doc.exists else {}
+        now = datetime.now(timezone.utc)
+
+        message = {
+            "id": message_id,
+            "role": data.get("role", existing.get("role", "assistant")),
+            "content": data.get("content", existing.get("content", "")),
+            "ag_ui_events": data.get("ag_ui_events") or existing.get("ag_ui_events") or [],
+            "created_at": existing.get("created_at") or data.get("created_at") or now,
+        }
+
+        await doc_ref.set(message, merge=True)
+        await SessionRepository.touch_session(user_id, session_id)
+        return message
     
     @staticmethod
     async def list_messages(user_id: str, session_id: str) -> list[dict]:
@@ -183,7 +221,7 @@ class SessionRepository:
     async def append_ag_ui_events(
         user_id: str, session_id: str, message_id: str, events: list[dict]
     ) -> None:
-        """Append AG-UI event payloads to a message's ag_ui_events list."""
+        """Persist AG-UI event payloads on a message document."""
         db = get_db()
         settings = get_settings()
         doc_ref = (
@@ -194,4 +232,4 @@ class SessionRepository:
             .collection(settings.COLLECTION_MESSAGES)
             .document(message_id)
         )
-        await doc_ref.update({"ag_ui_events": firestore.ArrayUnion(events)})
+        await doc_ref.set({"ag_ui_events": events}, merge=True)
