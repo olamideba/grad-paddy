@@ -1,0 +1,9 @@
+# Graduate program URLs to scrape
+# One URL per line. Lines starting with # are ignored.
+# These are example URLs — replace with the actual grad program pages you want to scrape.
+
+# MIT
+https://oge.mit.edu/programs/
+
+
+

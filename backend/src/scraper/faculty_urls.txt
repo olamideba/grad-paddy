@@ -1,0 +1,5 @@
+# Faculty directory pages
+# Spider scrapes each faculty card and follows profile links
+
+# MIT EECS
+https://www.eecs.mit.edu/role/faculty/
