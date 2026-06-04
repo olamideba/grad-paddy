@@ -1,44 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useRef, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
-import { useChatSessions } from "@/context/ChatSessionsContext";
 import { useAuth } from "@/context/AuthContext";
 import Logo from "@/components/Logo";
-import type { Session } from "@/lib/api";
-
-const DAY_MS = 86_400_000;
-
-// Bucket sessions into timeline groups (newest first) by last activity.
-function groupSessionsByTime(sessions: Session[]): { label: string; items: Session[] }[] {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const order: string[] = [];
-  const buckets = new Map<string, Session[]>();
-  const push = (label: string, s: Session) => {
-    if (!buckets.has(label)) {
-      buckets.set(label, []);
-      order.push(label);
-    }
-    buckets.get(label)!.push(s);
-  };
-
-  const sorted = [...sessions].sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  );
-  for (const s of sorted) {
-    const t = new Date(s.updated_at).getTime();
-    if (t >= startOfToday) push("Today", s);
-    else if (t >= startOfToday - DAY_MS) push("Yesterday", s);
-    else if (t >= startOfToday - 7 * DAY_MS) push("Previous 7 Days", s);
-    else if (t >= startOfToday - 30 * DAY_MS) push("Previous 30 Days", s);
-    else push(new Date(t).toLocaleString(undefined, { month: "long", year: "numeric" }), s);
-  }
-  return order.map((label) => ({ label, items: buckets.get(label)! }));
-}
+import ChatHistory from "@/components/ChatHistory";
 
 const MIN_WIDTH = 72;
 const MAX_WIDTH = 340;
@@ -75,25 +44,6 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { sessions, setSessions, activeSessionId, setActiveSessionId, sessionsLoading } =
-    useChatSessions();
-
-  async function deleteSession(e: React.MouseEvent, id: string) {
-    e.stopPropagation();
-    if (!window.confirm("Delete this chat? This cannot be undone.")) return;
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    if (activeSessionId === id) {
-      setActiveSessionId(null);
-      router.push("/chat");
-    }
-    try {
-      const { sessionsApi } = await import("@/lib/api");
-      await sessionsApi.delete(id);
-    } catch {
-      // Best-effort; list already updated optimistically.
-    }
-  }
   const { user } = useAuth();
   const displayName = user?.displayName ?? user?.email ?? "User";
   const avatarLetter = displayName.charAt(0).toUpperCase();
@@ -271,114 +221,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Chat history */}
-      {!collapsed && (
-        <div
-          className="flex-shrink-0 flex flex-col"
-          style={{ borderTop: "2px solid #0D0D0D", maxHeight: "40vh" }}
-        >
-          <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
-            <span
-              className="text-[10px] font-semibold uppercase tracking-widest font-space"
-              style={{ color: "#9CA3AF" }}
-            >
-              Chats
-            </span>
-            <button
-              onClick={() => {
-                setActiveSessionId(null);
-                router.push("/chat");
-              }}
-              className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
-              style={{ color: "#9CA3AF", borderRadius: "4px", border: "1.5px solid transparent" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#EDE6D3";
-                e.currentTarget.style.color = "#0D0D0D";
-                e.currentTarget.style.border = "1.5px solid #0D0D0D";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "";
-                e.currentTarget.style.color = "#9CA3AF";
-                e.currentTarget.style.border = "1.5px solid transparent";
-              }}
-            >
-              <Icon icon="solar:add-circle-bold" width={11} />
-              New Chat
-            </button>
-          </div>
-          <div className="overflow-y-auto">
-            {sessionsLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <div
-                  className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
-                  style={{ borderColor: "#E8472A", borderTopColor: "transparent" }}
-                />
-              </div>
-            ) : sessions.length === 0 ? (
-              <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
-                No chats yet
-              </p>
-            ) : (
-              groupSessionsByTime(sessions).map((group) => (
-                <div key={group.label}>
-                  <div className="px-4 pt-2 pb-1">
-                    <span
-                      className="text-[10px] font-semibold uppercase tracking-widest font-space"
-                      style={{ color: "#B0A898" }}
-                    >
-                      {group.label}
-                    </span>
-                  </div>
-                  {group.items.map((s) => (
-                    <div
-                      key={s.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        setActiveSessionId(s.id);
-                        router.push("/chat");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          setActiveSessionId(s.id);
-                          router.push("/chat");
-                        }
-                      }}
-                      className="group flex items-center gap-2 px-4 py-1.5 bouncy w-full text-left cursor-pointer"
-                      style={{
-                        borderLeft: `3px solid ${activeSessionId === s.id ? "#E8472A" : "transparent"}`,
-                        background: activeSessionId === s.id ? "#EDE6D3" : "transparent",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (activeSessionId !== s.id) e.currentTarget.style.background = "#F7F0E3";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (activeSessionId !== s.id) e.currentTarget.style.background = "";
-                      }}
-                    >
-                      <span
-                        className="flex-1 min-w-0 text-[12px] font-dm truncate"
-                        style={{ color: activeSessionId === s.id ? "#0D0D0D" : "#5A5A5A" }}
-                      >
-                        {s.title}
-                      </span>
-                      <button
-                        onClick={(e) => deleteSession(e, s.id)}
-                        title="Delete chat"
-                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 bouncy"
-                        style={{ color: "#B0A898", borderRadius: "4px" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = "#E8472A")}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
-                      >
-                        <Icon icon="solar:trash-bin-trash-bold" width={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {!collapsed && <ChatHistory />}
 
       {/* Footer */}
       <div
