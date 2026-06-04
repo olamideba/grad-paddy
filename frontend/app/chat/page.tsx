@@ -115,12 +115,10 @@ function StreamingText({
   const [shown, setShown] = useState(0);
 
   // Typewriter: reveal chars at a steady pace. When not streaming (restored or
-  // finished), show everything immediately.
+  // finished), `visible` falls back to the full content, so no state update is
+  // needed here.
   useEffect(() => {
-    if (!isStreaming) {
-      setShown(content.length);
-      return;
-    }
+    if (!isStreaming) return;
     const id = setInterval(() => {
       setShown((n) => {
         if (n >= content.length) return n;
@@ -569,6 +567,44 @@ const blobRadius = () =>
   `${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}% / ` +
   `${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}%`;
 
+// Monotonic id source. Kept at module scope so the impure increment never runs
+// during a component render (satisfies react-hooks/purity).
+let _effectId = 0;
+const nextId = () => ++_effectId;
+
+// Build the glass bubbles for a burst. Module-scoped because it relies on
+// Math.random; viewport coords let a body-level portal render them un-clipped.
+function createBubbles(rect: DOMRect): GlassBubble[] {
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const n = 6 + Math.floor(Math.random() * 3);
+  const out: GlassBubble[] = [];
+  for (let i = 0; i < n; i++) {
+    const pt = edgePoint(rect.width, rect.height);
+    const px = rect.left + pt.x;
+    const py = rect.top + pt.y;
+    const ang = Math.atan2(py - cy, px - cx);
+    const c = Math.cos(ang);
+    const s = Math.sin(ang);
+    // Distance along direction until we hit a window edge.
+    const tx = c > 0 ? (vw - px) / c : c < 0 ? -px / c : Infinity;
+    const ty = s > 0 ? (vh - py) / s : s < 0 ? -py / s : Infinity;
+    const dist = Math.max(0, Math.min(tx, ty)) * rand(0.7, 1);
+    out.push({
+      id: nextId(),
+      x: px,
+      y: py,
+      size: rand(8, 20),
+      dx: c * dist,
+      dy: s * dist,
+      radius: blobRadius(),
+    });
+  }
+  return out;
+}
+
 function MessageBubble({
   item,
   streamingMessageId,
@@ -587,46 +623,16 @@ function MessageBubble({
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     const size = Math.max(r.width, r.height);
-    const id = Date.now() + Math.random();
-    setRipples((p) => [...p, { id, x, y, size }]);
+    setRipples((p) => [...p, { id: nextId(), x, y, size }]);
   }
 
   // Ripple reached the edge → release polymorphic glass bubbles that escape the
-  // box and float outward across the window to its edges. Positions are in
-  // viewport coords so a body-level portal can render them un-clipped.
+  // box and float outward across the window to its edges.
   function burstBubbles(rippleId: number) {
     setRipples((p) => p.filter((r) => r.id !== rippleId));
     const el = boxRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const n = 6 + Math.floor(Math.random() * 3);
-    const next: GlassBubble[] = [];
-    for (let i = 0; i < n; i++) {
-      const pt = edgePoint(rect.width, rect.height);
-      const px = rect.left + pt.x;
-      const py = rect.top + pt.y;
-      const ang = Math.atan2(py - cy, px - cx);
-      const c = Math.cos(ang);
-      const s = Math.sin(ang);
-      // Distance along direction until we hit a window edge.
-      const tx = c > 0 ? (vw - px) / c : c < 0 ? -px / c : Infinity;
-      const ty = s > 0 ? (vh - py) / s : s < 0 ? -py / s : Infinity;
-      const dist = Math.max(0, Math.min(tx, ty)) * rand(0.7, 1);
-      next.push({
-        id: Date.now() + Math.random() + i,
-        x: px,
-        y: py,
-        size: rand(8, 20),
-        dx: c * dist,
-        dy: s * dist,
-        radius: blobRadius(),
-      });
-    }
-    setBubbles((p) => [...p, ...next]);
+    setBubbles((p) => [...p, ...createBubbles(el.getBoundingClientRect())]);
   }
 
   const rippleColor = isUser ? "rgba(255,255,255,0.4)" : "rgba(13,13,13,0.12)";
