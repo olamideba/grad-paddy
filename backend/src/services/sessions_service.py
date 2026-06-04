@@ -1,5 +1,8 @@
 from google.api_core.exceptions import NotFound
 from src.repositories.sessions_repo import SessionRepository
+from src.repositories.groups_repo import GroupRepository
+
+MAX_TITLE_LEN = 200
 
 
 class SessionService:
@@ -38,6 +41,43 @@ class SessionService:
     async def delete_session(user_id: str, session_id: str) -> None:
         """Deletes session + all child messages."""
         await SessionRepository.delete_session(user_id, session_id)
+
+    @staticmethod
+    async def rename_session(user_id: str, session_id: str, title: str) -> dict:
+        """Set a custom title on a session."""
+        clean = title.strip()[:MAX_TITLE_LEN]
+        if not clean:
+            raise ValueError("Title cannot be empty")
+        try:
+            return await SessionRepository.update_session(user_id, session_id, {"title": clean})
+        except NotFound as e:
+            raise ValueError("Session not found") from e
+
+    @staticmethod
+    async def toggle_star(user_id: str, session_id: str) -> dict:
+        """Flip the starred flag on a session."""
+        session = await SessionRepository.get_session(user_id, session_id)
+        if session is None:
+            raise ValueError("Session not found")
+        new_value = not session.get("starred", False)
+        return await SessionRepository.update_session(
+            user_id, session_id, {"starred": new_value}
+        )
+
+    @staticmethod
+    async def set_group(user_id: str, session_id: str, group_id: str | None) -> dict:
+        """Assign a session to a group, or clear it when group_id is falsy."""
+        normalized = group_id or None
+        if normalized is not None:
+            group = await GroupRepository.get_group(user_id, normalized)
+            if group is None:
+                raise ValueError("Group not found")
+        try:
+            return await SessionRepository.update_session(
+                user_id, session_id, {"group_id": normalized}
+            )
+        except NotFound as e:
+            raise ValueError("Session not found") from e
 
     @staticmethod
     async def create_message(user_id: str, session_id: str, role: str, content: str) -> dict:

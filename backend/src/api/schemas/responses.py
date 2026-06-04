@@ -39,8 +39,16 @@ class PreferencesResponse(BaseModel):
 class SessionResponse(BaseModel):
     id: str
     title: str
+    starred: bool = False
+    group_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class GroupResponse(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
 
 
 class MessageResponse(BaseModel):

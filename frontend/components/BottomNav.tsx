@@ -6,10 +6,11 @@ import { Icon } from "@iconify/react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
-  { href: "/chat",      label: "Chat",      icon: "solar:chat-round-bold" },
+  { href: "/chat", label: "Chat", icon: "solar:chat-round-bold" },
   { href: "/shortlist", label: "Shortlist", icon: "solar:star-bold" },
-  { href: "/tracker",   label: "Tracker",   icon: "solar:calendar-bold" },
-  { href: "/drafts",    label: "Drafts",    icon: "solar:document-text-bold" },
+  { href: "/tracker", label: "Tracker", icon: "solar:calendar-bold" },
+  { href: "/drafts", label: "Drafts", icon: "solar:document-text-bold" },
+  { href: "/settings", label: "Settings", icon: "solar:settings-bold" },
 ];
 
 export default function BottomNav() {
@@ -27,7 +28,7 @@ export default function BottomNav() {
             key={href}
             href={href}
             className={clsx(
-              "relative flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-semibold font-space tracking-wide bouncy",
+              "relative flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-semibold font-space tracking-wide bouncy"
             )}
             style={{ color: active ? "#E8472A" : "#9CA3AF" }}
           >

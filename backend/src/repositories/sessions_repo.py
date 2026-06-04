@@ -78,6 +78,25 @@ class SessionRepository:
         await doc_ref.update({"title": title, "updated_at": datetime.now(timezone.utc)})
     
     @staticmethod
+    async def update_session(user_id: str, session_id: str, fields: dict) -> dict:
+        """Partial-update a session with the given fields and return the updated doc.
+
+        Deliberately does NOT touch updated_at — metadata edits (rename / star /
+        group) must not reorder the chat history. Raises NotFound if missing.
+        """
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_SESSIONS)
+            .document(session_id)
+        )
+        await doc_ref.update(fields)
+        updated = await doc_ref.get()
+        return updated.to_dict()
+
+    @staticmethod
     async def touch_session(user_id: str, session_id: str) -> None:
         """Update updated_at to now. Called on every new message."""
         db = get_db()
