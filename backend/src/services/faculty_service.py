@@ -5,7 +5,7 @@ import asyncio
 import json
 
 from src.services.users_service import UserService
-from src.config import Settings, get_settings
+from src.core.config import Settings, get_settings
 from src.repositories.elastic_repo import get_es
 from google import genai
 from google.genai import types
@@ -30,20 +30,23 @@ class FacultyService:
 
 
     @staticmethod
-    async def embed(texts: list[str]) -> list[list[float]]:
-        client = FacultyService._get_genai_client()
-        response = await client.aio.models.embed_content(
-            model="text-embedding-004",
-            contents=texts,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_QUERY", 
-            ),
-        )
-        return [
-            e.values
-            for e in (response.embeddings or [])
-            if e.values is not None
-        ]
+    async def embed(text: str) -> list[float]:
+        """Embed a query string using Gemini text-embedding-004."""
+        def _run():
+            import vertexai
+            from vertexai.language_models import TextEmbeddingModel
+
+            vertexai.init(
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GOOGLE_CLOUD_LOCATION
+            )
+            model    = TextEmbeddingModel.from_pretrained(
+                settings.EMBEDDING_MODEL
+            )
+            response = model.get_embeddings([text])
+            return response[0].values
+
+        return await asyncio.to_thread(_run)
     
     @staticmethod
     async def search_faculty_profiles(query: list[str], user_id: str, min_fit_score: int = 0, top_k: int = 5,) -> dict:
@@ -64,8 +67,11 @@ class FacultyService:
         """
         try:
             # Load student preferences from Firestore
-            profile      = await UserService.get_profile(user_id)
-            universities = profile.get("universities_of_interest", [])
+            profile = await UserService.get_profile(user_id)
+            prefs = await UserService.get_preferences(user_id) or {}
+            profile = {**profile, **prefs}
+            universities = profile.get("target_universities", [])
+            print(f"DEBUG universities filter: {universities}")
 
             # Embed the search query
             vector = await FacultyService.embed(query)
@@ -117,6 +123,10 @@ class FacultyService:
     @staticmethod
     async def fetch_google_scholar(faculty_name: str, limit: int) -> list:
         """Fetch papers from Google Scholar via scholarly library."""
+        from scholarly import scholarly, ProxyGenerator
+        pg = ProxyGenerator()
+        pg.FreeProxies()   # or pg.ScraperAPI("your_key") for reliability
+        scholarly.use_proxy(pg)
         def _run():
             results = []
             try:
@@ -141,30 +151,41 @@ class FacultyService:
                         continue
             except Exception as e:
                 logger.warning(f"scholarly error for {faculty_name}: {e}")
+                print(f"DEBUG scholarly error: {e}")
             return results[:limit]
 
         return await asyncio.to_thread(_run)
 
     @staticmethod
+    async def fetch_semantic_scholar(faculty_name: str, limit: int) -> list:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.semanticscholar.org/graph/v1/author/search",
+                params={"query": faculty_name, "fields": "name,papers.title,papers.year,papers.abstract,papers.citationCount,papers.externalIds"},
+                timeout=10,
+            )
+            data = resp.json()
+            authors = data.get("data", [])
+            if not authors:
+                return []
+            papers = authors[0].get("papers", [])[:limit]
+            return [{
+                "title":     p.get("title", ""),
+                "year":      p.get("year"),
+                "citations": p.get("citationCount", 0),
+                "abstract":  (p.get("abstract") or "")[:600],
+                "url":       f"https://www.semanticscholar.org/paper/{p.get('paperId','')}",
+                "source":    "semantic_scholar",
+            } for p in papers]
+
+    @staticmethod
     async def get_faculty_papers(faculty_name: str, limit: int = 5) -> dict:
-        """
-        Retrieve recent publications for a faculty member.
+        # Semantic Scholar
+        papers = await FacultyService.fetch_semantic_scholar(faculty_name, limit)
 
-        Args:
-            faculty_name: Full name. e.g. "Dina Katabi"
-            limit: Number of papers to return (default 5).
-
-        Returns:
-            Dict with 'name', 'count', 'papers' list.
-            Each paper has: title, year, citations, abstract, url, source.
-        """
-        # Try Google Scholar first — better coverage
-        papers = await FacultyService.fetch_google_scholar(faculty_name, limit)
-
-        # Fall back to Semantic Scholar if blocked or empty
         if not papers:
             logger.info(f"No papers for {faculty_name}")
-
         return {
             "name":   faculty_name,
             "count":  len(papers),
@@ -188,11 +209,12 @@ class FacultyService:
             Dict with fit_score (0-100), fit_reasoning, conversation_angles.
         """
         try:
-        
             # Load student profile from Firestore
             student = await UserService.get_profile(user_id)
             if not student:
-                return {"error": "Student profile not found", "fit_score": 0}
+                return {"error": "Student profile not found", "fit_score": 0, "conversation_angles": []}
+            prefs = await UserService.get_preferences(user_id) or {}
+            student = {**student, **prefs}
 
             vertexai.init(
                 project=settings.GOOGLE_CLOUD_PROJECT,
@@ -265,7 +287,8 @@ class FacultyService:
             student = await UserService.get_profile(user_id)
             if not student:
                 return {"error": "Student profile not found", "angles": []}
-
+            prefs = await UserService.get_preferences(user_id) or {}
+            student = {**student, **prefs}
             vertexai.init(
                 project=settings.GOOGLE_CLOUD_PROJECT,
                 location=settings.GOOGLE_CLOUD_LOCATION,
@@ -312,3 +335,10 @@ class FacultyService:
         except Exception as e:
             logger.error(f"get_conversation_angles failed for {faculty_name}: {e}")
             return {"error": str(e), "angles": []}
+
+
+# Module-level aliases so ADK can use them as plain callables
+search_faculty_profiles  = FacultyService.search_faculty_profiles
+get_faculty_papers       = FacultyService.get_faculty_papers
+score_faculty_fit        = FacultyService.score_faculty_fit
+get_conversation_angles  = FacultyService.get_conversation_angles

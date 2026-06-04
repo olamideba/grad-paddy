@@ -29,8 +29,6 @@ from urllib.parse import urljoin, urlparse
 
 import scrapy
 from scrapy_playwright.page import PageMethod
-import vertexai
-from vertexai.generative_models import GenerativeModel
 
 from grad_scraper.items.grad_program import GradProgramItem
 from grad_scraper.items.faculty_profile import FacultyProfileItem
@@ -86,6 +84,8 @@ class GradProgramSpider(scrapy.Spider):
         )
 
     async def _gemini_extract(self, response):
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
         # Clean page text — strip HTML, collapse whitespace, cap length
         raw = response.css(
             "main *::text, article *::text, .content *::text, body *::text"
@@ -163,23 +163,27 @@ class GradProgramSpider(scrapy.Spider):
                 yield self._make_request(
                     url,
                     callback=self.parse_entry_point,
-                    meta_extra={"is_faculty_directory": True}  # force faculty routing
+                    meta_extra={"is_faculty_directory": True},  # force faculty routing
+                    use_playwright=False
                 )
         else:
             logger.warning(f"Faculty URLs file not found: {self.faculty_urls_file}")
 
-    def _make_request(self, url, callback, meta_extra=None):
-        meta = {
-            "playwright": True,
-            "playwright_include_page": True,
-            "playwright_page_methods": [
-                PageMethod("route", "**/*google-analytics*", lambda route, _: route.abort()),
-                PageMethod("route", "**/*gtag*", lambda route, _: route.abort()),
-                PageMethod("wait_for_load_state", "domcontentloaded"),  # not networkidle
-                PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                PageMethod("wait_for_timeout", 1500),
+    def _make_request(self, url, callback, meta_extra=None, use_playwright=False):
+        if use_playwright:
+            meta = {
+                "playwright": True,
+                "playwright_include_page": True,
+                "playwright_page_methods": [
+                    PageMethod("route", "**/*google-analytics*", lambda route, _: route.abort()),
+                    PageMethod("route", "**/*gtag*", lambda route, _: route.abort()),
+                    PageMethod("wait_for_load_state", "domcontentloaded"),  # not networkidle
+                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
+                    PageMethod("wait_for_timeout", 1500),
                 ],
-        }
+            }
+        else:
+            meta = {}
         if meta_extra:
             meta.update(meta_extra)
         return scrapy.Request(url, callback=callback, meta=meta, errback=self.handle_error)
@@ -404,36 +408,6 @@ class GradProgramSpider(scrapy.Spider):
                 await page.close()
 
     # ── Faculty page parser ───────────────────────────────────────────────────
-
-#     async def parse_faculty_page(self, response):
-#         page   = response.meta.get("playwright_page")
-#         parent = response.meta.get("parent_item", {})
-#         try:
-#             faculty_detail = {
-#                 "name": (self._extract_text(response, ["h1", ".faculty-name"])
-#                 or parent.get("prefill_name", "")),
-#                 "title": (self._extract_text(response, [".title", ".position"])
-#                 or parent.get("prefill_title", "")),
-#                 "bio": self._extract_paragraphs(response, max_chars=2000),
-#                 "research_areas": (parent.get("prefill_research_areas", "")
-#                   or ", ".join(self._extract_list_items(
-#                       response, keywords=["research", "interest"]))),
-#                 "url": response.url,
-#                 "email": (parent.get("prefill_email", "")
-#                 or response.css("a[href^='mailto']::attr(href)").get("").replace("mailto:", "")
-# )
-#             }
-#             item = FacultyProfileItem()
-#             item["source_url"] = parent.get("source_url", response.url)
-#             item["university"] = parent.get("university", self._infer_university(response.url))
-#             item["program"]    = parent.get("program", "")
-#             item["scraped_at"] = datetime.now(timezone.utc).isoformat()
-#             print(f"DEBUG: about to yield FacultyProfileItem for {item['name']}")
-#             yield item
-#             print(f"DEBUG: yield completed for {item['name']}")
-#         finally:
-#             if page:
-#                 await page.close()
     async def parse_faculty_page(self, response):
         page   = response.meta.get("playwright_page")
         parent = response.meta.get("parent_item", {})

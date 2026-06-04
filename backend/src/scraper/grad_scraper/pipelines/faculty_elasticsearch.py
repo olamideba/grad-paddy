@@ -96,13 +96,11 @@ class FacultyElasticsearchPipeline:
             raise RuntimeError("ES_URL and ES_API_KEY required in .env")
 
         self.es = Elasticsearch(es_url, api_key=api_key)
+        self.embed_fn = None  # ← lazy
+        self.dims     = None  # ← lazy
 
-        # Reuse the same ONNX embedding function
-        from grad_scraper.pipelines.elasticsearch import _get_embedding_fn
-        self.embed_fn, self.dims = _get_embedding_fn()
-
-        self._ensure_index()
         logger.info(f"FacultyElasticsearchPipeline ready → index '{self.index}'")
+
 
     def close_spider(self, spider):
         if self.es:
@@ -125,6 +123,10 @@ class FacultyElasticsearchPipeline:
             return item
 
         adapter = ItemAdapter(item)
+        if self.embed_fn is None:
+            from grad_scraper.pipelines.elasticsearch import _get_embedding_fn
+            self.embed_fn, self.dims = _get_embedding_fn()
+            self._ensure_index()
 
         # Build embedding text from the most meaningful fields
         embed_text = " ".join(filter(None, [

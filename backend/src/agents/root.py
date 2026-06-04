@@ -2,7 +2,12 @@ from google.adk.agents import LlmAgent
 from google.adk.tools import agent_tool
 from google.adk.tools.google_search_tool import GoogleSearchTool
 from google.adk.tools import url_context
-from src.services.faculty_service import FacultyService
+from src.services.faculty_service import (
+    search_faculty_profiles,
+    get_faculty_papers,
+    score_faculty_fit,
+    get_conversation_angles,
+)
 
 planner_google_search_agent = LlmAgent(
     name="planner_google_search_agent",
@@ -94,10 +99,10 @@ faculty_researcher = LlmAgent(
     Always reference actual paper titles and research themes.
     Never generate generic talking points.""",
     tools=[
-        FacultyService.search_faculty_profiles,
-        FacultyService.get_faculty_papers,
-        FacultyService.score_faculty_fit,
-        FacultyService.get_conversation_angles,
+        search_faculty_profiles,
+        get_faculty_papers,
+        score_faculty_fit,
+        get_conversation_angles,
     ],
 )
 root_agent = LlmAgent(

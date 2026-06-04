@@ -27,39 +27,19 @@ def get_es():
     return Elasticsearch(es_url, api_key=api_key)
 
 
-def embed_query(text):
-    backend = os.getenv("EMBEDDING_BACKEND", "local").lower()
-    if backend == "openai":
-        import openai
-        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        resp = client.embeddings.create(model="text-embedding-3-small", input=[text])
-        return resp.data[0].embedding
-    else:
-        import numpy as np
-        import onnxruntime as ort
-        from tokenizers import Tokenizer
+def embed_query(text: str) -> list[float]:
+    import vertexai
+    from vertexai.language_models import TextEmbeddingModel
 
-        model_path     = os.getenv("ONNX_MODEL_PATH", "models/model.onnx")
-        tokenizer_path = os.getenv("ONNX_TOKENIZER_PATH", os.path.dirname(model_path))
-
-        session   = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
-        tokenizer = Tokenizer.from_file(os.path.join(tokenizer_path, "tokenizer.json"))
-        tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=128)
-        tokenizer.enable_truncation(max_length=128)
-
-        encoded        = tokenizer.encode_batch([text])
-        input_ids      = np.array([e.ids            for e in encoded], dtype=np.int64)
-        attention_mask = np.array([e.attention_mask for e in encoded], dtype=np.int64)
-        token_type_ids = np.array([e.type_ids       for e in encoded], dtype=np.int64)
-
-        outputs = session.run(None, {
-            "input_ids": input_ids, "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
-        })
-        mask   = attention_mask[:, :, np.newaxis].astype(np.float32)
-        pooled = (outputs[0] * mask).sum(axis=1) / mask.sum(axis=1).clip(min=1e-9)
-        norm   = pooled / np.linalg.norm(pooled, axis=1, keepdims=True).clip(min=1e-9)
-        return norm[0].tolist()
+    vertexai.init(
+        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+        location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+    )
+    model    = TextEmbeddingModel.from_pretrained(
+        os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    )
+    response = model.get_embeddings([text])
+    return response[0].values
 
 
 def semantic_search(es, index, query_text, top_k=5):

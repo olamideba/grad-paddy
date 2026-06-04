@@ -39,49 +39,35 @@ def _get_splitter():
 
 
 def _get_embedding_fn():
-    backend = os.getenv("EMBEDDING_BACKEND", "local").lower()
+    """
+    Returns (embed_fn, dims) using Gemini text-embedding-004 via google-genai SDK.
+    """
+    from google import genai
+    from google.genai import types
 
-    if backend == "openai":
-        import openai
-        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        def embed(texts):
-            resp = client.embeddings.create(model="text-embedding-3-small", input=texts)
-            return [d.embedding for d in resp.data]
-        return embed, 1536
+    client = genai.Client(
+        vertexai=True,
+        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+        location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+    )
+    model = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    dims  = 768
 
-    else:
-        import onnxruntime as ort
-        from tokenizers import Tokenizer
+    def embed(texts: list[str]) -> list[list[float]]:
+        all_embeddings = []
+        batch_size     = 20
+        for i in range(0, len(texts), batch_size):
+            batch    = texts[i:i + batch_size]
+            response = client.models.embed_content(
+                model=model,
+                contents=batch,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            )
+            all_embeddings.extend([e.values for e in response.embeddings])
+        return all_embeddings
 
-        model_path     = os.getenv("ONNX_MODEL_PATH", "models/model.onnx")
-        tokenizer_path = os.getenv("ONNX_TOKENIZER_PATH", os.path.dirname(model_path))
-
-        session   = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
-        tokenizer = Tokenizer.from_file(os.path.join(tokenizer_path, "tokenizer.json"))
-        tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=128)
-        tokenizer.enable_truncation(max_length=128)
-
-        def _mean_pool(token_embeddings, attention_mask):
-            mask   = attention_mask[:, :, np.newaxis].astype(np.float32)
-            summed = (token_embeddings * mask).sum(axis=1)
-            return summed / mask.sum(axis=1).clip(min=1e-9)
-
-        def _normalize(vecs):
-            return vecs / np.linalg.norm(vecs, axis=1, keepdims=True).clip(min=1e-9)
-
-        def embed(texts):
-            encoded        = tokenizer.encode_batch(texts)
-            input_ids      = np.array([e.ids            for e in encoded], dtype=np.int64)
-            attention_mask = np.array([e.attention_mask for e in encoded], dtype=np.int64)
-            token_type_ids = np.array([e.type_ids       for e in encoded], dtype=np.int64)
-            outputs        = session.run(None, {
-                "input_ids": input_ids, "attention_mask": attention_mask,
-                "token_type_ids": token_type_ids,
-            })
-            return _normalize(_mean_pool(outputs[0], attention_mask)).tolist()
-
-        logger.info(f"ONNX MiniLM loaded from {model_path}")
-        return embed, 384
+    logger.info(f"Gemini embedding model loaded: {model} ({dims} dims)")
+    return embed, dims
 
 
 # ── Index mapping ─────────────────────────────────────────────────────────────
@@ -155,20 +141,22 @@ class ElasticsearchPipeline:
 
     def open_spider(self, spider):
         from elasticsearch import Elasticsearch
+        print("DEBUG: open_spider start")
 
-        # Serverless requires an API key — basic auth is not supported
-        es_url   = os.getenv("ES_URL")          # full URL e.g. https://<deployment>.es.us-east-1.aws.elastic.cloud
-        api_key  = os.getenv("ES_API_KEY")      # from Kibana → Stack Management → API Keys
+        es_url   = os.getenv("ES_URL")         
+        api_key  = os.getenv("ES_API_KEY")     
 
         if not es_url or not api_key:
             raise RuntimeError(
                 "Serverless Elasticsearch requires ES_URL and ES_API_KEY in .env"
             )
-
-        self.es = Elasticsearch(
-            es_url,
-            api_key=api_key,
-        )
+        print("DEBUG: creating ES client")
+        
+        self.es = Elasticsearch(es_url, api_key=api_key)
+        self.splitter = _get_splitter()
+        self.embed_fn = None  # ← lazy
+        self.dims     = None  # ← lazy
+        print("DEBUG: calling es.info()")
 
         # Serverless: es.info() succeeds but returns no 'version' dict
         try:
@@ -177,14 +165,13 @@ class ElasticsearchPipeline:
         except Exception as e:
             logger.error(f"Cannot connect to Elasticsearch: {e}")
             raise
+        print("DEBUG: open_spider done")
 
-        self.splitter          = _get_splitter()
-        self.embed_fn, self.dims = _get_embedding_fn()
-        self._ensure_index()
 
     def close_spider(self, spider):
         if self.es:
             self.es.close()
+
 
     def _ensure_index(self):
         # Serverless does not support es.indices.exists() — use get_mapping instead
@@ -197,6 +184,9 @@ class ElasticsearchPipeline:
 
     def process_item(self, item, spider):
         adapter = ItemAdapter(item)
+        if self.embed_fn is None:
+            self.embed_fn, self.dims = _get_embedding_fn()
+            self._ensure_index()
 
         base_doc = {
             "university":     adapter.get("university", ""),
