@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     COLLECTION_SHORTLIST: str = Field(default="shortlist")
     COLLECTION_TRACKER: str = Field(default="tracker")
     COLLECTION_DRAFTS: str = Field(default="drafts")
+    COLLECTION_GROUPS: str = Field(default="groups")
 
     # Named document keys (single documents, not collections)
     DOC_PROFILE: str = Field(default="profile")

@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, Request, Body, HTTPException
 from src.core.firebase import verify_firebase_auth
 from src.services.sessions_service import SessionService
-from src.api.schemas.requests import SessionCreateRequest, MessageCreateRequest
+from src.api.schemas.requests import (
+    SessionCreateRequest,
+    MessageCreateRequest,
+    SessionRenameRequest,
+    SessionGroupRequest,
+)
 from src.api.schemas.responses import (
     StandardResponse,
     SessionResponse,
@@ -41,6 +46,37 @@ async def delete_session(request: Request, session_id: str) -> dict:
     user_id = request.state.user_id
     await SessionService.delete_session(user_id, session_id)
     return {"success": True, "data": {"status": "success"}, "message": "Session deleted successfully"}
+
+
+@router.patch("/{session_id}/rename", response_model=StandardResponse[SessionResponse])
+async def rename_session(request: Request, session_id: str, body: SessionRenameRequest) -> dict:
+    user_id = request.state.user_id
+    try:
+        session = await SessionService.rename_session(user_id, session_id, body.title)
+        return {"success": True, "data": session, "message": "Session renamed"}
+    except ValueError as e:
+        status = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status, detail=str(e))
+
+
+@router.patch("/{session_id}/star", response_model=StandardResponse[SessionResponse])
+async def toggle_star(request: Request, session_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        session = await SessionService.toggle_star(user_id, session_id)
+        return {"success": True, "data": session, "message": "Session star toggled"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch("/{session_id}/group", response_model=StandardResponse[SessionResponse])
+async def set_group(request: Request, session_id: str, body: SessionGroupRequest) -> dict:
+    user_id = request.state.user_id
+    try:
+        session = await SessionService.set_group(user_id, session_id, body.group_id)
+        return {"success": True, "data": session, "message": "Session group updated"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{session_id}/messages", response_model=StandardResponse[list[MessageResponse]])

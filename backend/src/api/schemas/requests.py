@@ -37,6 +37,20 @@ class MessageCreateRequest(BaseModel):
     content: str
 
 
+class SessionRenameRequest(BaseModel):
+    title: str
+
+
+class SessionGroupRequest(BaseModel):
+    # None / empty removes the session from its group.
+    group_id: Optional[str] = None
+
+
+# Groups Requests
+class GroupCreateRequest(BaseModel):
+    name: str
+
+
 # HITL Requests
 class HITLResolveRequest(BaseModel):
     approved: bool

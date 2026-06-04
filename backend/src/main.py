@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts
+from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups
 from src.core.config import get_settings
 from src.core.firebase import initialize_firebase
 from src.api.schemas.responses import StandardResponse
@@ -39,6 +39,7 @@ app.include_router(hitl.router)
 app.include_router(shortlist.router)
 app.include_router(tracker.router)
 app.include_router(drafts.router)
+app.include_router(groups.router)
 
 
 app.add_middleware(
