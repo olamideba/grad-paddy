@@ -7,6 +7,38 @@ import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import { useChatSessions } from "@/context/ChatSessionsContext";
 import { useAuth } from "@/context/AuthContext";
+import Logo from "@/components/Logo";
+import type { Session } from "@/lib/api";
+
+const DAY_MS = 86_400_000;
+
+// Bucket sessions into timeline groups (newest first) by last activity.
+function groupSessionsByTime(sessions: Session[]): { label: string; items: Session[] }[] {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const order: string[] = [];
+  const buckets = new Map<string, Session[]>();
+  const push = (label: string, s: Session) => {
+    if (!buckets.has(label)) {
+      buckets.set(label, []);
+      order.push(label);
+    }
+    buckets.get(label)!.push(s);
+  };
+
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  );
+  for (const s of sorted) {
+    const t = new Date(s.updated_at).getTime();
+    if (t >= startOfToday) push("Today", s);
+    else if (t >= startOfToday - DAY_MS) push("Yesterday", s);
+    else if (t >= startOfToday - 7 * DAY_MS) push("Previous 7 Days", s);
+    else if (t >= startOfToday - 30 * DAY_MS) push("Previous 30 Days", s);
+    else push(new Date(t).toLocaleString(undefined, { month: "long", year: "numeric" }), s);
+  }
+  return order.map((label) => ({ label, items: buckets.get(label)! }));
+}
 
 const MIN_WIDTH = 72;
 const MAX_WIDTH = 340;
@@ -44,7 +76,24 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { sessions, activeSessionId, setActiveSessionId, sessionsLoading } = useChatSessions();
+  const { sessions, setSessions, activeSessionId, setActiveSessionId, sessionsLoading } =
+    useChatSessions();
+
+  async function deleteSession(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    if (!window.confirm("Delete this chat? This cannot be undone.")) return;
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (activeSessionId === id) {
+      setActiveSessionId(null);
+      router.push("/chat");
+    }
+    try {
+      const { sessionsApi } = await import("@/lib/api");
+      await sessionsApi.delete(id);
+    } catch {
+      // Best-effort; list already updated optimistically.
+    }
+  }
   const { user } = useAuth();
   const displayName = user?.displayName ?? user?.email ?? "User";
   const avatarLetter = displayName.charAt(0).toUpperCase();
@@ -110,22 +159,11 @@ export default function Sidebar() {
         className={`flex-shrink-0 flex ${collapsed ? "flex-row items-center justify-between px-2 py-2.5" : "flex-row items-center gap-3 p-4"}`}
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
-        <span className="flex-shrink-0 text-2xl leading-none select-none">🎓</span>
+        {collapsed && <Logo size="sm" iconOnly />}
         {!collapsed && (
           <>
             <div className="flex-1 min-w-0">
-              <div
-                className="font-space font-bold text-base leading-none tracking-tight"
-                style={{ color: "#FFFFFF" }}
-              >
-                Grad
-              </div>
-              <div
-                className="font-space font-bold text-base leading-none tracking-tight"
-                style={{ color: "#E8472A" }}
-              >
-                Paddy
-              </div>
+              <Logo />
             </div>
             <button
               onClick={toggleCollapse}
@@ -280,32 +318,62 @@ export default function Sidebar() {
                 No chats yet
               </p>
             ) : (
-              sessions.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    setActiveSessionId(s.id);
-                    router.push("/chat");
-                  }}
-                  className="group flex items-center gap-2 px-4 py-1.5 bouncy w-full text-left"
-                  style={{
-                    borderLeft: `3px solid ${activeSessionId === s.id ? "#E8472A" : "transparent"}`,
-                    background: activeSessionId === s.id ? "#EDE6D3" : "transparent",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeSessionId !== s.id) e.currentTarget.style.background = "#F7F0E3";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeSessionId !== s.id) e.currentTarget.style.background = "";
-                  }}
-                >
-                  <span
-                    className="flex-1 min-w-0 text-[12px] font-dm truncate"
-                    style={{ color: activeSessionId === s.id ? "#0D0D0D" : "#5A5A5A" }}
-                  >
-                    {s.title}
-                  </span>
-                </button>
+              groupSessionsByTime(sessions).map((group) => (
+                <div key={group.label}>
+                  <div className="px-4 pt-2 pb-1">
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-widest font-space"
+                      style={{ color: "#B0A898" }}
+                    >
+                      {group.label}
+                    </span>
+                  </div>
+                  {group.items.map((s) => (
+                    <div
+                      key={s.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setActiveSessionId(s.id);
+                        router.push("/chat");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          setActiveSessionId(s.id);
+                          router.push("/chat");
+                        }
+                      }}
+                      className="group flex items-center gap-2 px-4 py-1.5 bouncy w-full text-left cursor-pointer"
+                      style={{
+                        borderLeft: `3px solid ${activeSessionId === s.id ? "#E8472A" : "transparent"}`,
+                        background: activeSessionId === s.id ? "#EDE6D3" : "transparent",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (activeSessionId !== s.id) e.currentTarget.style.background = "#F7F0E3";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (activeSessionId !== s.id) e.currentTarget.style.background = "";
+                      }}
+                    >
+                      <span
+                        className="flex-1 min-w-0 text-[12px] font-dm truncate"
+                        style={{ color: activeSessionId === s.id ? "#0D0D0D" : "#5A5A5A" }}
+                      >
+                        {s.title}
+                      </span>
+                      <button
+                        onClick={(e) => deleteSession(e, s.id)}
+                        title="Delete chat"
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 bouncy"
+                        style={{ color: "#B0A898", borderRadius: "4px" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#E8472A")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+                      >
+                        <Icon icon="solar:trash-bin-trash-bold" width={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               ))
             )}
           </div>
