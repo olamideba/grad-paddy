@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
+import clsx from "clsx";
 import { useChatSessions } from "@/context/ChatSessionsContext";
 import type { Session, Group } from "@/lib/api";
 
@@ -43,8 +44,14 @@ type MenuState = { session: Session; x: number; y: number };
 
 export default function ChatHistory() {
   const router = useRouter();
-  const { sessions, setSessions, activeSessionId, setActiveSessionId, sessionsLoading } =
-    useChatSessions();
+  const {
+    sessions,
+    setSessions,
+    activeSessionId,
+    setActiveSessionId,
+    sessionsLoading,
+    setPendingGroupId,
+  } = useChatSessions();
 
   const [groups, setGroups] = useState<Group[]>([]);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -53,6 +60,16 @@ export default function ChatHistory() {
   const [addToGroupSession, setAddToGroupSession] = useState<Session | null>(null);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<Group | null>(null);
   const [deleteChatTarget, setDeleteChatTarget] = useState<Session | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(id: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     import("@/lib/api")
@@ -62,7 +79,20 @@ export default function ChatHistory() {
   }, []);
 
   function selectSession(id: string) {
+    setPendingGroupId(null);
     setActiveSessionId(id);
+    router.push("/chat");
+  }
+
+  function newChat(groupId: string | null) {
+    setPendingGroupId(groupId);
+    setActiveSessionId(null);
+    if (groupId)
+      setCollapsedGroups((prev) => {
+        const next = new Set(prev);
+        next.delete(groupId);
+        return next;
+      });
     router.push("/chat");
   }
 
@@ -186,11 +216,23 @@ export default function ChatHistory() {
     }
   }
 
+  const renderRow = (s: Session) => (
+    <Row
+      key={s.id}
+      session={s}
+      active={activeSessionId === s.id}
+      renaming={renamingId === s.id}
+      renameDraft={renameDraft}
+      setRenameDraft={setRenameDraft}
+      onCommitRename={() => commitRename(s)}
+      onCancelRename={() => setRenamingId(null)}
+      onSelect={() => selectSession(s.id)}
+      onMenu={(e) => openMenu(e, s)}
+    />
+  );
+
   return (
-    <div
-      className="flex-shrink-0 flex flex-col"
-      style={{ borderTop: "2px solid #0D0D0D", maxHeight: "44vh" }}
-    >
+    <div className="flex-1 min-h-0 flex flex-col" style={{ borderTop: "2px solid #0D0D0D" }}>
       <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
         <span
           className="text-[10px] font-semibold uppercase tracking-widest font-space"
@@ -199,10 +241,7 @@ export default function ChatHistory() {
           Chats
         </span>
         <button
-          onClick={() => {
-            setActiveSessionId(null);
-            router.push("/chat");
-          }}
+          onClick={() => newChat(null)}
           className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
           style={{ color: "#9CA3AF", borderRadius: "4px", border: "1.5px solid transparent" }}
           onMouseEnter={(e) => {
@@ -221,7 +260,7 @@ export default function ChatHistory() {
         </button>
       </div>
 
-      <div className="overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {sessionsLoading ? (
           <div className="flex items-center justify-center py-4">
             <div
@@ -229,7 +268,7 @@ export default function ChatHistory() {
               style={{ borderColor: "#E8472A", borderTopColor: "transparent" }}
             />
           </div>
-        ) : sessions.length === 0 ? (
+        ) : sessions.length === 0 && groups.length === 0 ? (
           <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
             No chats yet
           </p>
@@ -237,70 +276,54 @@ export default function ChatHistory() {
           <>
             {starred.length > 0 && (
               <Section label="Starred" icon="solar:star-bold">
-                {starred.map((s) => (
-                  <Row
-                    key={s.id}
-                    session={s}
-                    active={activeSessionId === s.id}
-                    renaming={renamingId === s.id}
-                    renameDraft={renameDraft}
-                    setRenameDraft={setRenameDraft}
-                    onCommitRename={() => commitRename(s)}
-                    onCancelRename={() => setRenamingId(null)}
-                    onSelect={() => selectSession(s.id)}
-                    onMenu={(e) => openMenu(e, s)}
-                  />
-                ))}
+                {starred.map(renderRow)}
               </Section>
             )}
 
-            {groups
-              .filter((g) => grouped.has(g.id))
-              .map((g) => (
-                <Section
-                  key={g.id}
-                  label={g.name}
-                  icon="solar:folder-bold"
-                  onDelete={() => setDeleteGroupTarget(g)}
-                >
-                  {grouped
-                    .get(g.id)!
-                    .sort(byUpdated)
-                    .map((s) => (
-                      <Row
-                        key={s.id}
-                        session={s}
-                        active={activeSessionId === s.id}
-                        renaming={renamingId === s.id}
-                        renameDraft={renameDraft}
-                        setRenameDraft={setRenameDraft}
-                        onCommitRename={() => commitRename(s)}
-                        onCancelRename={() => setRenamingId(null)}
-                        onSelect={() => selectSession(s.id)}
-                        onMenu={(e) => openMenu(e, s)}
-                      />
-                    ))}
-                </Section>
-              ))}
+            {groups.length > 0 && (
+              <div className="pt-1">
+                <div className="px-4 pt-2 pb-1">
+                  <span
+                    className="text-[10px] font-semibold uppercase tracking-widest font-space"
+                    style={{ color: "#9CA3AF" }}
+                  >
+                    Groups
+                  </span>
+                </div>
+                {groups.map((g) => {
+                  const items = (grouped.get(g.id) ?? []).sort(byUpdated);
+                  return (
+                    <GroupFolder
+                      key={g.id}
+                      group={g}
+                      count={items.length}
+                      open={!collapsedGroups.has(g.id)}
+                      onToggle={() => toggleGroup(g.id)}
+                      onNewChat={() => newChat(g.id)}
+                      onDelete={() => setDeleteGroupTarget(g)}
+                    >
+                      {items.length > 0 ? (
+                        items.map(renderRow)
+                      ) : (
+                        <p className="text-[11px] font-dm px-4 py-1.5" style={{ color: "#B0A898" }}>
+                          No chats yet
+                        </p>
+                      )}
+                    </GroupFolder>
+                  );
+                })}
+              </div>
+            )}
 
-            {groupSessionsByTime(ungrouped).map((bucket) => (
-              <Section key={bucket.label} label={bucket.label}>
-                {bucket.items.map((s) => (
-                  <Row
-                    key={s.id}
-                    session={s}
-                    active={activeSessionId === s.id}
-                    renaming={renamingId === s.id}
-                    renameDraft={renameDraft}
-                    setRenameDraft={setRenameDraft}
-                    onCommitRename={() => commitRename(s)}
-                    onCancelRename={() => setRenamingId(null)}
-                    onSelect={() => selectSession(s.id)}
-                    onMenu={(e) => openMenu(e, s)}
-                  />
+            {ungrouped.length > 0 && (
+              <div className="pt-1">
+                {groupSessionsByTime(ungrouped).map((bucket) => (
+                  <Section key={bucket.label} label={bucket.label}>
+                    {bucket.items.map(renderRow)}
+                  </Section>
                 ))}
-              </Section>
-            ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -399,6 +422,89 @@ function Section({
   );
 }
 
+// ── Group folder (collapsible) ────────────────────────────────────────────────
+
+function GroupFolder({
+  group,
+  count,
+  open,
+  onToggle,
+  onNewChat,
+  onDelete,
+  children,
+}: {
+  group: Group;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  onNewChat: () => void;
+  onDelete: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div
+        className="group/folder flex items-center gap-1.5 px-4 py-1 cursor-pointer select-none"
+        onClick={onToggle}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "#EDE6D3")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+      >
+        <Icon
+          icon="solar:alt-arrow-down-bold"
+          width={11}
+          className={clsx("shrink-0 transition-transform duration-150", !open && "-rotate-90")}
+          style={{ color: "#B0A898" }}
+        />
+        <Icon
+          icon="solar:folder-bold"
+          width={12}
+          className="shrink-0"
+          style={{ color: "#E8472A" }}
+        />
+        <span
+          className="flex-1 min-w-0 text-[12px] font-semibold font-space truncate"
+          style={{ color: "#0D0D0D" }}
+        >
+          {group.name}
+        </span>
+        <span
+          className="text-[10px] font-mono shrink-0 group-hover/folder:hidden"
+          style={{ color: "#B0A898" }}
+        >
+          {count}
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onNewChat();
+          }}
+          title="New chat in this group"
+          className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity p-0.5 bouncy"
+          style={{ color: "#B0A898", borderRadius: "4px" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#0D0D0D")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+        >
+          <Icon icon="solar:add-circle-bold" width={13} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          title="Delete group"
+          className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity p-0.5 bouncy"
+          style={{ color: "#B0A898", borderRadius: "4px" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#E8472A")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+        >
+          <Icon icon="solar:trash-bin-trash-bold" width={12} />
+        </button>
+      </div>
+      {open && children}
+    </div>
+  );
+}
+
 // ── Session row ───────────────────────────────────────────────────────────────
 
 function Row({
@@ -453,7 +559,7 @@ function Row({
         background: active ? "#EDE6D3" : "transparent",
       }}
       onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = "#F7F0E3";
+        if (!active) e.currentTarget.style.background = "#EDE6D3";
       }}
       onMouseLeave={(e) => {
         if (!active) e.currentTarget.style.background = "";

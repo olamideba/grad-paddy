@@ -161,9 +161,9 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 overflow-y-auto overflow-x-hidden">
+      <nav className="shrink-0 py-2 overflow-x-hidden">
         {!collapsed && (
-          <div className="px-4 mb-2">
+          <div className="px-4 mb-1">
             <span
               className="text-[10px] font-semibold uppercase tracking-widest font-space"
               style={{ color: "#9CA3AF" }}
@@ -172,7 +172,7 @@ export default function Sidebar() {
             </span>
           </div>
         )}
-        {NAV_ITEMS.map(({ href, label, icon, desc }) => {
+        {NAV_ITEMS.map(({ href, label, icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -180,7 +180,7 @@ export default function Sidebar() {
               href={href}
               title={collapsed ? label : undefined}
               className={clsx(
-                "flex items-center gap-3 mx-2 px-3 py-2.5 mb-0.5 bouncy",
+                "flex items-center gap-2.5 mx-2 px-3 py-1.5 mb-0.5 bouncy",
                 collapsed && "justify-center"
               )}
               style={
@@ -201,19 +201,11 @@ export default function Sidebar() {
                 if (!active) (e.currentTarget as HTMLElement).style.background = "";
               }}
             >
-              <Icon icon={icon} width={17} className="flex-shrink-0" />
+              <Icon icon={icon} width={16} className="flex-shrink-0" />
               {!collapsed && (
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold font-space leading-tight truncate">
-                    {label}
-                  </div>
-                  <div
-                    className="text-xs leading-tight truncate font-dm"
-                    style={{ color: active ? "rgba(255,255,255,0.65)" : "#9CA3AF" }}
-                  >
-                    {desc}
-                  </div>
-                </div>
+                <span className="text-[13px] font-semibold font-space leading-tight truncate">
+                  {label}
+                </span>
               )}
             </Link>
           );

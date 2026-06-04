@@ -10,6 +10,10 @@ interface ChatSessionsCtx {
   activeSessionId: string | null;
   setActiveSessionId: (id: string | null) => void;
   sessionsLoading: boolean;
+  // Group the next-created chat should be assigned to (set when starting a new
+  // chat from inside a group). Consumed and cleared on session creation.
+  pendingGroupId: string | null;
+  setPendingGroupId: (id: string | null) => void;
 }
 
 const ChatSessionsContext = createContext<ChatSessionsCtx | null>(null);
@@ -17,6 +21,7 @@ const ChatSessionsContext = createContext<ChatSessionsCtx | null>(null);
 export function ChatSessionsProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const { user, loading: authLoading } = useAuth();
 
@@ -37,7 +42,15 @@ export function ChatSessionsProvider({ children }: { children: React.ReactNode }
 
   return (
     <ChatSessionsContext.Provider
-      value={{ sessions, setSessions, activeSessionId, setActiveSessionId, sessionsLoading }}
+      value={{
+        sessions,
+        setSessions,
+        activeSessionId,
+        setActiveSessionId,
+        sessionsLoading,
+        pendingGroupId,
+        setPendingGroupId,
+      }}
     >
       {children}
     </ChatSessionsContext.Provider>

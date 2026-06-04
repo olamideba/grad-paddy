@@ -143,7 +143,7 @@ function StreamingText({
           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
           ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="text-sm font-dm">{children}</li>,
+          li: ({ children }) => <li className="text-xs font-dm">{children}</li>,
           strong: ({ children }) => (
             <strong className="font-bold" style={{ color: "#0D0D0D" }}>
               {children}
@@ -680,11 +680,11 @@ function MessageBubble({
             <span className="text-xs leading-none">🎓</span>
           )}
         </div>
-        <div className={clsx("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
+        <div className={clsx("flex flex-col gap-1 max-w-[88%]", isUser && "items-end")}>
           <div
             ref={boxRef}
             onPointerDown={spawnRipple}
-            className="float-water relative overflow-hidden px-4 py-3 text-sm font-dm leading-relaxed"
+            className="float-water relative overflow-hidden px-4 py-2.5 text-xs font-dm leading-relaxed"
             style={{
               background: isUser ? "#0D0D0D" : "#FFFFFF",
               color: isUser ? "#fff" : "#0D0D0D",
@@ -744,7 +744,14 @@ export default function ChatPage() {
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
-  const { sessions, setSessions, activeSessionId, setActiveSessionId } = useChatSessions();
+  const {
+    sessions,
+    setSessions,
+    activeSessionId,
+    setActiveSessionId,
+    pendingGroupId,
+    setPendingGroupId,
+  } = useChatSessions();
 
   const threadId = useRef(crypto.randomUUID());
   const agMessages = useRef<Message[]>([]);
@@ -1015,10 +1022,17 @@ export default function ChatPage() {
       try {
         const { sessionsApi } = await import("../../lib/api");
         const res = await sessionsApi.create(content);
-        threadId.current = res.data.id;
+        const created = res.data;
+        threadId.current = created.id;
         justCreatedSession.current = true;
-        setActiveSessionId(res.data.id);
-        setSessions((prev) => [res.data, ...prev]);
+        // If this chat was started from inside a group, assign it.
+        if (pendingGroupId) {
+          created.group_id = pendingGroupId;
+          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => {});
+          setPendingGroupId(null);
+        }
+        setActiveSessionId(created.id);
+        setSessions((prev) => [created, ...prev]);
       } catch (err) {
         console.error("[chat] create session error", err);
       }
