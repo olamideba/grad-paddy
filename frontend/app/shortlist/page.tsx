@@ -543,7 +543,7 @@ export default function ShortlistPage() {
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
       {/* Header — black */}
       <div
-        className="px-6 py-4 shrink-0"
+        className="px-4 sm:px-6 py-4 shrink-0"
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
         <div className="flex items-center justify-between gap-4">
@@ -563,16 +563,16 @@ export default function ShortlistPage() {
                   : `${faculty.length} saved`}
             </p>
           </div>
-          <button className="btn-coral btn-sm" onClick={() => setShowAddModal(true)}>
+          <button className="btn-coral btn-sm shrink-0" onClick={() => setShowAddModal(true)}>
             <Icon icon="solar:add-circle-bold" width={14} />
-            <span className="text-sm">Add Faculty</span>
+            <span className="text-sm hidden sm:inline">Add Faculty</span>
           </button>
         </div>
       </div>
 
       {/* Search + filter bar */}
       <div
-        className="px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
+        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
         style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
       >
         <div className="relative flex-1 min-w-48">
@@ -615,7 +615,7 @@ export default function ShortlistPage() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div

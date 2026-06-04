@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
+import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import ReactMarkdown from "react-markdown";
@@ -13,6 +14,44 @@ import { useChatSessions } from "@/context/ChatSessionsContext";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type StepStatus = "pending" | "running" | "done" | "error";
+
+// Map tool names to human-friendly descriptions
+const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; description: string }> = {
+  transfer_to_agent: { label: "Processing", emoji: "⚡", description: "Connecting to agent..." },
+  researcher_google_search_agent: {
+    label: "Searching the web",
+    emoji: "🔍",
+    description: "Searching for information...",
+  },
+  researcher_url_context_agent: {
+    label: "Analyzing page content",
+    emoji: "📄",
+    description: "Reading and analyzing web pages...",
+  },
+  elite_search: {
+    label: "Searching databases",
+    emoji: "📚",
+    description: "Querying research databases...",
+  },
+  hitl_approval: {
+    label: "Requesting approval",
+    emoji: "👤",
+    description: "Waiting for your input...",
+  },
+  researcher_find_url_agent: {
+    label: "Finding relevant pages",
+    emoji: "🔗",
+    description: "Locating important resources...",
+  },
+};
+
+function getToolDescription(toolName: string): { label: string; emoji: string } {
+  if (toolName in TOOL_DESCRIPTIONS) {
+    const desc = TOOL_DESCRIPTIONS[toolName];
+    return { label: desc.label, emoji: desc.emoji };
+  }
+  return { label: toolName.replace(/_/g, " "), emoji: "⚙️" };
+}
 
 type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
@@ -62,6 +101,91 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
   return items;
 }
 
+// ── Smooth typing animation component ────────────────────────────────────────
+
+function StreamingText({
+  content,
+  messageId,
+  isStreaming,
+}: {
+  content: string;
+  messageId: string;
+  isStreaming: boolean;
+}) {
+  const [shown, setShown] = useState(0);
+
+  // Typewriter: reveal chars at a steady pace. When not streaming (restored or
+  // finished), `visible` falls back to the full content, so no state update is
+  // needed here.
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => {
+      setShown((n) => {
+        if (n >= content.length) return n;
+        // Steady reveal; small extra nudge only if we fall far behind the
+        // incoming stream so we never lag by more than ~1 line.
+        const behind = content.length - n;
+        const step = behind > 120 ? 3 : 1;
+        return Math.min(content.length, n + step);
+      });
+    }, 18);
+    return () => clearInterval(id);
+  }, [content, isStreaming]);
+
+  const visible = isStreaming ? content.slice(0, shown) : content;
+  const caretVisible = isStreaming && shown < content.length;
+
+  return (
+    <div className="w-full" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+          li: ({ children }) => <li className="text-sm font-dm">{children}</li>,
+          strong: ({ children }) => (
+            <strong className="font-bold" style={{ color: "#0D0D0D" }}>
+              {children}
+            </strong>
+          ),
+          h1: ({ children }) => (
+            <h1 className="font-bold font-space text-base mb-2 mt-3 first:mt-0">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="font-bold font-space text-sm mb-2 mt-3 first:mt-0">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="font-semibold font-space text-sm mb-1 mt-2 first:mt-0">{children}</h3>
+          ),
+          code: ({ children }) => (
+            <code
+              className="font-mono text-xs px-1 py-0.5 rounded"
+              style={{ background: "#F7F0E3" }}
+            >
+              {children}
+            </code>
+          ),
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+              style={{ color: "#E8472A" }}
+            >
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {visible}
+      </ReactMarkdown>
+      {caretVisible && <span className="typewriter-caret" />}
+    </div>
+  );
+}
+
 // ── Visual sub-components ─────────────────────────────────────────────────────
 
 function StepIndicator({ status }: { status: StepStatus }) {
@@ -103,6 +227,10 @@ function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>;
     pending: { label: "Waiting", bg: "#EDE6D3", color: "#9CA3AF", border: "#C8C0AF" },
     error: { label: "Error", bg: "#FFF0ED", color: "#E8472A", border: "#E8472A" },
   }[step.status];
+
+  // Get human-friendly description for tool
+  const toolDesc = step.tool ? getToolDescription(step.tool) : { label: step.label, emoji: "⚙️" };
+
   return (
     <div
       className="msg-enter flex items-center gap-3 px-3 py-2"
@@ -113,17 +241,20 @@ function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>;
     >
       <StepIndicator status={step.status} />
       <div className="flex-1 min-w-0">
-        <p
-          className="text-sm font-space leading-snug"
-          style={{
-            color: step.status === "pending" ? "#B0A898" : "#0D0D0D",
-            fontWeight: step.status === "running" ? 600 : 400,
-          }}
-        >
-          {step.label}
-        </p>
-        {step.detail && (
-          <p className="text-[10px] font-mono mt-0.5 truncate" style={{ color: "#B0A898" }}>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs">{toolDesc.emoji}</span>
+          <p
+            className="text-sm font-space leading-snug"
+            style={{
+              color: step.status === "pending" ? "#B0A898" : "#0D0D0D",
+              fontWeight: step.status === "running" ? 600 : 400,
+            }}
+          >
+            {toolDesc.label}
+          </p>
+        </div>
+        {step.detail && step.status === "error" && (
+          <p className="text-[10px] font-mono mt-0.5 truncate" style={{ color: "#E8472A" }}>
             {step.detail}
           </p>
         )}
@@ -205,10 +336,20 @@ function AgentWorkCard({
         style={{ background: "#E8472A", borderBottom: "2px solid #0D0D0D" }}
         onClick={onToggle}
       >
-        <span className="text-sm font-bold font-space" style={{ color: "#FFFFFF" }}>
-          Agent · {phase.label}
-        </span>
-        <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <span className="text-sm font-bold font-space" style={{ color: "#FFFFFF" }}>
+            Agent · {phase.label}
+          </span>
+          {collapsed && phase.status === "running" && lastActiveTool && (
+            <div
+              className="text-[11px] font-dm truncate"
+              style={{ color: "rgba(255,255,255,0.85)" }}
+            >
+              {getToolDescription(lastActiveTool).emoji} {getToolDescription(lastActiveTool).label}…
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           {phase.status === "running" && (
             <span
               className="text-[10px] font-bold font-space px-2 py-0.5"
@@ -276,7 +417,7 @@ function AgentWorkCard({
                 Active Tool
               </p>
               <p className="text-xs font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>
-                {lastActiveTool ? lastActiveTool.replace(/_/g, " ") : "—"}
+                {lastActiveTool ? getToolDescription(lastActiveTool).label : "—"}
               </p>
             </div>
             <div className="px-3 py-2" style={{ background: "#F7F0E3" }}>
@@ -392,99 +533,201 @@ function ApprovalGate({
   );
 }
 
-function MessageBubble({ item }: { item: Extract<ChatItem, { type: "user" | "agent" }> }) {
+// Stable per-id offset so bubbles bob out of sync instead of in lockstep.
+function floatDelay(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return `-${(h % 45) / 10}s`;
+}
+
+type GlassBubble = {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  dx: number;
+  dy: number;
+  radius: string;
+};
+
+// Random point on the rectangle perimeter (w × h).
+function edgePoint(w: number, h: number): { x: number; y: number } {
+  let p = Math.random() * 2 * (w + h);
+  if (p < w) return { x: p, y: 0 };
+  p -= w;
+  if (p < h) return { x: w, y: p };
+  p -= h;
+  if (p < w) return { x: w - p, y: h };
+  p -= w;
+  return { x: 0, y: h - p };
+}
+
+const rand = (min: number, max: number) => min + Math.random() * (max - min);
+const blobRadius = () =>
+  `${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}% / ` +
+  `${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}% ${rand(40, 70)}%`;
+
+// Monotonic id source. Kept at module scope so the impure increment never runs
+// during a component render (satisfies react-hooks/purity).
+let _effectId = 0;
+const nextId = () => ++_effectId;
+
+// Build the glass bubbles for a burst. Module-scoped because it relies on
+// Math.random; viewport coords let a body-level portal render them un-clipped.
+function createBubbles(rect: DOMRect): GlassBubble[] {
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const n = 6 + Math.floor(Math.random() * 3);
+  const out: GlassBubble[] = [];
+  for (let i = 0; i < n; i++) {
+    const pt = edgePoint(rect.width, rect.height);
+    const px = rect.left + pt.x;
+    const py = rect.top + pt.y;
+    const ang = Math.atan2(py - cy, px - cx);
+    const c = Math.cos(ang);
+    const s = Math.sin(ang);
+    // Distance along direction until we hit a window edge.
+    const tx = c > 0 ? (vw - px) / c : c < 0 ? -px / c : Infinity;
+    const ty = s > 0 ? (vh - py) / s : s < 0 ? -py / s : Infinity;
+    const dist = Math.max(0, Math.min(tx, ty)) * rand(0.7, 1);
+    out.push({
+      id: nextId(),
+      x: px,
+      y: py,
+      size: rand(8, 20),
+      dx: c * dist,
+      dy: s * dist,
+      radius: blobRadius(),
+    });
+  }
+  return out;
+}
+
+function MessageBubble({
+  item,
+  streamingMessageId,
+}: {
+  item: Extract<ChatItem, { type: "user" | "agent" }>;
+  streamingMessageId: string | null;
+}) {
   const isUser = item.type === "user";
+  const isStreaming = !isUser && streamingMessageId === item.id;
+  const [ripples, setRipples] = useState<{ id: number; x: number; y: number; size: number }[]>([]);
+  const [bubbles, setBubbles] = useState<GlassBubble[]>([]);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  function spawnRipple(e: React.PointerEvent<HTMLDivElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    const size = Math.max(r.width, r.height);
+    setRipples((p) => [...p, { id: nextId(), x, y, size }]);
+  }
+
+  // Ripple reached the edge → release polymorphic glass bubbles that escape the
+  // box and float outward across the window to its edges.
+  function burstBubbles(rippleId: number) {
+    setRipples((p) => p.filter((r) => r.id !== rippleId));
+    const el = boxRef.current;
+    if (!el) return;
+    setBubbles((p) => [...p, ...createBubbles(el.getBoundingClientRect())]);
+  }
+
+  const rippleColor = isUser ? "rgba(255,255,255,0.4)" : "rgba(13,13,13,0.12)";
+
   return (
-    <div className={clsx("flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
-      <div
-        className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
-        style={{
-          background: isUser ? "#0D0D0D" : "#EDE6D3",
-          color: isUser ? "#fff" : "#5A5A5A",
-          border: "2px solid #0D0D0D",
-          borderRadius: "50%",
-        }}
-      >
-        {isUser ? (
-          <Icon icon="solar:user-bold" width={13} />
-        ) : (
-          <span className="text-xs leading-none">🎓</span>
+    <>
+      {typeof document !== "undefined" &&
+        bubbles.length > 0 &&
+        createPortal(
+          <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 60 }}>
+            {bubbles.map((b) => (
+              <span
+                key={b.id}
+                className="glass-bubble"
+                onAnimationEnd={() => setBubbles((p) => p.filter((x) => x.id !== b.id))}
+                style={
+                  {
+                    left: b.x,
+                    top: b.y,
+                    width: b.size,
+                    height: b.size,
+                    borderRadius: b.radius,
+                    "--dx": `${b.dx}px`,
+                    "--dy": `${b.dy}px`,
+                  } as React.CSSProperties
+                }
+              />
+            ))}
+          </div>,
+          document.body
         )}
-      </div>
-      <div className={clsx("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
+      <div className={clsx("flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
         <div
-          className="px-4 py-3 text-sm font-dm leading-relaxed"
+          className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
           style={{
-            background: isUser ? "#0D0D0D" : "#FFFFFF",
-            color: isUser ? "#fff" : "#0D0D0D",
+            background: isUser ? "#0D0D0D" : "#EDE6D3",
+            color: isUser ? "#fff" : "#5A5A5A",
             border: "2px solid #0D0D0D",
-            boxShadow: "3px 3px 0 #0D0D0D",
-            borderRadius: "8px",
+            borderRadius: "50%",
           }}
         >
           {isUser ? (
-            <span>{item.content}</span>
+            <Icon icon="solar:user-bold" width={13} />
           ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                ol: ({ children }) => (
-                  <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>
-                ),
-                li: ({ children }) => <li className="text-sm font-dm">{children}</li>,
-                strong: ({ children }) => (
-                  <strong className="font-bold" style={{ color: isUser ? "#fff" : "#0D0D0D" }}>
-                    {children}
-                  </strong>
-                ),
-                h1: ({ children }) => (
-                  <h1 className="font-bold font-space text-base mb-2 mt-3 first:mt-0">
-                    {children}
-                  </h1>
-                ),
-                h2: ({ children }) => (
-                  <h2 className="font-bold font-space text-sm mb-2 mt-3 first:mt-0">{children}</h2>
-                ),
-                h3: ({ children }) => (
-                  <h3 className="font-semibold font-space text-sm mb-1 mt-2 first:mt-0">
-                    {children}
-                  </h3>
-                ),
-                code: ({ children }) => (
-                  <code
-                    className="font-mono text-xs px-1 py-0.5 rounded"
-                    style={{ background: "#F7F0E3" }}
-                  >
-                    {children}
-                  </code>
-                ),
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                    style={{ color: "#E8472A" }}
-                  >
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {item.content}
-            </ReactMarkdown>
+            <span className="text-xs leading-none">🎓</span>
           )}
         </div>
-        <div
-          className={clsx("text-[10px] font-mono text-[#B0A898]", isUser && "text-right")}
-          suppressHydrationWarning
-        >
-          {item.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        <div className={clsx("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
+          <div
+            ref={boxRef}
+            onPointerDown={spawnRipple}
+            className="float-water relative overflow-hidden px-4 py-3 text-sm font-dm leading-relaxed"
+            style={{
+              background: isUser ? "#0D0D0D" : "#FFFFFF",
+              color: isUser ? "#fff" : "#0D0D0D",
+              border: "2px solid #0D0D0D",
+              boxShadow: "3px 3px 0 #0D0D0D",
+              borderRadius: "8px",
+              minHeight: isStreaming ? "100px" : "auto",
+              animationDelay: floatDelay(item.id),
+            }}
+          >
+            {ripples.map((r) => (
+              <span
+                key={r.id}
+                className="ripple"
+                onAnimationEnd={() => burstBubbles(r.id)}
+                style={{
+                  left: r.x,
+                  top: r.y,
+                  width: r.size,
+                  height: r.size,
+                  background: rippleColor,
+                }}
+              />
+            ))}
+            {isUser ? (
+              <span>{item.content}</span>
+            ) : item.content ? (
+              <StreamingText content={item.content} messageId={item.id} isStreaming={isStreaming} />
+            ) : (
+              <span className="text-xs italic" style={{ color: "#9CA3AF" }}>
+                Thinking...
+              </span>
+            )}
+          </div>
+          <div
+            className={clsx("text-[10px] font-mono text-[#B0A898]", isUser && "text-right")}
+            suppressHydrationWarning
+          >
+            {item.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -492,6 +735,7 @@ function MessageBubble({ item }: { item: Extract<ChatItem, { type: "user" | "age
 
 export default function ChatPage() {
   const [stream, setStream] = useState<ChatItem[]>([]);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [urls, setUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState("");
@@ -517,7 +761,7 @@ export default function ChatPage() {
     (i): i is Extract<ChatItem, { type: "step" }> => i.type === "step" && i.status === "running"
   );
   const agentStatusText = runningStep?.tool
-    ? `${runningStep.tool.replace(/_/g, " ")}...`
+    ? `${getToolDescription(runningStep.tool).label}...`
     : "Working...";
   const pendingApproval = stream.some(
     (i) => i.type === "approval" && !("resolved" in i && i.resolved)
@@ -564,12 +808,12 @@ export default function ChatPage() {
     }
 
     subscription.current?.unsubscribe();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalRunning(false);
     setQueue([]);
     agMsgContent.current = new Map();
 
     if (!activeSessionId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStream([]);
       agMessages.current = [];
       threadId.current = crypto.randomUUID();
@@ -624,8 +868,11 @@ export default function ChatPage() {
         ...p,
         { type: "phase", id: phaseId, label: "Processing", status: "running" },
       ]);
+      // Default to collapsed so users see friendly progress, not raw tool detail.
+      setCollapsedPhases((prev) => new Set(prev).add(phaseId));
     } else if (type === "TEXT_MESSAGE_START") {
       const e = event as unknown as { messageId: string };
+      setStreamingMessageId(e.messageId);
       agMsgContent.current.set(e.messageId, "");
       setStream((p) => [
         ...p,
@@ -643,6 +890,7 @@ export default function ChatPage() {
       );
     } else if (type === "TEXT_MESSAGE_END") {
       const e = event as unknown as { messageId: string };
+      setStreamingMessageId(null);
       const content = agMsgContent.current.get(e.messageId) ?? "";
       agMsgContent.current.delete(e.messageId);
       agMessages.current = [
@@ -673,12 +921,19 @@ export default function ChatPage() {
       );
     } else if (type === "STEP_STARTED") {
       const e = event as unknown as { stepName: string };
+      const stepPhaseId = `step-${e.stepName}`;
       flushSync(() => {
         setStream((p) => [
           ...p,
-          { type: "phase", id: `step-${e.stepName}`, label: e.stepName, status: "running" },
+          {
+            type: "phase",
+            id: stepPhaseId,
+            label: e.stepName.replace(/_/g, " "),
+            status: "running",
+          },
         ]);
       });
+      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "STEP_FINISHED") {
       const e = event as unknown as { stepName: string };
       setStream((p) =>
@@ -834,6 +1089,29 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: "#F7F0E3" }}>
+      {/* Mobile chat controls (sidebar is hidden on phones) */}
+      <div
+        className="md:hidden shrink-0 flex items-center gap-2 px-3 py-2"
+        style={{ borderBottom: "2px solid #0D0D0D", background: "#F7F0E3" }}
+      >
+        <select
+          value={activeSessionId ?? ""}
+          onChange={(e) => setActiveSessionId(e.target.value || null)}
+          className="input-brutal flex-1 min-w-0 text-xs py-1.5"
+        >
+          <option value="">New chat</option>
+          {sessions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.title}
+            </option>
+          ))}
+        </select>
+        <button onClick={startNewChat} className="btn-coral btn-sm text-xs shrink-0">
+          <Icon icon="solar:add-circle-bold" width={13} />
+          New
+        </button>
+      </div>
+
       {/* Session title bar */}
       {activeSession && (
         <div
@@ -850,7 +1128,7 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto py-6">
         <div className="max-w-3xl mx-auto px-4 space-y-1">
           {stream.length === 0 && (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center py-6">
               <div
                 className="w-12 h-12 flex items-center justify-center mb-4"
                 style={{
@@ -860,37 +1138,105 @@ export default function ChatPage() {
                   borderRadius: "50%",
                 }}
               >
-                <span className="text-lg">🎓</span>
+                <Icon icon="solar:diploma-bold" width={22} style={{ color: "#FFFFFF" }} />
               </div>
-              <h2 className="font-bold font-space mb-1" style={{ color: "#0D0D0D" }}>
+              <h2 className="font-bold font-space text-lg mb-1" style={{ color: "#0D0D0D" }}>
                 Grad Paddy is ready
               </h2>
-              <p className="text-sm font-dm mb-4" style={{ color: "#9CA3AF" }}>
-                Ask me to find faculty, draft SOPs, or prep outreach emails.
+              <p className="text-sm font-dm mb-6 max-w-md mx-auto" style={{ color: "#5A5A5A" }}>
+                Your AI co-pilot for grad school — research faculty, build a shortlist, track
+                applications, and draft outreach, all from one chat.
               </p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {[
-                  "Find NLP professors at MIT and Stanford",
-                  "Draft an SOP for CMU LTI",
-                  "Who is hiring in ML systems?",
-                ].map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => {
-                      setInput(prompt);
-                      textareaRef.current?.focus();
-                    }}
-                    className="text-xs font-dm px-3 py-1.5 bouncy"
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1.5px solid #0D0D0D",
-                      borderRadius: "4px",
-                      color: "#5A5A5A",
-                    }}
-                  >
-                    {prompt}
-                  </button>
-                ))}
+
+              {/* Workflow path */}
+              <div className="w-full max-w-lg mb-6">
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-widest font-space mb-2 text-left"
+                  style={{ color: "#9CA3AF" }}
+                >
+                  How it works
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    {
+                      icon: "solar:magnifer-bold",
+                      label: "Research",
+                      desc: "Find faculty & programs",
+                    },
+                    { icon: "solar:star-bold", label: "Shortlist", desc: "Save the best fits" },
+                    { icon: "solar:calendar-bold", label: "Track", desc: "Manage deadlines" },
+                    { icon: "solar:document-text-bold", label: "Draft", desc: "SOPs & outreach" },
+                  ].map((step, i) => (
+                    <div
+                      key={step.label}
+                      className="flex flex-col items-center text-center px-2 py-3"
+                      style={{
+                        background: "#FFFFFF",
+                        border: "2px solid #0D0D0D",
+                        boxShadow: "2px 2px 0 #0D0D0D",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <div
+                        className="w-7 h-7 flex items-center justify-center mb-1.5"
+                        style={{
+                          background: "#F7F0E3",
+                          border: "1.5px solid #0D0D0D",
+                          borderRadius: "50%",
+                          color: "#E8472A",
+                        }}
+                      >
+                        <Icon icon={step.icon} width={14} />
+                      </div>
+                      <span
+                        className="text-xs font-bold font-space leading-none mb-0.5"
+                        style={{ color: "#0D0D0D" }}
+                      >
+                        {i + 1}. {step.label}
+                      </span>
+                      <span
+                        className="text-[10px] font-dm leading-tight"
+                        style={{ color: "#9CA3AF" }}
+                      >
+                        {step.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Try asking */}
+              <div className="w-full max-w-lg">
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-widest font-space mb-2 text-left"
+                  style={{ color: "#9CA3AF" }}
+                >
+                  Try asking
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {[
+                    "Find NLP professors at MIT and Stanford",
+                    "Draft an SOP for CMU LTI",
+                    "Who is hiring in ML systems?",
+                  ].map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => {
+                        setInput(prompt);
+                        textareaRef.current?.focus();
+                      }}
+                      className="text-xs font-dm px-3 py-1.5 bouncy"
+                      style={{
+                        background: "#FFFFFF",
+                        border: "1.5px solid #0D0D0D",
+                        borderRadius: "4px",
+                        color: "#5A5A5A",
+                      }}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -900,7 +1246,7 @@ export default function ChatPage() {
               if (item.type === "user" || item.type === "agent")
                 return (
                   <div key={item.id} className="py-1">
-                    <MessageBubble item={item} />
+                    <MessageBubble item={item} streamingMessageId={streamingMessageId} />
                   </div>
                 );
               if (item.type === "approval")
