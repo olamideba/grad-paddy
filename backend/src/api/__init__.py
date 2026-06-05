@@ -1,11 +1,2 @@
-from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts
+"""FastAPI route package."""
 
-__all__ = [
-    "chat",
-    "users",
-    "sessions",
-    "hitl",
-    "shortlist",
-    "tracker",
-    "drafts",
-]

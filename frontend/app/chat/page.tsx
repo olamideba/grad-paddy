@@ -50,6 +50,28 @@ function getToolDescription(toolName: string): { label: string; emoji: string } 
     const desc = TOOL_DESCRIPTIONS[toolName];
     return { label: desc.label, emoji: desc.emoji };
   }
+  const normalized = toolName.toLowerCase();
+  if (normalized.includes("profile") || normalized.includes("preference")) {
+    return { label: "Updating profile", emoji: "👤" };
+  }
+  if (normalized.includes("session")) {
+    return { label: "Managing sessions", emoji: "💬" };
+  }
+  if (normalized.includes("group")) {
+    return { label: "Managing groups", emoji: "🗂️" };
+  }
+  if (normalized.includes("shortlist")) {
+    return { label: "Updating shortlist", emoji: "📌" };
+  }
+  if (normalized.includes("tracker") || normalized.includes("application")) {
+    return { label: "Updating tracker", emoji: "🧭" };
+  }
+  if (normalized.includes("draft")) {
+    return { label: "Editing drafts", emoji: "📝" };
+  }
+  if (normalized.includes("hitl") || normalized.includes("approval")) {
+    return { label: "Requesting approval", emoji: "👤" };
+  }
   return { label: toolName.replace(/_/g, " "), emoji: "⚙️" };
 }
 

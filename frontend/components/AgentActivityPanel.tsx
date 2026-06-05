@@ -63,6 +63,40 @@ const ACTIVITY_CONFIG: Record<string, { label: string; icon: string; description
   default: { label: "Thinking", icon: "✨", description: "Processing..." },
 };
 
+function getActivityConfig(toolName?: string): { label: string; icon: string; description: string } {
+  if (!toolName) return ACTIVITY_CONFIG.default;
+  if (toolName in ACTIVITY_CONFIG) return ACTIVITY_CONFIG[toolName];
+
+  const normalized = toolName.toLowerCase();
+  if (normalized.includes("profile") || normalized.includes("preference")) {
+    return { label: "Updating profile", icon: "👤", description: "Reading or editing user settings..." };
+  }
+  if (normalized.includes("session")) {
+    return { label: "Managing sessions", icon: "💬", description: "Loading or updating chat sessions..." };
+  }
+  if (normalized.includes("group")) {
+    return { label: "Managing groups", icon: "🗂️", description: "Organizing chat groups..." };
+  }
+  if (normalized.includes("shortlist")) {
+    return { label: "Updating shortlist", icon: "📌", description: "Managing faculty shortlist entries..." };
+  }
+  if (normalized.includes("tracker") || normalized.includes("application")) {
+    return { label: "Updating tracker", icon: "🧭", description: "Managing application tracking records..." };
+  }
+  if (normalized.includes("draft")) {
+    return { label: "Editing drafts", icon: "📝", description: "Managing draft content..." };
+  }
+  if (normalized.includes("hitl") || normalized.includes("approval")) {
+    return { label: "Requesting approval", icon: "👤", description: "Waiting for a user decision..." };
+  }
+
+  return {
+    label: toolName.replace(/_/g, " "),
+    icon: "⚙️",
+    description: "Processing...",
+  };
+}
+
 function StepStatusIcon({ status }: { status: StepStatus }) {
   if (status === "done")
     return <CheckCircle2 size={14} className="text-green-paddy flex-shrink-0" strokeWidth={2.5} />;
@@ -88,7 +122,7 @@ function AgentActivitySummary({
   isOpen: boolean;
   onToggle: () => void;
 }) {
-  const config = ACTIVITY_CONFIG[step.tool || "default"] || ACTIVITY_CONFIG.default;
+  const config = getActivityConfig(step.tool);
 
   return (
     <div
