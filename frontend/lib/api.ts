@@ -268,8 +268,16 @@ export interface Session {
   id: string;
   title: string;
   user_id: string;
+  starred?: boolean;
+  group_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface Message {
@@ -291,11 +299,36 @@ export const sessionsApi = {
   get: (id: string) => request<Std<Session>>(`/api/sessions/${id}`),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/sessions/${id}`, { method: "DELETE" }),
+  rename: (id: string, title: string) =>
+    request<Std<Session>>(`/api/sessions/${id}/rename`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  toggleStar: (id: string) =>
+    request<Std<Session>>(`/api/sessions/${id}/star`, { method: "PATCH" }),
+  setGroup: (id: string, group_id: string | null) =>
+    request<Std<Session>>(`/api/sessions/${id}/group`, {
+      method: "PATCH",
+      body: JSON.stringify({ group_id }),
+    }),
   listMessages: (id: string) => request<Std<Message[]>>(`/api/sessions/${id}/messages`),
   createMessage: (id: string, role: string, content: string) =>
     request<Std<Message>>(`/api/sessions/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ role, content }),
+    }),
+};
+
+export const groupsApi = {
+  list: () => request<Std<Group[]>>("/api/groups/"),
+  create: (name: string) =>
+    request<Std<Group>>("/api/groups/", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  delete: (id: string, deleteSessions: boolean) =>
+    request<Std<{ status: string }>>(`/api/groups/${id}?delete_sessions=${deleteSessions}`, {
+      method: "DELETE",
     }),
 };
 
