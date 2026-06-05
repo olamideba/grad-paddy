@@ -38,11 +38,6 @@ const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; descript
     emoji: "👤",
     description: "Waiting for your input...",
   },
-  request_hitl: {
-    label: "Requesting approval",
-    emoji: "👤",
-    description: "Waiting for your input...",
-  },
   researcher_find_url_agent: {
     label: "Finding relevant pages",
     emoji: "🔗",
@@ -96,16 +91,10 @@ type ChatItem =
   | {
       type: "approval";
       id: string;
-      kind: "approval" | "choice" | "input";
       title: string;
       description: string;
-      payload?: Record<string, unknown>;
-      options?: { id: string; label: string }[];
-      schema?: Record<string, unknown>;
       items?: string[];
       resolved?: "approved" | "rejected";
-      resolveError?: string;
-      expired?: boolean;
     };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
@@ -476,38 +465,13 @@ function AgentWorkCard({
   );
 }
 
-function payloadPreview(payload: Record<string, unknown> | undefined): string[] | undefined {
-  if (!payload || Object.keys(payload).length === 0) return undefined;
-  return Object.entries(payload).map(
-    ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-  );
-}
-
 function ApprovalGate({
   item,
   onResolve,
-  resolving,
 }: {
   item: Extract<ChatItem, { type: "approval" }>;
-  onResolve: (
-    id: string,
-    d: "approved" | "rejected",
-    response?: Record<string, unknown>
-  ) => void;
-  resolving: boolean;
+  onResolve: (id: string, d: "approved" | "rejected") => void;
 }) {
-  const [inputValues, setInputValues] = useState<Record<string, string>>({});
-
-  if (item.expired) {
-    return (
-      <div className="flex gap-3 msg-enter">
-        <div className="text-xs font-dm" style={{ color: "#9CA3AF" }}>
-          This approval request has expired. You can send a new message to continue.
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex gap-3 msg-enter">
       <div
@@ -538,9 +502,9 @@ function ApprovalGate({
           <p className="text-xs font-dm mb-3" style={{ color: "#5A5A5A" }}>
             {item.description}
           </p>
-          {(item.items ?? payloadPreview(item.payload)) && (
+          {item.items && (
             <ul className="space-y-1 mb-1">
-              {(item.items ?? payloadPreview(item.payload) ?? []).map((it, i) => (
+              {item.items.map((it, i) => (
                 <li
                   key={i}
                   className="text-xs font-dm flex items-start gap-1.5"
@@ -554,32 +518,7 @@ function ApprovalGate({
               ))}
             </ul>
           )}
-          {item.kind === "input" && item.schema && !item.resolved && (
-            <div className="space-y-2 mt-2">
-              {Object.entries(
-                (item.schema.properties as Record<string, { title?: string }>) ?? {}
-              ).map(([key, prop]) => (
-                <label key={key} className="block text-xs font-dm">
-                  <span style={{ color: "#5A5A5A" }}>{prop.title ?? key}</span>
-                  <input
-                    className="mt-1 w-full px-2 py-1 border text-xs"
-                    style={{ borderColor: "#EDE6D3" }}
-                    value={inputValues[key] ?? ""}
-                    onChange={(e) =>
-                      setInputValues((p) => ({ ...p, [key]: e.target.value }))
-                    }
-                    disabled={resolving}
-                  />
-                </label>
-              ))}
-            </div>
-          )}
         </div>
-        {item.resolveError && (
-          <p className="text-xs font-dm" style={{ color: "#E8472A" }}>
-            {item.resolveError}
-          </p>
-        )}
         {item.resolved ? (
           <div
             className="flex items-center gap-2 text-xs font-semibold font-space"
@@ -593,49 +532,21 @@ function ApprovalGate({
             />
             {item.resolved === "approved" ? "Approved" : "Rejected"}
           </div>
-        ) : item.kind === "choice" && item.options?.length ? (
-          <div className="flex flex-wrap gap-2">
-            {item.options.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => onResolve(item.id, "approved", { optionId: opt.id })}
-                className="btn-teal btn-sm gap-1.5 text-xs"
-                disabled={resolving}
-              >
-                {opt.label}
-              </button>
-            ))}
-            <button
-              onClick={() => onResolve(item.id, "rejected")}
-              className="btn-white btn-sm gap-1.5 text-xs"
-              disabled={resolving}
-            >
-              Cancel
-            </button>
-          </div>
         ) : (
           <div className="flex gap-2">
             <button
-              onClick={() =>
-                onResolve(
-                  item.id,
-                  "approved",
-                  item.kind === "input" ? inputValues : undefined
-                )
-              }
+              onClick={() => onResolve(item.id, "approved")}
               className="btn-teal btn-sm gap-1.5 text-xs"
-              disabled={resolving}
             >
               <Icon icon="solar:check-circle-bold" width={12} />
-              {item.kind === "approval" ? "Yes, save" : "Submit"}
+              Yes, save
             </button>
             <button
               onClick={() => onResolve(item.id, "rejected")}
               className="btn-white btn-sm gap-1.5 text-xs"
-              disabled={resolving}
             >
               <Icon icon="solar:close-circle-bold" width={12} />
-              {item.kind === "approval" ? "No, discard" : "Cancel"}
+              No, discard
             </button>
           </div>
         )}
@@ -855,7 +766,6 @@ export default function ChatPage() {
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
-  const [resolvingHitl, setResolvingHitl] = useState(false);
   const {
     sessions,
     setSessions,
@@ -883,7 +793,7 @@ export default function ChatPage() {
     ? `${getToolDescription(runningStep.tool).label}...`
     : "Working...";
   const pendingApproval = stream.some(
-    (i) => i.type === "approval" && !i.resolved && !i.expired
+    (i) => i.type === "approval" && !("resolved" in i && i.resolved)
   );
   const inputBlocked = isAgentRunning || pendingApproval;
 
@@ -900,9 +810,9 @@ export default function ChatPage() {
     []
   );
 
-  // Process queue when agent finishes and no HITL gate is open
+  // Process queue when agent finishes
   useEffect(() => {
-    if (!isAgentRunning && !pendingApproval && queue.length > 0) {
+    if (!isAgentRunning && queue.length > 0) {
       const [first, ...rest] = queue;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStream((p) => [
@@ -912,7 +822,7 @@ export default function ChatPage() {
       setQueue(rest);
       sendToBackend(first.content, first.id);
     }
-  }, [isAgentRunning, pendingApproval]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAgentRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startNewChat() {
     setActiveSessionId(null);
@@ -964,10 +874,7 @@ export default function ChatPage() {
             } as Message);
           }
           setStream(items);
-          // Restored runs are already finished → collapse their activity cards.
-          setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
-          checkHITL();
         })
         .catch((err) => console.error("[chat] load session messages error", err))
     );
@@ -990,7 +897,8 @@ export default function ChatPage() {
         ...p,
         { type: "phase", id: phaseId, label: "Processing", status: "running" },
       ]);
-      // Expanded while running; collapsed automatically on finish (see RUN_FINISHED).
+      // Default to collapsed so users see friendly progress, not raw tool detail.
+      setCollapsedPhases((prev) => new Set(prev).add(phaseId));
     } else if (type === "TEXT_MESSAGE_START") {
       const e = event as unknown as { messageId: string };
       setStreamingMessageId(e.messageId);
@@ -1054,35 +962,26 @@ export default function ChatPage() {
           },
         ]);
       });
+      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "STEP_FINISHED") {
       const e = event as unknown as { stepName: string };
-      const stepPhaseId = `step-${e.stepName}`;
       setStream((p) =>
         p.map((item) =>
-          item.id === stepPhaseId && item.type === "phase" ? { ...item, status: "done" } : item
+          item.id === `step-${e.stepName}` && item.type === "phase"
+            ? { ...item, status: "done" }
+            : item
         )
       );
-      // Collapse the step's detail once it finishes.
-      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
-      const phaseIds: string[] = [];
       setStream((p) =>
         p.map((item) => {
-          if (item.type === "phase") {
-            phaseIds.push(item.id);
-            if (item.id === phaseId && item.status === "running") return { ...item, status };
-          }
+          if (item.type === "phase" && item.id === phaseId && item.status === "running")
+            return { ...item, status };
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
           return item;
         })
       );
-      // Run finished → collapse every activity card so the thread stays tidy.
-      setCollapsedPhases((prev) => {
-        const next = new Set(prev);
-        phaseIds.forEach((id) => next.add(id));
-        return next;
-      });
     }
   }
 
@@ -1091,98 +990,35 @@ export default function ChatPage() {
       const { hitlApi } = await import("../../lib/api");
       const res = await hitlApi.getPending(threadId.current);
       if (!res.data) return;
-      const gate = hitlToApprovalItem(res.data);
-      setStream((p) => {
-        if (p.some((i) => i.type === "approval" && i.id === gate.id)) return p;
-        return [...p, gate];
-      });
-    } catch (err) {
-      console.error("[chat] checkHITL error", err);
-    }
-  }
-
-  async function resumeAfterHitl(
-    hitlId: string,
-    decision: "approved" | "rejected",
-    response?: Record<string, unknown>
-  ) {
-    subscription.current?.unsubscribe();
-    setLocalRunning(true);
-    const phaseId = `phase-resume-${Date.now()}`;
-
-    const pushError = (msg: string) => {
+      const hitl = res.data;
+      const items = hitl.payload
+        ? Object.entries(hitl.payload).map(
+            ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+          )
+        : undefined;
       setStream((p) => [
         ...p,
-        { type: "agent", id: `err-${Date.now()}`, content: `Error: ${msg}`, timestamp: new Date() },
+        {
+          type: "approval",
+          id: hitl.id,
+          title: hitl.type.replace(/_/g, " "),
+          description: "Review the proposed action below.",
+          items,
+        },
       ]);
-      setLocalRunning(false);
-    };
-
-    try {
-      const { createChatAgent } = await import("../../lib/ag-ui");
-      const agent = await createChatAgent(agMessages.current, threadId.current);
-
-      subscription.current = agent
-        .run({
-          messages: agMessages.current,
-          threadId: threadId.current,
-          runId: crypto.randomUUID(),
-          tools: [],
-          context: [],
-          state: {},
-          forwardedProps: {
-            resume: { hitlId, decision, response },
-          },
-        })
-        .subscribe({
-          next: (event: BaseEvent) => handleEvent(event, phaseId),
-          error: (err: unknown) => {
-            console.error("[chat] HITL resume error", err);
-            pushError(err instanceof Error ? err.message : String(err));
-          },
-          complete: () => {
-            setLocalRunning(false);
-            checkHITL();
-          },
-        });
-    } catch (err) {
-      console.error("[chat] resumeAfterHitl error", err);
-      pushError(err instanceof Error ? err.message : String(err));
-    }
+    } catch {}
   }
 
-  async function resolveApproval(
-    id: string,
-    decision: "approved" | "rejected",
-    response?: Record<string, unknown>
-  ) {
-    setResolvingHitl(true);
+  async function resolveApproval(id: string, decision: "approved" | "rejected") {
     setStream((prev) =>
       prev.map((item) =>
-        item.id === id && item.type === "approval"
-          ? { ...item, resolveError: undefined }
-          : item
+        item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
       )
     );
     try {
       const { hitlApi } = await import("../../lib/api");
-      await hitlApi.resolve(id, decision, response);
-      setStream((prev) =>
-        prev.map((item) =>
-          item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
-        )
-      );
-      await resumeAfterHitl(id, decision, response);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to resolve approval";
-      setStream((prev) =>
-        prev.map((item) =>
-          item.id === id && item.type === "approval" ? { ...item, resolveError: msg } : item
-        )
-      );
-    } finally {
-      setResolvingHitl(false);
-    }
+      await hitlApi.resolve(id, decision === "approved");
+    } catch {}
   }
 
   async function sendToBackend(content: string, msgId: string) {
@@ -1251,8 +1087,9 @@ export default function ChatPage() {
           },
           complete: () => {
             setLocalRunning(false);
-            // Restore gate from REST if the stream did not emit HITL_REQUIRED.
             checkHITL();
+            // Assistant messages are saved by PersistentChatAgent.upsert_message on the backend.
+            // User messages are saved before the agent runs. Nothing to do here.
           },
         });
     } catch (err) {
@@ -1451,11 +1288,7 @@ export default function ChatPage() {
               if (item.type === "approval")
                 return (
                   <div key={item.id} className="py-2">
-                    <ApprovalGate
-                      item={item}
-                      onResolve={resolveApproval}
-                      resolving={resolvingHitl}
-                    />
+                    <ApprovalGate item={item} onResolve={resolveApproval} />
                   </div>
                 );
             }
