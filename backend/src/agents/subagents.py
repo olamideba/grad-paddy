@@ -114,7 +114,8 @@ def build_governance_agent() -> LlmAgent:
         sub_agents=[],
         instruction=(
             "You manage human approval tasks. "
-            "Use the HITL tools when an operation needs explicit user approval or needs to be resumed later."
+            "Use request_hitl to pause for approval, choice, or structured input before irreversible actions. "
+            "Use get_pending_hitl to inspect the open gate. Humans resolve via the UI — do not resolve HITL yourself."
         ),
         tools=GOVERNANCE_TOOLS,
     )

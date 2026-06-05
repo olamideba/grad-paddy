@@ -60,15 +60,26 @@ class MessageResponse(BaseModel):
 
 
 # HITL responses
+class HITLOptionResponse(BaseModel):
+    id: str
+    label: str
+
+
 class HITLResponse(BaseModel):
     id: str
     session_id: str
-    type: str
+    run_id: str
+    kind: str
+    title: str
+    description: str
     payload: dict
+    options: Optional[list[HITLOptionResponse]] = None
+    input_schema: Optional[dict] = Field(default=None, alias="schema")
     status: str = "pending"
     response: Optional[dict] = None
     created_at: datetime
     resolved_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
 
 
 # Shortlist responses

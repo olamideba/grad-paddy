@@ -334,23 +334,41 @@ export const groupsApi = {
 
 // ── HITL ──────────────────────────────────────────────────────────────────────
 
+export type HITLKind = "approval" | "choice" | "input";
+export type HITLStatus = "pending" | "approved" | "rejected" | "resolved" | "expired";
+
+export interface HITLOption {
+  id: string;
+  label: string;
+}
+
 export interface HITLItem {
   id: string;
   session_id: string;
-  type: string;
+  run_id: string;
+  kind: HITLKind;
+  title: string;
+  description: string;
   payload: Record<string, unknown>;
-  status: string;
+  options?: HITLOption[];
+  schema?: Record<string, unknown>;
+  status: HITLStatus;
   response: Record<string, unknown> | null;
   created_at: string;
   resolved_at: string | null;
+  expires_at: string | null;
 }
 
 export const hitlApi = {
   getPending: (sessionId: string) =>
     request<Std<HITLItem | null>>(`/api/hitl/sessions/${sessionId}/pending`),
-  resolve: (hitlId: string, approved: boolean) =>
+  resolve: (
+    hitlId: string,
+    decision: "approved" | "rejected",
+    response?: Record<string, unknown>
+  ) =>
     request<Std<HITLItem>>(`/api/hitl/${hitlId}/resolve`, {
       method: "POST",
-      body: JSON.stringify({ approved }),
+      body: JSON.stringify({ decision, response }),
     }),
 };

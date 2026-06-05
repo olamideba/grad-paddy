@@ -53,7 +53,8 @@ class GroupCreateRequest(BaseModel):
 
 # HITL Requests
 class HITLResolveRequest(BaseModel):
-    approved: bool
+    decision: str  # "approved" | "rejected"
+    response: Optional[dict] = None
 
 
 # Shortlist Requests
