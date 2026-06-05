@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     AG_UI_USER_ID: str = Field(default="demo_user")
     AG_UI_SESSION_TIMEOUT_SECONDS: int = Field(default=3600)
 
+    ADK_LOG_PROMPT_CONTENT: bool = Field(default=True)
+
     # Firestore
     FIRESTORE_DATABASE_ID: str = Field(default="grad-paddy-db")
 

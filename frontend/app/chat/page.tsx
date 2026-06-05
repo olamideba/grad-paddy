@@ -57,23 +57,23 @@ type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
   | { type: "agent"; id: string; content: string; timestamp: Date }
   | {
-      type: "step";
-      id: string;
-      label: string;
-      status: StepStatus;
-      detail?: string;
-      tool?: string;
-      children?: { label: string; status: StepStatus; detail?: string }[];
-    }
+    type: "step";
+    id: string;
+    label: string;
+    status: StepStatus;
+    detail?: string;
+    tool?: string;
+    children?: { label: string; status: StepStatus; detail?: string }[];
+  }
   | { type: "phase"; id: string; label: string; status: StepStatus }
   | {
-      type: "approval";
-      id: string;
-      title: string;
-      description: string;
-      items?: string[];
-      resolved?: "approved" | "rejected";
-    };
+    type: "approval";
+    id: string;
+    title: string;
+    description: string;
+    items?: string[];
+    resolved?: "approved" | "rejected";
+  };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
@@ -981,8 +981,8 @@ export default function ChatPage() {
       const hitl = res.data;
       const items = hitl.payload
         ? Object.entries(hitl.payload).map(
-            ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-          )
+          ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+        )
         : undefined;
       setStream((p) => [
         ...p,
@@ -994,7 +994,7 @@ export default function ChatPage() {
           items,
         },
       ]);
-    } catch {}
+    } catch { }
   }
 
   async function resolveApproval(id: string, decision: "approved" | "rejected") {
@@ -1006,7 +1006,7 @@ export default function ChatPage() {
     try {
       const { hitlApi } = await import("../../lib/api");
       await hitlApi.resolve(id, decision === "approved");
-    } catch {}
+    } catch { }
   }
 
   async function sendToBackend(content: string, msgId: string) {
@@ -1038,7 +1038,7 @@ export default function ChatPage() {
         // If this chat was started from inside a group, assign it.
         if (pendingGroupId) {
           created.group_id = pendingGroupId;
-          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => {});
+          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => { });
           setPendingGroupId(null);
         }
         setActiveSessionId(created.id);
@@ -1049,7 +1049,7 @@ export default function ChatPage() {
     } else {
       // Subsequent messages: save user msg now, before agent runs
       import("../../lib/api").then(({ sessionsApi }) =>
-        sessionsApi.createMessage(threadId.current, "user", content).catch(() => {})
+        sessionsApi.createMessage(threadId.current, "user", content).catch(() => { })
       );
     }
 
