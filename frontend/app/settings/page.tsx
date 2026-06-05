@@ -495,10 +495,10 @@ export default function SettingsPage() {
     <div style={{ background: "#F7F0E3" }}>
       {/* Header */}
       <div
-        className="px-6 py-4 sticky top-0 z-10 flex items-center justify-between gap-4"
+        className="px-4 sm:px-6 py-4 sticky top-0 z-10 flex items-center justify-between gap-4"
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
-        <div>
+        <div className="min-w-0">
           <h1
             className="text-sm font-bold font-space flex items-center gap-2"
             style={{ color: "#FFFFFF" }}
@@ -506,7 +506,10 @@ export default function SettingsPage() {
             <Icon icon="solar:settings-bold" width={15} style={{ color: "#E8472A" }} />
             Preferences
           </h1>
-          <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+          <p
+            className="text-xs font-dm mt-0.5 truncate"
+            style={{ color: "rgba(255,255,255,0.45)" }}
+          >
             Grad Paddy uses these to personalise search and SOP generation
           </p>
         </div>
@@ -534,7 +537,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Content */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Research Interests */}
           <div
@@ -634,7 +637,7 @@ export default function SettingsPage() {
       {/* Sticky save bar */}
       {(isDirty || saved) && (
         <div
-          className="sticky bottom-0 px-6 py-3 flex items-center justify-between gap-4"
+          className="sticky bottom-0 px-4 sm:px-6 py-3 flex items-center justify-between gap-4"
           style={{ background: "#0D0D0D", borderTop: "2px solid #E8472A" }}
         >
           <p className="text-xs font-dm" style={{ color: "rgba(255,255,255,0.5)" }}>

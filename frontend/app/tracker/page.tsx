@@ -541,7 +541,7 @@ export default function TrackerPage() {
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
       {/* Header — black */}
       <div
-        className="px-6 py-4 shrink-0"
+        className="px-4 sm:px-6 py-4 shrink-0"
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
         <div className="flex items-center justify-between gap-4">
@@ -563,16 +563,16 @@ export default function TrackerPage() {
               )}
             </p>
           </div>
-          <button className="btn-coral btn-sm" onClick={() => setShowAddModal(true)}>
+          <button className="btn-coral btn-sm shrink-0" onClick={() => setShowAddModal(true)}>
             <Icon icon="solar:add-circle-bold" width={14} />
-            <span className="text-sm">Add Application</span>
+            <span className="text-sm hidden sm:inline">Add Application</span>
           </button>
         </div>
       </div>
 
       {/* Filter / legend bar */}
       <div
-        className="px-6 py-3 shrink-0 flex items-center gap-6 flex-wrap"
+        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-4 sm:gap-6 flex-wrap"
         style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
       >
         <div className="flex items-center gap-3 text-xs font-dm" style={{ color: "#9CA3AF" }}>
@@ -617,9 +617,9 @@ export default function TrackerPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
         {/* Summary stat cards */}
-        <div className="grid grid-cols-3 gap-4 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
           {statCards.map(({ label, icon, value, accent }) => (
             <div
               key={label}
@@ -684,7 +684,7 @@ export default function TrackerPage() {
           </div>
         ) : (
           <div
-            className="overflow-hidden"
+            className="overflow-x-auto"
             style={{
               border: "2px solid #0D0D0D",
               boxShadow: "4px 4px 0 #0D0D0D",

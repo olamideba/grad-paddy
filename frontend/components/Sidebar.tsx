@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useRef, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
-import { useChatSessions } from "@/context/ChatSessionsContext";
 import { useAuth } from "@/context/AuthContext";
+import Logo from "@/components/Logo";
+import ChatHistory from "@/components/ChatHistory";
 
 const MIN_WIDTH = 72;
 const MAX_WIDTH = 340;
@@ -43,8 +44,6 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { sessions, activeSessionId, setActiveSessionId, sessionsLoading } = useChatSessions();
   const { user } = useAuth();
   const displayName = user?.displayName ?? user?.email ?? "User";
   const avatarLetter = displayName.charAt(0).toUpperCase();
@@ -110,22 +109,11 @@ export default function Sidebar() {
         className={`flex-shrink-0 flex ${collapsed ? "flex-row items-center justify-between px-2 py-2.5" : "flex-row items-center gap-3 p-4"}`}
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
-        <span className="flex-shrink-0 text-2xl leading-none select-none">🎓</span>
+        {collapsed && <Logo size="sm" iconOnly />}
         {!collapsed && (
           <>
             <div className="flex-1 min-w-0">
-              <div
-                className="font-space font-bold text-base leading-none tracking-tight"
-                style={{ color: "#FFFFFF" }}
-              >
-                Grad
-              </div>
-              <div
-                className="font-space font-bold text-base leading-none tracking-tight"
-                style={{ color: "#E8472A" }}
-              >
-                Paddy
-              </div>
+              <Logo />
             </div>
             <button
               onClick={toggleCollapse}
@@ -173,9 +161,9 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 overflow-y-auto overflow-x-hidden">
+      <nav className="shrink-0 py-2 overflow-x-hidden">
         {!collapsed && (
-          <div className="px-4 mb-2">
+          <div className="px-4 mb-1">
             <span
               className="text-[10px] font-semibold uppercase tracking-widest font-space"
               style={{ color: "#9CA3AF" }}
@@ -184,7 +172,7 @@ export default function Sidebar() {
             </span>
           </div>
         )}
-        {NAV_ITEMS.map(({ href, label, icon, desc }) => {
+        {NAV_ITEMS.map(({ href, label, icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -192,7 +180,7 @@ export default function Sidebar() {
               href={href}
               title={collapsed ? label : undefined}
               className={clsx(
-                "flex items-center gap-3 mx-2 px-3 py-2.5 mb-0.5 bouncy",
+                "flex items-center gap-2.5 mx-2 px-3 py-1.5 mb-0.5 bouncy",
                 collapsed && "justify-center"
               )}
               style={
@@ -213,19 +201,11 @@ export default function Sidebar() {
                 if (!active) (e.currentTarget as HTMLElement).style.background = "";
               }}
             >
-              <Icon icon={icon} width={17} className="flex-shrink-0" />
+              <Icon icon={icon} width={16} className="flex-shrink-0" />
               {!collapsed && (
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold font-space leading-tight truncate">
-                    {label}
-                  </div>
-                  <div
-                    className="text-xs leading-tight truncate font-dm"
-                    style={{ color: active ? "rgba(255,255,255,0.65)" : "#9CA3AF" }}
-                  >
-                    {desc}
-                  </div>
-                </div>
+                <span className="text-[13px] font-semibold font-space leading-tight truncate">
+                  {label}
+                </span>
               )}
             </Link>
           );
@@ -233,84 +213,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Chat history */}
-      {!collapsed && (
-        <div
-          className="flex-shrink-0 flex flex-col"
-          style={{ borderTop: "2px solid #0D0D0D", maxHeight: "40vh" }}
-        >
-          <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
-            <span
-              className="text-[10px] font-semibold uppercase tracking-widest font-space"
-              style={{ color: "#9CA3AF" }}
-            >
-              Chats
-            </span>
-            <button
-              onClick={() => {
-                setActiveSessionId(null);
-                router.push("/chat");
-              }}
-              className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
-              style={{ color: "#9CA3AF", borderRadius: "4px", border: "1.5px solid transparent" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#EDE6D3";
-                e.currentTarget.style.color = "#0D0D0D";
-                e.currentTarget.style.border = "1.5px solid #0D0D0D";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "";
-                e.currentTarget.style.color = "#9CA3AF";
-                e.currentTarget.style.border = "1.5px solid transparent";
-              }}
-            >
-              <Icon icon="solar:add-circle-bold" width={11} />
-              New Chat
-            </button>
-          </div>
-          <div className="overflow-y-auto">
-            {sessionsLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <div
-                  className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
-                  style={{ borderColor: "#E8472A", borderTopColor: "transparent" }}
-                />
-              </div>
-            ) : sessions.length === 0 ? (
-              <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
-                No chats yet
-              </p>
-            ) : (
-              sessions.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    setActiveSessionId(s.id);
-                    router.push("/chat");
-                  }}
-                  className="group flex items-center gap-2 px-4 py-1.5 bouncy w-full text-left"
-                  style={{
-                    borderLeft: `3px solid ${activeSessionId === s.id ? "#E8472A" : "transparent"}`,
-                    background: activeSessionId === s.id ? "#EDE6D3" : "transparent",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeSessionId !== s.id) e.currentTarget.style.background = "#F7F0E3";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeSessionId !== s.id) e.currentTarget.style.background = "";
-                  }}
-                >
-                  <span
-                    className="flex-1 min-w-0 text-[12px] font-dm truncate"
-                    style={{ color: activeSessionId === s.id ? "#0D0D0D" : "#5A5A5A" }}
-                  >
-                    {s.title}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {!collapsed && <ChatHistory />}
 
       {/* Footer */}
       <div

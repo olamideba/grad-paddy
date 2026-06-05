@@ -37,9 +37,24 @@ class MessageCreateRequest(BaseModel):
     content: str
 
 
+class SessionRenameRequest(BaseModel):
+    title: str
+
+
+class SessionGroupRequest(BaseModel):
+    # None / empty removes the session from its group.
+    group_id: Optional[str] = None
+
+
+# Groups Requests
+class GroupCreateRequest(BaseModel):
+    name: str
+
+
 # HITL Requests
 class HITLResolveRequest(BaseModel):
-    approved: bool
+    decision: str  # "approved" | "rejected"
+    response: Optional[dict] = None
 
 
 # Shortlist Requests
@@ -85,7 +100,7 @@ class ApplicationCreateRequest(BaseModel):
     status: str = "tracking"
     sop_status: str = "not_started"
     cv_status: str = "not_started"
-    recommenders: list[dict] = Field(default_factory=list)
+    recommenders: list[RecommenderAddRequest] = Field(default_factory=list)
     funded: str = "unknown"
     notes: Optional[str] = None
 
@@ -98,7 +113,7 @@ class ApplicationUpdateRequest(BaseModel):
     status: Optional[str] = None
     sop_status: Optional[str] = None
     cv_status: Optional[str] = None
-    recommenders: Optional[list[dict]] = None
+    recommenders: Optional[list[RecommenderAddRequest]] = None
     funded: Optional[str] = None
     notes: Optional[str] = None
 

@@ -688,11 +688,11 @@ export default function DraftsPage() {
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
       {/* Header — black */}
       <div
-        className="px-6 py-4 shrink-0"
+        className="px-4 sm:px-6 py-4 shrink-0"
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
         <div className="flex items-center justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h1
               className="text-sm font-bold font-space flex items-center gap-2"
               style={{ color: "#FFFFFF" }}
@@ -700,7 +700,10 @@ export default function DraftsPage() {
               <Icon icon="solar:document-text-bold" width={15} style={{ color: "#E8472A" }} />
               Drafts
             </h1>
-            <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+            <p
+              className="text-xs font-dm mt-0.5 truncate"
+              style={{ color: "rgba(255,255,255,0.45)" }}
+            >
               {loading
                 ? "Loading…"
                 : stats
@@ -708,14 +711,14 @@ export default function DraftsPage() {
                   : `${drafts.length} drafts`}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <button className="btn-white btn-sm" onClick={() => setShowAddModal(true)}>
               <Icon icon="solar:pen-bold" width={14} />
-              <span className="text-sm">New Draft</span>
+              <span className="text-sm hidden sm:inline">New Draft</span>
             </button>
             <a href="/chat" className="btn-coral btn-sm">
               <Icon icon="solar:add-circle-bold" width={14} />
-              <span className="text-sm">Generate Draft</span>
+              <span className="text-sm hidden sm:inline">Generate Draft</span>
             </a>
           </div>
         </div>
@@ -723,7 +726,7 @@ export default function DraftsPage() {
 
       {/* Filter bar */}
       <div
-        className="px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
+        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
         style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
       >
         <div
@@ -783,7 +786,7 @@ export default function DraftsPage() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {!loading && aiDraftCount > 0 && (
           <div
             className="mb-5 p-4 flex items-center gap-3"

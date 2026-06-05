@@ -1,12 +1,24 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts
 from src.core.config import get_settings
 from src.core.firebase import initialize_firebase
 from src.api.schemas.responses import StandardResponse
+
+
+def _configure_logging() -> None:
+    # Uvicorn configures the root handlers, so here we only raise the relevant
+    # logger levels for the app and ADK namespaces.
+    for logger_name in ("google.adk", "google_adk", "ag_ui_adk", "src"):
+        logging.getLogger(logger_name).setLevel(logging.DEBUG)
+
+
+_configure_logging()
+
+from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups
 
 
 @asynccontextmanager
@@ -39,6 +51,7 @@ app.include_router(hitl.router)
 app.include_router(shortlist.router)
 app.include_router(tracker.router)
 app.include_router(drafts.router)
+app.include_router(groups.router)
 
 
 app.add_middleware(
