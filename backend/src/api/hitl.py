@@ -19,7 +19,9 @@ async def get_pending_hitl(request: Request, session_id: str) -> dict:
 async def resolve_hitl(request: Request, hitl_id: str, body: HITLResolveRequest) -> dict:
     user_id = request.state.user_id
     try:
-        resolved = await HITLService.resolve_hitl(user_id, hitl_id, body.approved)
+        resolved, _created = await HITLService.resolve_hitl(
+            user_id, hitl_id, body.decision, body.response
+        )
         return {"success": True, "data": resolved, "message": "HITL resolved successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

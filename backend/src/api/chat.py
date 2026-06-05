@@ -1,9 +1,12 @@
+import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
+from uuid6 import uuid7
 
+from ag_ui.core import EventType, RunAgentInput, ToolMessage
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
-from ag_ui.core import BaseEvent, EventType
+from ag_ui.core import BaseEvent
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
@@ -11,37 +14,169 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from src.agents.root import root_agent
+from src.api.hitl_events import RunFinishedWithStatusEvent
 from src.core.config import get_settings
 from src.core.firebase import verify_firebase_auth
 from src.repositories.sessions_repo import SessionRepository
+from src.services.hitl_service import HITLService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(verify_firebase_auth)])
 
+REQUEST_HITL_TOOL_NAME = "request_hitl"
+
 
 class PersistentChatAgent(ADKAgent):
-    """ADK agent wrapper that persists completed AG-UI message streams."""
+    """ADK agent wrapper that persists AG-UI message streams and HITL interrupts."""
 
-    async def run(self, input: Any) -> AsyncGenerator[BaseEvent, None]:
+    async def _prepare_input(self, input: RunAgentInput, user_id: str) -> tuple[RunAgentInput, bool]:
+        """Apply forwardedProps.resume by injecting a tool result for the suspended call."""
+        state = dict(input.state) if isinstance(input.state, dict) else {}
+        state["current_run_id"] = input.run_id
+        input = input.model_copy(update={"state": state})
+
+        forwarded = input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
+        resume = forwarded.get("resume") if isinstance(forwarded.get("resume"), dict) else None
+        if not resume:
+            return input, False
+
+        hitl_id = resume.get("hitlId") or resume.get("hitl_id")
+        if not hitl_id:
+            return input, False
+
+        hitl = await HITLService.get_hitl(user_id, str(hitl_id))
+        if not hitl:
+            raise ValueError(f"HITL record not found: {hitl_id}")
+
+        if hitl.get("continued_run_id"):
+            logger.info("Skipping duplicate resume for HITL %s", hitl_id)
+            return input, True
+
+        if hitl.get("status") == "pending":
+            raise ValueError(f"HITL {hitl_id} must be resolved before resume")
+
+        tool_call_id = hitl.get("tool_call_id")
+        if not tool_call_id:
+            raise ValueError(f"HITL {hitl_id} is missing tool_call_id")
+
+        await HITLService.mark_continued(user_id, str(hitl_id), input.run_id)
+
+        tool_content = json.dumps({
+            "decision": resume.get("decision"),
+            "response": resume.get("response"),
+            "hitl_id": hitl_id,
+            "status": hitl.get("status"),
+        })
+        tool_message = ToolMessage(
+            id=str(uuid7()),
+            role="tool",
+            tool_call_id=str(tool_call_id),
+            content=tool_content,
+        )
+        return input.model_copy(update={"messages": [*input.messages, tool_message]}), False
+
+    async def run(self, input: Any) -> AsyncGenerator[Any, None]:
         user_id = self._get_user_id(input)
         session_id = input.thread_id
+
+        try:
+            prepared, resume_noop = await self._prepare_input(input, user_id)
+        except ValueError as exc:
+            logger.error("HITL resume preparation failed: %s", exc)
+            from ag_ui.core import RunErrorEvent
+
+            yield RunErrorEvent(
+                type=EventType.RUN_ERROR,
+                message=str(exc),
+                code="HITL_RESUME_ERROR",
+            )
+            return
+
+        if resume_noop:
+            from ag_ui.core import RunStartedEvent
+
+            yield RunStartedEvent(
+                type=EventType.RUN_STARTED,
+                thread_id=input.thread_id,
+                run_id=input.run_id,
+            )
+            yield RunFinishedWithStatusEvent(
+                thread_id=input.thread_id,
+                run_id=input.run_id,
+                status="completed",
+            )
+            return
 
         pending_events: list[dict[str, Any]] = []
         current_message_id: str | None = None
         current_text_parts: list[str] = []
         current_message_events: list[dict[str, Any]] = []
         current_message_complete = False
-
-        async for event in super().run(input):
+        async for event in super().run(prepared):
             try:
                 event_payload = event.model_dump(by_alias=True, exclude_none=True)
             except Exception:
                 event_payload = {"type": str(getattr(event, "type", ""))}
 
+            event_type = getattr(event, "type", None)
+
+            if event_type == EventType.RUN_FINISHED:
+                pending = await HITLService.get_pending_hitl(user_id, session_id)
+                status = "interrupted" if pending else "completed"
+
+                if pending:
+                    run_id = str(getattr(event, "run_id", None) or input.run_id)
+                    required = HITLService.to_required_event(pending, session_id, run_id)
+                    yield required
+
+                if status == "completed" and current_message_id and current_message_complete:
+                    content = "".join(current_text_parts).strip()
+                    try:
+                        await SessionRepository.upsert_message(
+                            user_id=user_id,
+                            session_id=session_id,
+                            message_id=current_message_id,
+                            data={
+                                "role": "assistant",
+                                "content": content,
+                                "ag_ui_events": current_message_events,
+                            },
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to persist AG-UI events for session %s, message %s: %s",
+                            session_id,
+                            current_message_id,
+                            exc,
+                            exc_info=True,
+                        )
+
+                yield RunFinishedWithStatusEvent(
+                    thread_id=str(getattr(event, "thread_id", None) or session_id),
+                    run_id=str(getattr(event, "run_id", None) or input.run_id),
+                    status=status,
+                    result=getattr(event, "result", None),
+                )
+
+                current_message_id = None
+                current_text_parts = []
+                current_message_events = []
+                current_message_complete = False
+                pending_events = []
+                continue
+
+            if event_type == EventType.RUN_ERROR:
+                yield event
+                current_message_id = None
+                current_text_parts = []
+                current_message_events = []
+                current_message_complete = False
+                pending_events = []
+                continue
+
             pending_events.append(event_payload)
 
-            event_type = getattr(event, "type", None)
             if event_type == EventType.TEXT_MESSAGE_START:
                 current_message_id = getattr(event, "message_id", None)
                 current_text_parts = []
@@ -66,34 +201,6 @@ class PersistentChatAgent(ADKAgent):
             ):
                 current_message_complete = True
 
-            if event_type in {EventType.RUN_FINISHED, EventType.RUN_ERROR}:
-                if current_message_id and current_message_complete:
-                    content = "".join(current_text_parts).strip()
-                    try:
-                        await SessionRepository.upsert_message(
-                            user_id=user_id,
-                            session_id=session_id,
-                            message_id=current_message_id,
-                            data={
-                                "role": "assistant",
-                                "content": content,
-                                "ag_ui_events": current_message_events,
-                            },
-                        )
-                    except Exception as exc:
-                        logger.error(
-                            "Failed to persist AG-UI events for session %s, message %s: %s",
-                            session_id,
-                            current_message_id,
-                            exc,
-                            exc_info=True,
-                        )
-                current_message_id = None
-                current_text_parts = []
-                current_message_events = []
-                current_message_complete = False
-                pending_events = []
-
             yield event
 
 
@@ -117,6 +224,7 @@ def build_chat_agent() -> ADKAgent:
         or settings.AG_UI_USER_ID,
         session_timeout_seconds=settings.AG_UI_SESSION_TIMEOUT_SECONDS,
         use_in_memory_services=True,
+        use_thread_id_as_session_id=True,
     )
 
 

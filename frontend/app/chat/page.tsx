@@ -57,23 +57,23 @@ type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
   | { type: "agent"; id: string; content: string; timestamp: Date }
   | {
-      type: "step";
-      id: string;
-      label: string;
-      status: StepStatus;
-      detail?: string;
-      tool?: string;
-      children?: { label: string; status: StepStatus; detail?: string }[];
-    }
+    type: "step";
+    id: string;
+    label: string;
+    status: StepStatus;
+    detail?: string;
+    tool?: string;
+    children?: { label: string; status: StepStatus; detail?: string }[];
+  }
   | { type: "phase"; id: string; label: string; status: StepStatus }
   | {
-      type: "approval";
-      id: string;
-      title: string;
-      description: string;
-      items?: string[];
-      resolved?: "approved" | "rejected";
-    };
+    type: "approval";
+    id: string;
+    title: string;
+    description: string;
+    items?: string[];
+    resolved?: "approved" | "rejected";
+  };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
@@ -143,7 +143,7 @@ function StreamingText({
           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
           ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="text-sm font-dm">{children}</li>,
+          li: ({ children }) => <li className="text-xs font-dm">{children}</li>,
           strong: ({ children }) => (
             <strong className="font-bold" style={{ color: "#0D0D0D" }}>
               {children}
@@ -680,11 +680,11 @@ function MessageBubble({
             <span className="text-xs leading-none">🎓</span>
           )}
         </div>
-        <div className={clsx("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
+        <div className={clsx("flex flex-col gap-1 max-w-[88%]", isUser && "items-end")}>
           <div
             ref={boxRef}
             onPointerDown={spawnRipple}
-            className="float-water relative overflow-hidden px-4 py-3 text-sm font-dm leading-relaxed"
+            className="float-water relative overflow-hidden px-4 py-2.5 text-xs font-dm leading-relaxed"
             style={{
               background: isUser ? "#0D0D0D" : "#FFFFFF",
               color: isUser ? "#fff" : "#0D0D0D",
@@ -744,7 +744,14 @@ export default function ChatPage() {
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
-  const { sessions, setSessions, activeSessionId, setActiveSessionId } = useChatSessions();
+  const {
+    sessions,
+    setSessions,
+    activeSessionId,
+    setActiveSessionId,
+    pendingGroupId,
+    setPendingGroupId,
+  } = useChatSessions();
 
   const threadId = useRef(crypto.randomUUID());
   const agMessages = useRef<Message[]>([]);
@@ -845,6 +852,8 @@ export default function ChatPage() {
             } as Message);
           }
           setStream(items);
+          // Restored runs are already finished → collapse their activity cards.
+          setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
         })
         .catch((err) => console.error("[chat] load session messages error", err))
@@ -868,8 +877,7 @@ export default function ChatPage() {
         ...p,
         { type: "phase", id: phaseId, label: "Processing", status: "running" },
       ]);
-      // Default to collapsed so users see friendly progress, not raw tool detail.
-      setCollapsedPhases((prev) => new Set(prev).add(phaseId));
+      // Expanded while running; collapsed automatically on finish (see RUN_FINISHED).
     } else if (type === "TEXT_MESSAGE_START") {
       const e = event as unknown as { messageId: string };
       setStreamingMessageId(e.messageId);
@@ -933,26 +941,35 @@ export default function ChatPage() {
           },
         ]);
       });
-      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "STEP_FINISHED") {
       const e = event as unknown as { stepName: string };
+      const stepPhaseId = `step-${e.stepName}`;
       setStream((p) =>
         p.map((item) =>
-          item.id === `step-${e.stepName}` && item.type === "phase"
-            ? { ...item, status: "done" }
-            : item
+          item.id === stepPhaseId && item.type === "phase" ? { ...item, status: "done" } : item
         )
       );
+      // Collapse the step's detail once it finishes.
+      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
+      const phaseIds: string[] = [];
       setStream((p) =>
         p.map((item) => {
-          if (item.type === "phase" && item.id === phaseId && item.status === "running")
-            return { ...item, status };
+          if (item.type === "phase") {
+            phaseIds.push(item.id);
+            if (item.id === phaseId && item.status === "running") return { ...item, status };
+          }
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
           return item;
         })
       );
+      // Run finished → collapse every activity card so the thread stays tidy.
+      setCollapsedPhases((prev) => {
+        const next = new Set(prev);
+        phaseIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
   }
 
@@ -964,8 +981,8 @@ export default function ChatPage() {
       const hitl = res.data;
       const items = hitl.payload
         ? Object.entries(hitl.payload).map(
-            ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-          )
+          ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+        )
         : undefined;
       setStream((p) => [
         ...p,
@@ -977,7 +994,7 @@ export default function ChatPage() {
           items,
         },
       ]);
-    } catch {}
+    } catch { }
   }
 
   async function resolveApproval(id: string, decision: "approved" | "rejected") {
@@ -989,7 +1006,7 @@ export default function ChatPage() {
     try {
       const { hitlApi } = await import("../../lib/api");
       await hitlApi.resolve(id, decision === "approved");
-    } catch {}
+    } catch { }
   }
 
   async function sendToBackend(content: string, msgId: string) {
@@ -1015,17 +1032,24 @@ export default function ChatPage() {
       try {
         const { sessionsApi } = await import("../../lib/api");
         const res = await sessionsApi.create(content);
-        threadId.current = res.data.id;
+        const created = res.data;
+        threadId.current = created.id;
         justCreatedSession.current = true;
-        setActiveSessionId(res.data.id);
-        setSessions((prev) => [res.data, ...prev]);
+        // If this chat was started from inside a group, assign it.
+        if (pendingGroupId) {
+          created.group_id = pendingGroupId;
+          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => { });
+          setPendingGroupId(null);
+        }
+        setActiveSessionId(created.id);
+        setSessions((prev) => [created, ...prev]);
       } catch (err) {
         console.error("[chat] create session error", err);
       }
     } else {
       // Subsequent messages: save user msg now, before agent runs
       import("../../lib/api").then(({ sessionsApi }) =>
-        sessionsApi.createMessage(threadId.current, "user", content).catch(() => {})
+        sessionsApi.createMessage(threadId.current, "user", content).catch(() => { })
       );
     }
 
