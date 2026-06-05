@@ -1,4 +1,7 @@
+from typing import Any, TypeVar
+
 from google.adk.tools import LongRunningFunctionTool, ToolContext
+from pydantic import BaseModel
 
 from src.api.schemas.requests import (
     ApplicationCreateRequest,
@@ -38,6 +41,12 @@ from src.services.shortlist_service import ShortlistService
 from src.services.tracker_service import TrackerService
 from src.services.users_service import UserService
 
+TModel = TypeVar("TModel", bound=BaseModel)
+
+
+def _validate(model: type[TModel], payload: dict[str, Any] | None) -> TModel:
+    return model.model_validate(payload or {})
+
 
 def _response(data: object, message: str = "") -> dict[str, object]:
     return {"success": True, "data": data, "message": message}
@@ -47,15 +56,16 @@ def _response(data: object, message: str = "") -> dict[str, object]:
 
 
 async def create_or_fetch_profile(
-    payload: ProfileCreateRequest, tool_context: ToolContext
+    payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Create a profile if missing, or return the existing profile."""
+    payload_model = _validate(ProfileCreateRequest, payload)
     user_id = require_user_id(tool_context)
     profile = await UserService.get_or_create_profile(
         user_id=user_id,
-        email=payload.email,
-        name=payload.name,
-        avatar_url=payload.avatar_url,
+        email=payload_model.email,
+        name=payload_model.name,
+        avatar_url=payload_model.avatar_url,
     )
     return _response(profile, "Profile created or fetched successfully")
 
@@ -68,11 +78,12 @@ async def get_profile(tool_context: ToolContext) -> dict[str, object]:
 
 
 async def update_profile(
-    payload: ProfileUpdateRequest, tool_context: ToolContext
+    payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update the current user's profile."""
+    payload_model = _validate(ProfileUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    profile = await UserService.update_profile(user_id, payload.model_dump(exclude_unset=True))
+    profile = await UserService.update_profile(user_id, payload_model.model_dump(exclude_unset=True))
     return _response(profile, "Profile updated successfully")
 
 
@@ -84,63 +95,71 @@ async def get_preferences(tool_context: ToolContext) -> dict[str, object]:
 
 
 async def upsert_preferences(
-    payload: PreferencesUpdateRequest, tool_context: ToolContext
+    payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Create or replace the current user's preferences."""
+    payload_model = _validate(PreferencesUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.upsert_preferences(user_id, payload.model_dump())
+    preferences = await UserService.upsert_preferences(user_id, payload_model.model_dump())
     return _response(preferences, "Preferences updated successfully")
 
 
-async def append_research_interest(payload: ValueRequest, tool_context: ToolContext) -> dict[str, object]:
+async def append_research_interest(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Append a research interest to the current user's preferences."""
+    payload_model = _validate(ValueRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.append_research_interest(user_id, payload.value)
+    preferences = await UserService.append_research_interest(user_id, payload_model.value)
     return _response(preferences, "Research interest appended successfully")
 
 
-async def remove_research_interest(payload: ValueRequest, tool_context: ToolContext) -> dict[str, object]:
+async def remove_research_interest(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Remove a research interest from the current user's preferences."""
+    payload_model = _validate(ValueRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.remove_research_interest(user_id, payload.value)
+    preferences = await UserService.remove_research_interest(user_id, payload_model.value)
     return _response(preferences, "Research interest removed successfully")
 
 
-async def append_target_country(payload: ValueRequest, tool_context: ToolContext) -> dict[str, object]:
+async def append_target_country(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Append a target country to the current user's preferences."""
+    payload_model = _validate(ValueRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.append_target_country(user_id, payload.value)
+    preferences = await UserService.append_target_country(user_id, payload_model.value)
     return _response(preferences, "Target country appended successfully")
 
 
-async def remove_target_country(payload: ValueRequest, tool_context: ToolContext) -> dict[str, object]:
+async def remove_target_country(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Remove a target country from the current user's preferences."""
+    payload_model = _validate(ValueRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.remove_target_country(user_id, payload.value)
+    preferences = await UserService.remove_target_country(user_id, payload_model.value)
     return _response(preferences, "Target country removed successfully")
 
 
-async def append_target_university(payload: ValueRequest, tool_context: ToolContext) -> dict[str, object]:
+async def append_target_university(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Append a target university to the current user's preferences."""
+    payload_model = _validate(ValueRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.append_target_university(user_id, payload.value)
+    preferences = await UserService.append_target_university(user_id, payload_model.value)
     return _response(preferences, "Target university appended successfully")
 
 
-async def remove_target_university(payload: ValueRequest, tool_context: ToolContext) -> dict[str, object]:
+async def remove_target_university(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Remove a target university from the current user's preferences."""
+    payload_model = _validate(ValueRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.remove_target_university(user_id, payload.value)
+    preferences = await UserService.remove_target_university(user_id, payload_model.value)
     return _response(preferences, "Target university removed successfully")
 
 
 # ── Sessions and groups ──────────────────────────────────────────────────────
 
 
-async def create_session(payload: SessionCreateRequest, tool_context: ToolContext) -> dict[str, object]:
+async def create_session(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Create a chat session from the first user message."""
+    payload_model = _validate(SessionCreateRequest, payload)
     user_id = require_user_id(tool_context)
-    session = await SessionService.create_session(user_id, payload.first_message)
+    session = await SessionService.create_session(user_id, payload_model.first_message)
     return _response(session, "Session created successfully")
 
 
@@ -166,11 +185,12 @@ async def delete_session(session_id: str, tool_context: ToolContext) -> dict[str
 
 
 async def rename_session(
-    session_id: str, payload: SessionRenameRequest, tool_context: ToolContext
+    session_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Rename a session."""
+    payload_model = _validate(SessionRenameRequest, payload)
     user_id = require_user_id(tool_context)
-    session = await SessionService.rename_session(user_id, session_id, payload.title)
+    session = await SessionService.rename_session(user_id, session_id, payload_model.title)
     return _response(session, "Session renamed")
 
 
@@ -182,11 +202,12 @@ async def toggle_session_star(session_id: str, tool_context: ToolContext) -> dic
 
 
 async def set_session_group(
-    session_id: str, payload: SessionGroupRequest, tool_context: ToolContext
+    session_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Assign a session to a group or clear the group assignment."""
+    payload_model = _validate(SessionGroupRequest, payload)
     user_id = require_user_id(tool_context)
-    session = await SessionService.set_group(user_id, session_id, payload.group_id)
+    session = await SessionService.set_group(user_id, session_id, payload_model.group_id)
     return _response(session, "Session group updated")
 
 
@@ -198,18 +219,22 @@ async def list_session_messages(session_id: str, tool_context: ToolContext) -> d
 
 
 async def create_session_message(
-    session_id: str, payload: MessageCreateRequest, tool_context: ToolContext
+    session_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Append a message to an existing session."""
+    payload_model = _validate(MessageCreateRequest, payload)
     user_id = require_user_id(tool_context)
-    message = await SessionService.create_message(user_id, session_id, payload.role, payload.content)
+    message = await SessionService.create_message(
+        user_id, session_id, payload_model.role, payload_model.content
+    )
     return _response(message, "Message created successfully")
 
 
-async def create_group(payload: GroupCreateRequest, tool_context: ToolContext) -> dict[str, object]:
+async def create_group(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Create a new group."""
+    payload_model = _validate(GroupCreateRequest, payload)
     user_id = require_user_id(tool_context)
-    group = await GroupService.create_group(user_id, payload.name)
+    group = await GroupService.create_group(user_id, payload_model.name)
     return _response(group, "Group created")
 
 
@@ -221,11 +246,12 @@ async def list_groups(tool_context: ToolContext) -> dict[str, object]:
 
 
 async def delete_group(
-    group_id: str, payload: GroupDeleteRequest, tool_context: ToolContext
+    group_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Delete a group and optionally delete the sessions inside it."""
+    payload_model = _validate(GroupDeleteRequest, payload)
     user_id = require_user_id(tool_context)
-    await GroupService.delete_group(user_id, group_id, payload.delete_sessions)
+    await GroupService.delete_group(user_id, group_id, payload_model.delete_sessions)
     return _response({"status": "success"}, "Group deleted")
 
 
@@ -233,23 +259,25 @@ async def delete_group(
 
 
 async def add_shortlist_faculty(
-    payload: FacultyCreateRequest, tool_context: ToolContext
+    payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Add a faculty member to the shortlist."""
+    payload_model = _validate(FacultyCreateRequest, payload)
     user_id = require_user_id(tool_context)
-    faculty = await ShortlistService.add_faculty(user_id, payload.model_dump())
+    faculty = await ShortlistService.add_faculty(user_id, payload_model.model_dump())
     return _response(faculty, "Faculty member added successfully")
 
 
 async def list_shortlist(
-    payload: ShortlistListRequest, tool_context: ToolContext
+    payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """List shortlist entries with optional filters."""
+    payload_model = _validate(ShortlistListRequest, payload)
     user_id = require_user_id(tool_context)
     faculty_list = await ShortlistService.list_shortlist(
         user_id=user_id,
-        position_status=payload.position_status,
-        outreach_status=payload.outreach_status,
+        position_status=payload_model.position_status,
+        outreach_status=payload_model.outreach_status,
     )
     return _response(faculty_list)
 
@@ -262,22 +290,24 @@ async def get_shortlist_faculty(faculty_id: str, tool_context: ToolContext) -> d
 
 
 async def update_shortlist_faculty(
-    faculty_id: str, payload: FacultyUpdateRequest, tool_context: ToolContext
+    faculty_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a shortlist entry."""
+    payload_model = _validate(FacultyUpdateRequest, payload)
     user_id = require_user_id(tool_context)
     faculty = await ShortlistService.update_faculty(
-        user_id, faculty_id, payload.model_dump(exclude_unset=True)
+        user_id, faculty_id, payload_model.model_dump(exclude_unset=True)
     )
     return _response(faculty, "Faculty member updated successfully")
 
 
 async def update_shortlist_outreach_status(
-    faculty_id: str, payload: OutreachStatusUpdateRequest, tool_context: ToolContext
+    faculty_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a faculty outreach status."""
+    payload_model = _validate(OutreachStatusUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    await ShortlistService.update_outreach_status(user_id, faculty_id, payload.status)
+    await ShortlistService.update_outreach_status(user_id, faculty_id, payload_model.status)
     return _response({"status": "success"}, "Outreach status updated successfully")
 
 
@@ -299,11 +329,12 @@ async def get_shortlist_stats(tool_context: ToolContext) -> dict[str, object]:
 
 
 async def create_application(
-    payload: ApplicationCreateRequest, tool_context: ToolContext
+    payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Create a new application tracker entry."""
+    payload_model = _validate(ApplicationCreateRequest, payload)
     user_id = require_user_id(tool_context)
-    application = await TrackerService.create_application(user_id, payload.model_dump())
+    application = await TrackerService.create_application(user_id, payload_model.model_dump())
     return _response(application, "Application program created successfully")
 
 
@@ -322,69 +353,82 @@ async def get_application(application_id: str, tool_context: ToolContext) -> dic
 
 
 async def update_application(
-    application_id: str, payload: ApplicationUpdateRequest, tool_context: ToolContext
+    application_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a tracker entry."""
+    payload_model = _validate(ApplicationUpdateRequest, payload)
     user_id = require_user_id(tool_context)
     application = await TrackerService.update_application(
-        user_id, application_id, payload.model_dump(exclude_unset=True)
+        user_id, application_id, payload_model.model_dump(exclude_unset=True)
     )
     return _response(application, "Application program updated successfully")
 
 
 async def update_application_status(
-    application_id: str, payload: StatusUpdateRequest, tool_context: ToolContext
+    application_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update application status."""
+    payload_model = _validate(StatusUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_status(user_id, application_id, payload.status)
+    await TrackerService.update_status(user_id, application_id, payload_model.status)
     return _response({"status": "success"}, "Status updated successfully")
 
 
 async def update_application_sop_status(
-    application_id: str, payload: SOPStatusUpdateRequest, tool_context: ToolContext
+    application_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update SOP status."""
+    payload_model = _validate(SOPStatusUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_sop_status(user_id, application_id, payload.sop_status or payload.status)
+    await TrackerService.update_sop_status(
+        user_id, application_id, payload_model.sop_status or payload_model.status
+    )
     return _response({"status": "success"}, "SOP status updated successfully")
 
 
 async def update_application_cv_status(
-    application_id: str, payload: CVStatusUpdateRequest, tool_context: ToolContext
+    application_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update CV status."""
+    payload_model = _validate(CVStatusUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_cv_status(user_id, application_id, payload.cv_status or payload.status)
+    await TrackerService.update_cv_status(
+        user_id, application_id, payload_model.cv_status or payload_model.status
+    )
     return _response({"status": "success"}, "CV status updated successfully")
 
 
 async def update_application_funded(
-    application_id: str, payload: FundedUpdateRequest, tool_context: ToolContext
+    application_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update funding status."""
+    payload_model = _validate(FundedUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_funded(user_id, application_id, payload.funded or payload.status)
+    await TrackerService.update_funded(
+        user_id, application_id, payload_model.funded or payload_model.status
+    )
     return _response({"status": "success"}, "Funded status updated successfully")
 
 
 async def add_application_recommender(
-    application_id: str, payload: RecommenderAddRequest, tool_context: ToolContext
+    application_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Add a recommender to an application."""
+    payload_model = _validate(RecommenderAddRequest, payload)
     user_id = require_user_id(tool_context)
-    recommender = {"name": payload.name, "status": payload.status}
+    recommender = {"name": payload_model.name, "status": payload_model.status}
     await TrackerService.add_recommender(user_id, application_id, recommender)
     return _response({"status": "success"}, "Recommender added successfully")
 
 
 async def update_application_recommender_status(
-    application_id: str, recommender_name: str, payload: StatusUpdateRequest, tool_context: ToolContext
+    application_id: str, recommender_name: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a specific recommender status."""
+    payload_model = _validate(StatusUpdateRequest, payload)
     user_id = require_user_id(tool_context)
     await TrackerService.update_recommender_status(
-        user_id, application_id, recommender_name, payload.status
+        user_id, application_id, recommender_name, payload_model.status
     )
     return _response({"status": "success"}, "Recommender status updated successfully")
 
@@ -406,17 +450,19 @@ async def get_tracker_stats(tool_context: ToolContext) -> dict[str, object]:
 # ── Drafts ───────────────────────────────────────────────────────────────────
 
 
-async def create_draft(payload: DraftCreateRequest, tool_context: ToolContext) -> dict[str, object]:
+async def create_draft(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Create a new draft."""
+    payload_model = _validate(DraftCreateRequest, payload)
     user_id = require_user_id(tool_context)
-    draft = await DraftsService.create_draft(user_id, payload.model_dump())
+    draft = await DraftsService.create_draft(user_id, payload_model.model_dump())
     return _response(draft, "Draft created successfully")
 
 
-async def list_drafts(payload: DraftListRequest, tool_context: ToolContext) -> dict[str, object]:
+async def list_drafts(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """List drafts with optional filters."""
+    payload_model = _validate(DraftListRequest, payload)
     user_id = require_user_id(tool_context)
-    drafts = await DraftsService.list_drafts(user_id, payload.type, payload.status)
+    drafts = await DraftsService.list_drafts(user_id, payload_model.type, payload_model.status)
     return _response(drafts)
 
 
@@ -428,20 +474,22 @@ async def get_draft(draft_id: str, tool_context: ToolContext) -> dict[str, objec
 
 
 async def update_draft_content(
-    draft_id: str, payload: ContentUpdateRequest, tool_context: ToolContext
+    draft_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update draft content."""
+    payload_model = _validate(ContentUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    draft = await DraftsService.update_content(user_id, draft_id, payload.content)
+    draft = await DraftsService.update_content(user_id, draft_id, payload_model.content)
     return _response(draft, "Draft content updated successfully")
 
 
 async def update_draft_status(
-    draft_id: str, payload: StatusUpdateRequest, tool_context: ToolContext
+    draft_id: str, payload: dict[str, Any], tool_context: ToolContext
 ) -> dict[str, object]:
     """Update draft status."""
+    payload_model = _validate(StatusUpdateRequest, payload)
     user_id = require_user_id(tool_context)
-    await DraftsService.update_status(user_id, draft_id, payload.status)
+    await DraftsService.update_status(user_id, draft_id, payload_model.status)
     return _response({"status": "success"}, "Draft status updated successfully")
 
 
@@ -469,33 +517,34 @@ async def get_pending_hitl(session_id: str, tool_context: ToolContext) -> dict[s
     return _response(hitl or {})
 
 
-async def request_hitl(payload: RequestHITLRequest, tool_context: ToolContext) -> dict[str, object]:
+async def request_hitl(payload: dict[str, Any], tool_context: ToolContext) -> dict[str, object]:
     """Pause the current turn and ask the human to approve, choose, or supply input."""
+    payload_model = _validate(RequestHITLRequest, payload)
     user_id = require_user_id(tool_context)
     session_id = tool_context.session.id
     run_id = str(tool_context.state.get("current_run_id") or "")
     tool_call_id = tool_context.function_call_id
 
-    if payload.kind in {"choice", "approval"} and not payload.options:
-        raise ValueError(f"options are required for kind={payload.kind}")
-    if payload.kind == "input" and not payload.input_schema:
+    if payload_model.kind in {"choice", "approval"} and not payload_model.options:
+        raise ValueError(f"options are required for kind={payload_model.kind}")
+    if payload_model.kind == "input" and not payload_model.input_schema:
         raise ValueError("schema is required for kind=input")
 
     options = (
-        [opt.model_dump() for opt in payload.options] if payload.options else None
+        [opt.model_dump() for opt in payload_model.options] if payload_model.options else None
     )
     hitl = await HITLService.create_hitl(
         user_id=user_id,
         session_id=session_id,
         run_id=run_id,
-        kind=payload.kind,
-        title=payload.title,
-        description=payload.description,
-        payload=payload.payload,
+        kind=payload_model.kind,
+        title=payload_model.title,
+        description=payload_model.description,
+        payload=payload_model.payload,
         tool_call_id=tool_call_id,
         options=options,
-        input_schema=payload.input_schema,
-        expires_in_seconds=payload.expires_in_seconds,
+        input_schema=payload_model.input_schema,
+        expires_in_seconds=payload_model.expires_in_seconds,
     )
     return {
         "status": "pending",

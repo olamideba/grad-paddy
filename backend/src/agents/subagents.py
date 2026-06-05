@@ -11,6 +11,11 @@ from src.agents.tools import (
     SESSION_TOOLS,
 )
 
+NO_LEAK_RULE = (
+    "Never mention internal agent names, tool names, transfer steps, or implementation details to the user. "
+    "Speak as one assistant and present only the outcome and any necessary natural next step."
+)
+
 
 def build_web_search_agent(name: str) -> LlmAgent:
     """Agent specialized in web search."""
@@ -47,7 +52,8 @@ def build_planner_agent() -> LlmAgent:
             "You are the planning specialist for the grad-paddy system. "
             "Break vague requests into a small, ordered plan. "
             "When information needs verification, call the search and URL helper agents. "
-            "When a request is ready to execute, hand it to the domain specialist."
+            "When a request is ready to execute, hand it to the domain specialist. "
+            f"{NO_LEAK_RULE}"
         ),
         tools=[
             agent_tool.AgentTool(agent=build_web_search_agent("planner_google_search_agent")),
@@ -65,7 +71,8 @@ def build_researcher_agent() -> LlmAgent:
         sub_agents=[],
         instruction=(
             "You are the research specialist for the grad-paddy system. "
-            "Use the helper agents to verify facts, compare options, and gather supporting evidence."
+            "Use the helper agents to verify facts, compare options, and gather supporting evidence. "
+            f"{NO_LEAK_RULE}"
         ),
         tools=[
             agent_tool.AgentTool(agent=build_web_search_agent("researcher_google_search_agent")),
@@ -84,7 +91,8 @@ def build_account_agent() -> LlmAgent:
         instruction=(
             "You handle identity, preferences, session lifecycle, and groups. "
             "Use the tools to read and update the current user's data. "
-            "Prefer concise, structured updates and preserve existing values unless the user asks to change them."
+            "Prefer concise, structured updates and preserve existing values unless the user asks to change them. "
+            f"{NO_LEAK_RULE}"
         ),
         tools=ACCOUNT_TOOLS + SESSION_TOOLS + GROUP_TOOLS,
     )
@@ -99,7 +107,8 @@ def build_application_agent() -> LlmAgent:
         sub_agents=[],
         instruction=(
             "You handle application planning artifacts: shortlist entries, tracker records, and drafts. "
-            "Use the tools to keep these records in sync with the user's current application workflow."
+            "Use the tools to keep these records in sync with the user's current application workflow. "
+            f"{NO_LEAK_RULE}"
         ),
         tools=APPLICATION_TOOLS,
     )
@@ -115,7 +124,8 @@ def build_governance_agent() -> LlmAgent:
         instruction=(
             "You manage human approval tasks. "
             "Use request_hitl to pause for approval, choice, or structured input before irreversible actions. "
-            "Use get_pending_hitl to inspect the open gate. Humans resolve via the UI — do not resolve HITL yourself."
+            "Use get_pending_hitl to inspect the open gate. Humans resolve via the UI — do not resolve HITL yourself. "
+            f"{NO_LEAK_RULE}"
         ),
         tools=GOVERNANCE_TOOLS,
     )
@@ -131,7 +141,8 @@ def build_operations_agent() -> LlmAgent:
         instruction=(
             "You are the operational specialist for the Grad Paddy app. "
             "Use the tools for user data, sessions, groups, shortlist, tracker, drafts, and HITL. "
-            "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed."
+            "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed. "
+            f"{NO_LEAK_RULE}"
         ),
         tools=OPERATIONS_TOOLS,
     )

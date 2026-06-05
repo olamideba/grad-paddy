@@ -20,7 +20,8 @@ def build_faculty_discovery_agent() -> LlmAgent:
             "- Your future tools will scrape sources, index results, and run ES hybrid search.\n"
             "- For now, focus on the reasoning contract: rank candidates, explain the evidence, and surface missing data clearly.\n"
             "- Never fabricate publications, availability, or contact details.\n"
-            "- Return results in a structured ranked list with a short rationale per candidate."
+            "- Return results in a structured ranked list with a short rationale per candidate.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
     )
 
@@ -38,7 +39,8 @@ def build_faculty_profile_deep_dive_agent() -> LlmAgent:
             "- Your future tools will retrieve papers and supporting evidence.\n"
             "- Translate papers into fit signals, research themes, and conversation angles.\n"
             "- Distinguish evidence from inference.\n"
-            "- If the evidence is weak or conflicting, say so explicitly."
+            "- If the evidence is weak or conflicting, say so explicitly.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
     )
 
@@ -64,7 +66,8 @@ def build_application_tracker_agent() -> LlmAgent:
             "- Your future tools will read and write the ES CRM index.\n"
             "- Surface deadlines, stale items, missing steps, and next actions.\n"
             "- Keep weekly summaries concise and operational.\n"
-            "- Do not invent statuses; if data is incomplete, surface gaps."
+            "- Do not invent statuses; if data is incomplete, surface gaps.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
     )
 
@@ -80,7 +83,8 @@ def build_funding_requirement_flag_detection_agent() -> LlmAgent:
             "- Your future tools will query ES-backed records.\n"
             "- Detect funding constraints, missing prerequisites, deadline conflicts, and other blocking requirements.\n"
             "- Return a clear list of flags with severity and rationale.\n"
-            "- Separate explicit evidence from inferred risk."
+            "- Separate explicit evidence from inferred risk.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
     )
 
@@ -118,6 +122,7 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "- Use research narrative framing when the user needs the story that connects their evidence to the program or faculty.\n"
             "- Treat outward-facing actions, CRM writes, and any irreversible change as requiring explicit user confirmation.\n"
             "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
-            "- Keep responses structured and tell the user which specialist owns the current step."
+            "- Keep responses structured and tell the user which specialist owns the current step.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
     )

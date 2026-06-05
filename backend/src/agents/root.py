@@ -21,6 +21,7 @@ root_agent = LlmAgent(
         "- Route faculty discovery, deep-dive analysis, SOP translation, outreach prep, application-tracking analysis, funding flags, and research framing to the domain orchestrator.\n"
         "- Ask for more detail when the request is vague.\n"
         "- Keep the conversation moving with the smallest safe action first, then delegate further if needed.\n"
-        "- Preserve room for additional subagents and chain-based workflows."
+        "- Preserve room for additional subagents and chain-based workflows.\n"
+        "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
     ),
 )
