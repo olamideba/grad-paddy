@@ -50,28 +50,6 @@ function getToolDescription(toolName: string): { label: string; emoji: string } 
     const desc = TOOL_DESCRIPTIONS[toolName];
     return { label: desc.label, emoji: desc.emoji };
   }
-  const normalized = toolName.toLowerCase();
-  if (normalized.includes("profile") || normalized.includes("preference")) {
-    return { label: "Updating profile", emoji: "👤" };
-  }
-  if (normalized.includes("session")) {
-    return { label: "Managing sessions", emoji: "💬" };
-  }
-  if (normalized.includes("group")) {
-    return { label: "Managing groups", emoji: "🗂️" };
-  }
-  if (normalized.includes("shortlist")) {
-    return { label: "Updating shortlist", emoji: "📌" };
-  }
-  if (normalized.includes("tracker") || normalized.includes("application")) {
-    return { label: "Updating tracker", emoji: "🧭" };
-  }
-  if (normalized.includes("draft")) {
-    return { label: "Editing drafts", emoji: "📝" };
-  }
-  if (normalized.includes("hitl") || normalized.includes("approval")) {
-    return { label: "Requesting approval", emoji: "👤" };
-  }
   return { label: toolName.replace(/_/g, " "), emoji: "⚙️" };
 }
 
@@ -79,23 +57,23 @@ type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
   | { type: "agent"; id: string; content: string; timestamp: Date }
   | {
-      type: "step";
-      id: string;
-      label: string;
-      status: StepStatus;
-      detail?: string;
-      tool?: string;
-      children?: { label: string; status: StepStatus; detail?: string }[];
-    }
+    type: "step";
+    id: string;
+    label: string;
+    status: StepStatus;
+    detail?: string;
+    tool?: string;
+    children?: { label: string; status: StepStatus; detail?: string }[];
+  }
   | { type: "phase"; id: string; label: string; status: StepStatus }
   | {
-      type: "approval";
-      id: string;
-      title: string;
-      description: string;
-      items?: string[];
-      resolved?: "approved" | "rejected";
-    };
+    type: "approval";
+    id: string;
+    title: string;
+    description: string;
+    items?: string[];
+    resolved?: "approved" | "rejected";
+  };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
@@ -874,6 +852,8 @@ export default function ChatPage() {
             } as Message);
           }
           setStream(items);
+          // Restored runs are already finished → collapse their activity cards.
+          setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
         })
         .catch((err) => console.error("[chat] load session messages error", err))
@@ -897,8 +877,7 @@ export default function ChatPage() {
         ...p,
         { type: "phase", id: phaseId, label: "Processing", status: "running" },
       ]);
-      // Default to collapsed so users see friendly progress, not raw tool detail.
-      setCollapsedPhases((prev) => new Set(prev).add(phaseId));
+      // Expanded while running; collapsed automatically on finish (see RUN_FINISHED).
     } else if (type === "TEXT_MESSAGE_START") {
       const e = event as unknown as { messageId: string };
       setStreamingMessageId(e.messageId);
@@ -962,26 +941,35 @@ export default function ChatPage() {
           },
         ]);
       });
-      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "STEP_FINISHED") {
       const e = event as unknown as { stepName: string };
+      const stepPhaseId = `step-${e.stepName}`;
       setStream((p) =>
         p.map((item) =>
-          item.id === `step-${e.stepName}` && item.type === "phase"
-            ? { ...item, status: "done" }
-            : item
+          item.id === stepPhaseId && item.type === "phase" ? { ...item, status: "done" } : item
         )
       );
+      // Collapse the step's detail once it finishes.
+      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
+      const phaseIds: string[] = [];
       setStream((p) =>
         p.map((item) => {
-          if (item.type === "phase" && item.id === phaseId && item.status === "running")
-            return { ...item, status };
+          if (item.type === "phase") {
+            phaseIds.push(item.id);
+            if (item.id === phaseId && item.status === "running") return { ...item, status };
+          }
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
           return item;
         })
       );
+      // Run finished → collapse every activity card so the thread stays tidy.
+      setCollapsedPhases((prev) => {
+        const next = new Set(prev);
+        phaseIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
   }
 
@@ -993,8 +981,8 @@ export default function ChatPage() {
       const hitl = res.data;
       const items = hitl.payload
         ? Object.entries(hitl.payload).map(
-            ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-          )
+          ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+        )
         : undefined;
       setStream((p) => [
         ...p,
@@ -1006,7 +994,7 @@ export default function ChatPage() {
           items,
         },
       ]);
-    } catch {}
+    } catch { }
   }
 
   async function resolveApproval(id: string, decision: "approved" | "rejected") {
@@ -1018,7 +1006,7 @@ export default function ChatPage() {
     try {
       const { hitlApi } = await import("../../lib/api");
       await hitlApi.resolve(id, decision === "approved");
-    } catch {}
+    } catch { }
   }
 
   async function sendToBackend(content: string, msgId: string) {
@@ -1050,7 +1038,7 @@ export default function ChatPage() {
         // If this chat was started from inside a group, assign it.
         if (pendingGroupId) {
           created.group_id = pendingGroupId;
-          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => {});
+          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => { });
           setPendingGroupId(null);
         }
         setActiveSessionId(created.id);
@@ -1061,7 +1049,7 @@ export default function ChatPage() {
     } else {
       // Subsequent messages: save user msg now, before agent runs
       import("../../lib/api").then(({ sessionsApi }) =>
-        sessionsApi.createMessage(threadId.current, "user", content).catch(() => {})
+        sessionsApi.createMessage(threadId.current, "user", content).catch(() => { })
       );
     }
 
