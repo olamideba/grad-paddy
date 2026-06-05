@@ -1,10 +1,4 @@
-import inspect
-from typing import Any, TypeVar, Optional
-from datetime import datetime
-
-from google.adk.tools import BaseTool, LongRunningFunctionTool, ToolContext
-from google.genai import types
-from pydantic import BaseModel, create_model, fields as pydantic_fields
+from google.adk.tools import FunctionTool, LongRunningFunctionTool, ToolContext
 
 from src.agents.context import require_user_id
 from src.agents.schemas import (
@@ -36,158 +30,10 @@ from src.services.shortlist_service import ShortlistService
 from src.services.tracker_service import TrackerService
 from src.services.users_service import UserService
 
-TModel = TypeVar("TModel", bound=BaseModel)
-
-
-def _validate(model: type[TModel], payload: dict[str, Any] | None) -> TModel:
-    return model.model_validate(payload or {})
-
-
-def _coerce(model: type[TModel], payload: TModel | dict[str, Any] | None) -> TModel:
-    if isinstance(payload, model):
-        return payload
-    if isinstance(payload, BaseModel):
-        return model.model_validate(payload.model_dump())
-    return model.model_validate(payload or {})
-
 
 def _response(data: object, message: str = "") -> dict[str, object]:
     return {"success": True, "data": data, "message": message}
 
-
-def inline_refs(schema: dict) -> dict:
-    """Recursively inlines all $ref and $defs/definitions in a JSON schema."""
-    if not isinstance(schema, dict):
-        return schema
-    
-    defs = schema.pop("$defs", {})
-    if not defs and "definitions" in schema:
-        defs = schema.pop("definitions", {})
-        
-    def resolve(node):
-        if isinstance(node, dict):
-            if "$ref" in node:
-                ref_path = node["$ref"]
-                parts = ref_path.split("/")
-                def_name = parts[-1]
-                if def_name in defs:
-                    resolved = resolve(defs[def_name])
-                    for k, v in node.items():
-                        if k != "$ref" and k not in resolved:
-                            resolved[k] = v
-                    return resolved
-            return {k: resolve(v) for k, v in node.items()}
-        elif isinstance(node, list):
-            return [resolve(item) for item in node]
-        return node
-
-    return resolve(schema)
-
-
-def make_combined_model(func: Any, request_model: Type[BaseModel]) -> Type[BaseModel]:
-    """Dynamically creates a combined Pydantic model for function parameters."""
-    sig = inspect.signature(func)
-    fields = {}
-    
-    # 1. Add fields from request_model
-    for field_name, field_info in request_model.model_fields.items():
-        if field_info.is_required():
-            fields[field_name] = (field_info.annotation, pydantic_fields.PydanticUndefined)
-        else:
-            fields[field_name] = (field_info.annotation, field_info.default)
-            
-    # 2. Add extra arguments from function signature
-    for param_name, param in sig.parameters.items():
-        if param_name in ("tool_context", "self") or param.annotation == ToolContext:
-            continue
-        try:
-            if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
-                continue
-        except TypeError:
-            pass
-        if param_name == "payload":
-            continue
-            
-        if param.default is inspect.Parameter.empty:
-            fields[param_name] = (param.annotation, pydantic_fields.PydanticUndefined)
-        else:
-            fields[param_name] = (param.annotation, param.default)
-            
-    combined = create_model(f"{func.__name__}CombinedParams", **fields)
-    combined.__doc__ = func.__doc__
-    return combined
-
-
-class PydanticTool(BaseTool):
-    """An ADK Tool wrapper that exposes Pydantic model fields as flat parameters
-
-    to the agent (inlining nested schemas to avoid Gemini $ref validation issues)
-    and reconstructs the model instance before calling the internal service function.
-    """
-
-    def __init__(
-        self,
-        func: Callable[..., Any],
-        request_model: Type[BaseModel],
-        is_long_running: bool = False,
-        name: str | None = None,
-        description: str | None = None,
-    ):
-        self.func = func
-        self.request_model = request_model
-        
-        tool_name = name or func.__name__
-        tool_desc = description or func.__doc__ or request_model.__doc__ or ""
-        
-        super().__init__(
-            name=tool_name,
-            description=tool_desc.strip(),
-            is_long_running=is_long_running,
-        )
-
-    def _get_declaration(self) -> types.FunctionDeclaration:
-        combined_model = make_combined_model(self.func, self.request_model)
-        raw_schema = combined_model.model_json_schema()
-        clean_schema = inline_refs(raw_schema)
-        
-        desc = self.description
-        if self.is_long_running:
-            instruction = (
-                "\n\nNOTE: This is a long-running operation. Do not call this tool"
-                " again if it has already returned some intermediate or pending"
-                " status."
-            )
-            desc += instruction
-            
-        return types.FunctionDeclaration(
-            name=self.name,
-            description=desc,
-            parameters_json_schema=clean_schema,
-        )
-
-    async def run_async(
-        self, *, args: dict[str, Any], tool_context: ToolContext
-    ) -> Any:
-        model_fields = self.request_model.model_fields
-        model_args = {k: v for k, v in args.items() if k in model_fields}
-        payload_instance = self.request_model.model_validate(model_args)
-        
-        sig = inspect.signature(self.func)
-        kwargs = {}
-        for param_name, param in sig.parameters.items():
-            if param_name == "tool_context" or param.annotation == ToolContext:
-                kwargs[param_name] = tool_context
-            elif inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
-                kwargs[param_name] = payload_instance
-            elif param_name == "payload":
-                kwargs[param_name] = payload_instance
-            elif param_name in args:
-                kwargs[param_name] = args[param_name]
-                
-        if inspect.iscoroutinefunction(self.func):
-            return await self.func(**kwargs)
-        else:
-            return self.func(**kwargs)
 
 
 # ── Users and preferences ────────────────────────────────────────────────────
@@ -204,13 +50,12 @@ async def update_profile(
     payload: ProfileUpdateToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update the current user's profile."""
-    payload_model = _coerce(ProfileUpdateToolRequest, payload)
     user_id = require_user_id(tool_context)
-    profile = await UserService.update_profile(user_id, payload_model.model_dump(exclude_unset=True))
+    profile = await UserService.update_profile(user_id, payload.model_dump(exclude_unset=True))
     return _response(profile, "Profile updated successfully")
 
 
-update_profile = PydanticTool(update_profile, ProfileUpdateToolRequest)
+update_profile = FunctionTool(update_profile)
 
 
 async def get_preferences(tool_context: ToolContext) -> dict[str, object]:
@@ -224,13 +69,12 @@ async def upsert_preferences(
     payload: PreferencesUpsertToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Create or replace the current user's preferences."""
-    payload_model = _coerce(PreferencesUpsertToolRequest, payload)
     user_id = require_user_id(tool_context)
-    preferences = await UserService.upsert_preferences(user_id, payload_model.model_dump())
+    preferences = await UserService.upsert_preferences(user_id, payload.model_dump())
     return _response(preferences, "Preferences updated successfully")
 
 
-upsert_preferences = PydanticTool(upsert_preferences, PreferencesUpsertToolRequest)
+upsert_preferences = FunctionTool(upsert_preferences)
 
 
 async def append_research_interest(interest: str, tool_context: ToolContext) -> dict[str, object]:
@@ -369,30 +213,28 @@ async def add_shortlist_faculty(
     payload: FacultyCreateToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Add a faculty member to the shortlist."""
-    payload_model = _coerce(FacultyCreateToolRequest, payload)
     user_id = require_user_id(tool_context)
-    faculty = await ShortlistService.add_faculty(user_id, payload_model.model_dump())
+    faculty = await ShortlistService.add_faculty(user_id, payload.model_dump())
     return _response(faculty, "Faculty member added successfully")
 
 
-add_shortlist_faculty = PydanticTool(add_shortlist_faculty, FacultyCreateToolRequest)
+add_shortlist_faculty = FunctionTool(add_shortlist_faculty)
 
 
 async def list_shortlist(
     payload: ShortlistListToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """List shortlist entries with optional filters."""
-    payload_model = _coerce(ShortlistListToolRequest, payload)
     user_id = require_user_id(tool_context)
     faculty_list = await ShortlistService.list_shortlist(
         user_id=user_id,
-        position_status=payload_model.position_status,
-        outreach_status=payload_model.outreach_status,
+        position_status=payload.position_status,
+        outreach_status=payload.outreach_status,
     )
     return _response(faculty_list)
 
 
-list_shortlist = PydanticTool(list_shortlist, ShortlistListToolRequest)
+list_shortlist = FunctionTool(list_shortlist)
 
 
 async def get_shortlist_faculty(faculty_id: str, tool_context: ToolContext) -> dict[str, object]:
@@ -406,28 +248,26 @@ async def update_shortlist_faculty(
     faculty_id: str, payload: FacultyUpdateToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a shortlist entry."""
-    payload_model = _coerce(FacultyUpdateToolRequest, payload)
     user_id = require_user_id(tool_context)
     faculty = await ShortlistService.update_faculty(
-        user_id, faculty_id, payload_model.model_dump(exclude_unset=True)
+        user_id, faculty_id, payload.model_dump(exclude_unset=True)
     )
     return _response(faculty, "Faculty member updated successfully")
 
 
-update_shortlist_faculty = PydanticTool(update_shortlist_faculty, FacultyUpdateToolRequest)
+update_shortlist_faculty = FunctionTool(update_shortlist_faculty)
 
 
 async def update_shortlist_outreach_status(
     faculty_id: str, payload: OutreachStatusToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a faculty outreach status."""
-    payload_model = _coerce(OutreachStatusToolRequest, payload)
     user_id = require_user_id(tool_context)
-    await ShortlistService.update_outreach_status(user_id, faculty_id, payload_model.status)
+    await ShortlistService.update_outreach_status(user_id, faculty_id, payload.status)
     return _response({"status": "success"}, "Outreach status updated successfully")
 
 
-update_shortlist_outreach_status = PydanticTool(update_shortlist_outreach_status, OutreachStatusToolRequest)
+update_shortlist_outreach_status = FunctionTool(update_shortlist_outreach_status)
 
 
 async def delete_shortlist_faculty(faculty_id: str, tool_context: ToolContext) -> dict[str, object]:
@@ -456,7 +296,7 @@ async def create_application(
     return _response(application, "Application program created successfully")
 
 
-create_application = PydanticTool(create_application, ApplicationCreateToolRequest)
+create_application = FunctionTool(create_application)
 
 
 async def list_applications(tool_context: ToolContext) -> dict[str, object]:
@@ -477,96 +317,89 @@ async def update_application(
     application_id: str, payload: ApplicationUpdateToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a tracker entry."""
-    payload_model = _coerce(ApplicationUpdateToolRequest, payload)
     user_id = require_user_id(tool_context)
     application = await TrackerService.update_application(
-        user_id, application_id, payload_model.model_dump(exclude_unset=True)
+        user_id, application_id, payload.model_dump(exclude_unset=True)
     )
     return _response(application, "Application program updated successfully")
 
 
-update_application = PydanticTool(update_application, ApplicationUpdateToolRequest)
+update_application = FunctionTool(update_application)
 
 
 async def update_application_status(
     application_id: str, payload: ApplicationStatusToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update application status."""
-    payload_model = _coerce(ApplicationStatusToolRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_status(user_id, application_id, payload_model.status)
+    await TrackerService.update_status(user_id, application_id, payload.status)
     return _response({"status": "success"}, "Status updated successfully")
 
 
-update_application_status = PydanticTool(update_application_status, ApplicationStatusToolRequest)
+update_application_status = FunctionTool(update_application_status)
 
 
 async def update_application_sop_status(
     application_id: str, payload: ApplicationSopStatusToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update SOP status."""
-    payload_model = _coerce(ApplicationSopStatusToolRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_sop_status(user_id, application_id, payload_model.sop_status)
+    await TrackerService.update_sop_status(user_id, application_id, payload.sop_status)
     return _response({"status": "success"}, "SOP status updated successfully")
 
 
-update_application_sop_status = PydanticTool(update_application_sop_status, ApplicationSopStatusToolRequest)
+update_application_sop_status = FunctionTool(update_application_sop_status)
 
 
 async def update_application_cv_status(
     application_id: str, payload: ApplicationCvStatusToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update CV status."""
-    payload_model = _coerce(ApplicationCvStatusToolRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_cv_status(user_id, application_id, payload_model.cv_status)
+    await TrackerService.update_cv_status(user_id, application_id, payload.cv_status)
     return _response({"status": "success"}, "CV status updated successfully")
 
 
-update_application_cv_status = PydanticTool(update_application_cv_status, ApplicationCvStatusToolRequest)
+update_application_cv_status = FunctionTool(update_application_cv_status)
 
 
 async def update_application_funded(
     application_id: str, payload: ApplicationFundedToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update funding status."""
-    payload_model = _coerce(ApplicationFundedToolRequest, payload)
     user_id = require_user_id(tool_context)
-    await TrackerService.update_funded(user_id, application_id, payload_model.funded)
+    await TrackerService.update_funded(user_id, application_id, payload.funded)
     return _response({"status": "success"}, "Funded status updated successfully")
 
 
-update_application_funded = PydanticTool(update_application_funded, ApplicationFundedToolRequest)
+update_application_funded = FunctionTool(update_application_funded)
 
 
 async def add_application_recommender(
     application_id: str, payload: RecommenderAddToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Add a recommender to an application."""
-    payload_model = _coerce(RecommenderAddToolRequest, payload)
     user_id = require_user_id(tool_context)
-    recommender = {"name": payload_model.name, "status": payload_model.status}
+    recommender = {"name": payload.name, "status": payload.status}
     await TrackerService.add_recommender(user_id, application_id, recommender)
     return _response({"status": "success"}, "Recommender added successfully")
 
 
-add_application_recommender = PydanticTool(add_application_recommender, RecommenderAddToolRequest)
+add_application_recommender = FunctionTool(add_application_recommender)
 
 
 async def update_application_recommender_status(
     application_id: str, recommender_name: str, payload: RecommenderStatusToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update a specific recommender status."""
-    payload_model = _coerce(RecommenderStatusToolRequest, payload)
     user_id = require_user_id(tool_context)
     await TrackerService.update_recommender_status(
-        user_id, application_id, recommender_name, payload_model.status
+        user_id, application_id, recommender_name, payload.status
     )
     return _response({"status": "success"}, "Recommender status updated successfully")
 
 
-update_application_recommender_status = PydanticTool(update_application_recommender_status, RecommenderStatusToolRequest)
+update_application_recommender_status = FunctionTool(update_application_recommender_status)
 
 
 async def delete_application(application_id: str, tool_context: ToolContext) -> dict[str, object]:
@@ -588,24 +421,22 @@ async def get_tracker_stats(tool_context: ToolContext) -> dict[str, object]:
 
 async def create_draft(payload: DraftCreateToolRequest, tool_context: ToolContext) -> dict[str, object]:
     """Create a new draft."""
-    payload_model = _coerce(DraftCreateToolRequest, payload)
     user_id = require_user_id(tool_context)
-    draft = await DraftsService.create_draft(user_id, payload_model.model_dump())
+    draft = await DraftsService.create_draft(user_id, payload.model_dump())
     return _response(draft, "Draft created successfully")
 
 
-create_draft = PydanticTool(create_draft, DraftCreateToolRequest)
+create_draft = FunctionTool(create_draft)
 
 
 async def list_drafts(payload: DraftListToolRequest, tool_context: ToolContext) -> dict[str, object]:
     """List drafts with optional filters."""
-    payload_model = _coerce(DraftListToolRequest, payload)
     user_id = require_user_id(tool_context)
-    drafts = await DraftsService.list_drafts(user_id, payload_model.type, payload_model.status)
+    drafts = await DraftsService.list_drafts(user_id, payload.type, payload.status)
     return _response(drafts)
 
 
-list_drafts = PydanticTool(list_drafts, DraftListToolRequest)
+list_drafts = FunctionTool(list_drafts)
 
 
 async def get_draft(draft_id: str, tool_context: ToolContext) -> dict[str, object]:
@@ -619,26 +450,24 @@ async def update_draft_content(
     draft_id: str, payload: ContentUpdateToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update draft content."""
-    payload_model = _coerce(ContentUpdateToolRequest, payload)
     user_id = require_user_id(tool_context)
-    draft = await DraftsService.update_content(user_id, draft_id, payload_model.content)
+    draft = await DraftsService.update_content(user_id, draft_id, payload.content)
     return _response(draft, "Draft content updated successfully")
 
 
-update_draft_content = PydanticTool(update_draft_content, ContentUpdateToolRequest)
+update_draft_content = FunctionTool(update_draft_content)
 
 
 async def update_draft_status(
     draft_id: str, payload: DraftStatusToolRequest, tool_context: ToolContext
 ) -> dict[str, object]:
     """Update draft status."""
-    payload_model = _coerce(DraftStatusToolRequest, payload)
     user_id = require_user_id(tool_context)
-    await DraftsService.update_status(user_id, draft_id, payload_model.status)
+    await DraftsService.update_status(user_id, draft_id, payload.status)
     return _response({"status": "success"}, "Draft status updated successfully")
 
 
-update_draft_status = PydanticTool(update_draft_status, DraftStatusToolRequest)
+update_draft_status = FunctionTool(update_draft_status)
 
 
 async def delete_draft(draft_id: str, tool_context: ToolContext) -> dict[str, object]:
@@ -667,32 +496,31 @@ async def get_pending_hitl(session_id: str, tool_context: ToolContext) -> dict[s
 
 async def request_hitl(payload: RequestHITLRequest, tool_context: ToolContext) -> dict[str, object]:
     """Pause the current turn and ask the human to approve, choose, or supply input."""
-    payload_model = _coerce(RequestHITLRequest, payload)
     user_id = require_user_id(tool_context)
     session_id = tool_context.session.id
     run_id = str(tool_context.state.get("current_run_id") or "")
     tool_call_id = tool_context.function_call_id
 
-    if payload_model.kind in {"choice", "approval"} and not payload_model.options:
-        raise ValueError(f"options are required for kind={payload_model.kind}")
-    if payload_model.kind == "input" and not payload_model.input_schema:
+    if payload.kind in {"choice", "approval"} and not payload.options:
+        raise ValueError(f"options are required for kind={payload.kind}")
+    if payload.kind == "input" and not payload.input_schema:
         raise ValueError("schema is required for kind=input")
 
     options = (
-        [opt.model_dump() for opt in payload_model.options] if payload_model.options else None
+        [opt.model_dump() for opt in payload.options] if payload.options else None
     )
     hitl = await HITLService.create_hitl(
         user_id=user_id,
         session_id=session_id,
         run_id=run_id,
-        kind=payload_model.kind,
-        title=payload_model.title,
-        description=payload_model.description,
-        payload=payload_model.payload,
+        kind=payload.kind,
+        title=payload.title,
+        description=payload.description,
+        payload=payload.payload,
         tool_call_id=tool_call_id,
         options=options,
-        input_schema=payload_model.input_schema,
-        expires_in_seconds=payload_model.expires_in_seconds,
+        input_schema=payload.input_schema,
+        expires_in_seconds=payload.expires_in_seconds,
     )
     return {
         "status": "pending",
@@ -701,7 +529,7 @@ async def request_hitl(payload: RequestHITLRequest, tool_context: ToolContext) -
     }
 
 
-REQUEST_HITL_TOOL = PydanticTool(request_hitl, RequestHITLRequest, is_long_running=True)
+REQUEST_HITL_TOOL = LongRunningFunctionTool(request_hitl)
 
 
 # ── Tool groups ──────────────────────────────────────────────────────────────
