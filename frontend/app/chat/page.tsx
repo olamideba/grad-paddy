@@ -964,6 +964,8 @@ export default function ChatPage() {
             } as Message);
           }
           setStream(items);
+          // Restored runs are already finished → collapse their activity cards.
+          setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
           checkHITL();
         })
@@ -988,8 +990,7 @@ export default function ChatPage() {
         ...p,
         { type: "phase", id: phaseId, label: "Processing", status: "running" },
       ]);
-      // Default to collapsed so users see friendly progress, not raw tool detail.
-      setCollapsedPhases((prev) => new Set(prev).add(phaseId));
+      // Expanded while running; collapsed automatically on finish (see RUN_FINISHED).
     } else if (type === "TEXT_MESSAGE_START") {
       const e = event as unknown as { messageId: string };
       setStreamingMessageId(e.messageId);
@@ -1053,71 +1054,36 @@ export default function ChatPage() {
           },
         ]);
       });
-      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "STEP_FINISHED") {
       const e = event as unknown as { stepName: string };
+      const stepPhaseId = `step-${e.stepName}`;
       setStream((p) =>
         p.map((item) =>
-          item.id === `step-${e.stepName}` && item.type === "phase"
-            ? { ...item, status: "done" }
-            : item
+          item.id === stepPhaseId && item.type === "phase" ? { ...item, status: "done" } : item
         )
       );
-    } else if (type === "HITL_REQUIRED") {
-      const e = event as unknown as {
-        hitlId: string;
-        kind: "approval" | "choice" | "input";
-        title: string;
-        description: string;
-        payload?: Record<string, unknown>;
-        options?: { id: string; label: string }[];
-        schema?: Record<string, unknown>;
-      };
-      setStream((p) => {
-        if (p.some((i) => i.type === "approval" && i.id === e.hitlId)) return p;
-        return [
-          ...p,
-          {
-            type: "approval",
-            id: e.hitlId,
-            kind: e.kind ?? "approval",
-            title: e.title,
-            description: e.description,
-            payload: e.payload,
-            options: e.options,
-            schema: e.schema,
-          },
-        ];
-      });
+      // Collapse the step's detail once it finishes.
+      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
-      const runStatus =
-        type === "RUN_FINISHED"
-          ? ((event as unknown as { status?: string }).status ?? "completed")
-          : "error";
-      const phaseStatus = runStatus === "error" ? "error" : "done";
+      const status = type === "RUN_FINISHED" ? "done" : "error";
+      const phaseIds: string[] = [];
       setStream((p) =>
         p.map((item) => {
-          if (item.type === "phase" && item.id === phaseId && item.status === "running")
-            return { ...item, status: phaseStatus };
+          if (item.type === "phase") {
+            phaseIds.push(item.id);
+            if (item.id === phaseId && item.status === "running") return { ...item, status };
+          }
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
           return item;
         })
       );
+      // Run finished → collapse every activity card so the thread stays tidy.
+      setCollapsedPhases((prev) => {
+        const next = new Set(prev);
+        phaseIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
-  }
-
-  function hitlToApprovalItem(hitl: import("../../lib/api").HITLItem): Extract<ChatItem, { type: "approval" }> {
-    return {
-      type: "approval",
-      id: hitl.id,
-      kind: hitl.kind ?? "approval",
-      title: hitl.title,
-      description: hitl.description,
-      payload: hitl.payload,
-      options: hitl.options,
-      schema: hitl.schema,
-      expired: hitl.status === "expired",
-    };
   }
 
   async function checkHITL() {
