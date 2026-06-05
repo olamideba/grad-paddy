@@ -1,27 +1,14 @@
-"""
-query.py
-────────
-CLI utility to search the Elasticsearch index after scraping.
-
-Usage:
-    python query.py "NLP faculty at Toronto"
-    python query.py "funded CS PhD deadlines December" --mode keyword
-    python query.py "machine learning for healthcare" --top 10
-"""
-
-import os
 import sys
 import json
 import argparse
-from dotenv import load_dotenv
+from src.core.config import get_settings
 
-load_dotenv()
-
+settings = get_settings()
 
 def get_es():
     from elasticsearch import Elasticsearch
-    es_url  = os.getenv("ES_URL")
-    api_key = os.getenv("ES_API_KEY")
+    es_url  = settings.ES_URL
+    api_key = settings.ES_API_KEY
     if not es_url or not api_key:
         raise RuntimeError("Set ES_URL and ES_API_KEY in .env")
     return Elasticsearch(es_url, api_key=api_key)
@@ -32,11 +19,11 @@ def embed_query(text: str) -> list[float]:
     from vertexai.language_models import TextEmbeddingModel
 
     vertexai.init(
-        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-        location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GOOGLE_CLOUD_LOCATION,
     )
     model    = TextEmbeddingModel.from_pretrained(
-        os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+        settings.EMBEDDING_MODEL
     )
     response = model.get_embeddings([text])
     return response[0].values
@@ -146,7 +133,7 @@ def main():
         help="Search mode (default: hybrid)"
     )
     parser.add_argument("--top", type=int, default=5, help="Number of results (default: 5)")
-    parser.add_argument("--index", default=os.getenv("PROGRAM_ES_INDEX", "grad-programs"))
+    parser.add_argument("--index", default=settings.PROGRAM_ES_INDEX)
     args = parser.parse_args()
 
     es = get_es()

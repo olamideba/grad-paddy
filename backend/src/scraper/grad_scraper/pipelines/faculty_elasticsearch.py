@@ -1,46 +1,28 @@
-"""
-FacultyElasticsearchPipeline
-─────────────────────────────
-Indexes FacultyProfileItem documents into a dedicated 'faculty-profiles'
-index in Elasticsearch Serverless.
-
-Each faculty member is stored as a single document (not chunked) because:
-  - Bios are short enough to fit in one vector
-  - Fit scores and conversation angles are per-faculty, not per-chunk
-  - The agent queries by faculty name or fit_score, not by text search
-
-The embedding is generated from a concatenation of:
-  name + research_areas + paper_keywords + bio[:500]
-This gives the most semantically meaningful vector for faculty search.
-"""
-
-import os
 import logging
 import numpy as np
 from datetime import datetime, timezone
 
-from dotenv import load_dotenv
+
 from itemadapter import ItemAdapter
+from src.core.config import get_settings
 from grad_scraper.items.faculty_profile import FacultyProfileItem
 
-load_dotenv()
+settings=get_settings()
 logger = logging.getLogger(__name__)
 
-FACULTY_INDEX = os.getenv("FACULTY_ES_INDEX", "faculty-profiles")
+FACULTY_INDEX = settings.FACULTY_ES_INDEX
 
 
 def _faculty_mapping(dims: int) -> dict:
     return {
         "mappings": {
             "properties": {
-                # ── Vector ────────────────────────────────────────────────
                 "embedding": {
                     "type":       "dense_vector",
                     "dims":       dims,
                     "index":      True,
                     "similarity": "cosine",
                 },
-                # ── Identity ──────────────────────────────────────────────
                 "name":        {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                 "title":       {"type": "keyword"},
                 "university":  {"type": "keyword"},
@@ -48,11 +30,9 @@ def _faculty_mapping(dims: int) -> dict:
                 "program":     {"type": "keyword"},
                 "email":       {"type": "keyword"},
                 "source_url":  {"type": "keyword"},
-                # ── Research ──────────────────────────────────────────────
                 "research_areas":  {"type": "text"},
                 "bio":             {"type": "text"},
                 "paper_keywords":  {"type": "keyword"},
-                # ── Papers ────────────────────────────────────────────────
                 "papers": {
                     "type": "nested",
                     "properties": {
@@ -63,12 +43,9 @@ def _faculty_mapping(dims: int) -> dict:
                         "url":       {"type": "keyword"},
                     },
                 },
-                # ── Fit scoring ───────────────────────────────────────────
                 "fit_score":     {"type": "integer"},
                 "fit_reasoning": {"type": "text"},
-                # ── Conversation angles ───────────────────────────────────
                 "conversation_angles": {"type": "text"},
-                # ── Metadata ──────────────────────────────────────────────
                 "scraped_at": {"type": "date"},
             }
         }
@@ -76,7 +53,6 @@ def _faculty_mapping(dims: int) -> dict:
 
 
 class FacultyElasticsearchPipeline:
-
     def __init__(self):
         self.es       = None
         self.index    = FACULTY_INDEX
@@ -90,14 +66,14 @@ class FacultyElasticsearchPipeline:
     def open_spider(self, spider):
         from elasticsearch import Elasticsearch
 
-        es_url  = os.getenv("ES_URL")
-        api_key = os.getenv("ES_API_KEY")
+        es_url  = settings.ES_URL
+        api_key = settings.ES_API_KEY
         if not es_url or not api_key:
             raise RuntimeError("ES_URL and ES_API_KEY required in .env")
 
         self.es = Elasticsearch(es_url, api_key=api_key)
-        self.embed_fn = None  # ← lazy
-        self.dims     = None  # ← lazy
+        self.embed_fn = None  
+        self.dims     = None  
 
         logger.info(f"FacultyElasticsearchPipeline ready → index '{self.index}'")
 
@@ -118,7 +94,6 @@ class FacultyElasticsearchPipeline:
             logger.info(f"Created faculty index '{self.index}' with {self.dims}-dim vectors")
 
     def process_item(self, item, spider):
-        # Only process FacultyProfileItem — pass everything else through
         if not isinstance(item, FacultyProfileItem):
             return item
 
@@ -128,7 +103,6 @@ class FacultyElasticsearchPipeline:
             self.embed_fn, self.dims = _get_embedding_fn()
             self._ensure_index()
 
-        # Build embedding text from the most meaningful fields
         embed_text = " ".join(filter(None, [
             adapter.get("name", ""),
             adapter.get("research_areas", ""),

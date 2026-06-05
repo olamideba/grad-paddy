@@ -67,7 +67,8 @@ researcher = LlmAgent(
 )
 grad_paddy_google_search_agent = LlmAgent(
     name="grad_paddy_google_search_agent",
-    model="gemini-3.1-pro-preview",
+    # model="gemini-3.1-pro-preview",
+    model="gemini-2.5-flash",
     description=("Agent specialized in performing Google searches."),
     sub_agents=[],
     instruction="Use the GoogleSearchTool to find information on the web.",
@@ -75,7 +76,8 @@ grad_paddy_google_search_agent = LlmAgent(
 )
 grad_paddy_url_context_agent = LlmAgent(
     name="grad_paddy_url_context_agent",
-    model="gemini-3.1-pro-preview",
+    # model="gemini-3.1-pro-preview",
+    model="gemini-2.5-flash",
     description=("Agent specialized in fetching content from URLs."),
     sub_agents=[],
     instruction="Use the UrlContextTool to retrieve content from provided URLs.",
@@ -91,13 +93,14 @@ faculty_researcher = LlmAgent(
     sub_agents=[],
     instruction="""You are a faculty research specialist.
     When given a research area or faculty name:
-    1. Call search_faculty_profiles to find matching professors
-    2. Call get_faculty_papers to get their recent publications  
-    3. Call score_faculty_fit to assess alignment with the student
-    4. Call get_conversation_angles for specific outreach talking points
+    Always follow this sequence:
+    1. search_faculty_profiles — find relevant faculty from Elastic Search
+    2. get_faculty_papers — get REAL papers for each faculty member
+    3. score_faculty_fit — pass the real papers_summary from step 2
+    4. get_conversation_angles — pass the real paper_titles from step 2
 
-    Always reference actual paper titles and research themes.
-    Never generate generic talking points.""",
+    NEVER pass made-up paper titles to score_faculty_fit or get_conversation_angles.
+    Only use titles returned by get_faculty_papers.""",
     tools=[
         search_faculty_profiles,
         get_faculty_papers,
@@ -107,12 +110,28 @@ faculty_researcher = LlmAgent(
 )
 root_agent = LlmAgent(
     name="grad_paddy",
-    model="gemini-3.1-pro-preview",
+    # model="gemini-3.1-pro-preview",
+    model="gemini-2.5-flash",
     description=(
         "This is an graduate school search and application orchestrator root agent that reasons and delegates tasks to various sub-agents."
     ),
     sub_agents=[planner, researcher, faculty_researcher],
-    instruction="- Ask the user for more details if they are vague in describing what they want.\n- When the user's intent is clear, call the planner agent\n- Call the research agent when you need to verify or provide options to the user",
+    instruction="""
+    - Ask the user for more details if they are vague in describing what they want.
+    - When the user's intent is clear, call the planner agent
+    - Call the research agent when you need to verify or provide options to the user
+
+    Routing rules:
+    - Program search, deadlines, funding → call researcher
+    - Multi-step planning → call planner
+    - ANY of these → call faculty_researcher:
+    - "find professors working on X"
+    - "who should I email about X research"  
+    - "score my fit with Prof X"
+    - "help me write a cold email to Prof X"
+    - "conversation starters for Prof X"
+    - "faculty at X university working on Y"
+    """,
     tools=[
         agent_tool.AgentTool(agent=grad_paddy_google_search_agent),
         agent_tool.AgentTool(agent=grad_paddy_url_context_agent),

@@ -1,6 +1,4 @@
-import os
 import argparse
-import numpy as np
 from src.core.config import get_settings
 from src.scraper.query import embed_query
 
@@ -19,7 +17,6 @@ def search_faculty(query: str, top_k: int = 5, min_fit: int = 0, university: str
     index = settings.FACULTY_ES_INDEX
     vec   = embed_query(query)
 
-    # Build filter conditions
     filters = []
     if min_fit > 0:
         filters.append({"range": {"fit_score": {"gte": min_fit}}})
@@ -93,7 +90,7 @@ def main():
     parser.add_argument("--top",        type=int,   default=5,  help="Number of results")
     parser.add_argument("--min-fit",    type=int,   default=0,  help="Minimum fit score (0-100)")
     parser.add_argument("--university", type=str,   default="", help="Filter by university")
-    parser.add_argument("--index",      default=os.getenv("FACULTY_ES_INDEX", "faculty-profiles"))
+    parser.add_argument("--index",      default=settings.FACULTY_ES_INDEX)
     args = parser.parse_args()
 
     print(f"\nSearching faculty: \"{args.query}\"")

@@ -1,50 +1,16 @@
-"""
-faculty_agent.py
-─────────────────
-FacultySubAgent enriches a scraped faculty profile with three things:
-
-  1. Paper retrieval      — recent publications via Semantic Scholar
-  2. Fit scoring          — 0–100 score vs student profile from .env
-  3. Conversation angles  — specific talking points for cold outreach
-
-The student profile is loaded from environment variables so each team
-member can configure their own without touching code.
-
-Architecture:
-    FacultySubAgent.analyze(faculty_dict)
-        ├── semantic_scholar.fetch_papers()      # async, free API
-        └── _gemini_analyze(faculty, papers)     # Vertex AI Gemini
-              ├── paper_keywords extraction
-              ├── fit_score + fit_reasoning
-              └── conversation_angles
-
-Output schema (added to FacultyProfileItem):
-    {
-      "papers":               [...],   # list of {title, year, citations, abstract, url}
-      "paper_keywords":       [...],   # ["NLP", "dialogue systems", ...]
-      "fit_score":            87,      # 0-100
-      "fit_reasoning":        "...",   # 2-3 sentences
-      "conversation_angles":  ["...", "...", "..."]
-    }
-"""
-
-import os
 import json
 import asyncio
 import logging
 import re
 
-from dotenv import load_dotenv
+from src.core.config import get_settings
 from src.repositories.elastic_repo import get_es
 from src.services.users_service import UserService
 from grad_scraper.services.paper_retrieval import fetch_papers
 
-
-load_dotenv()
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
-
-# ── Gemini via Vertex AI ───────────────────────────────────────────────────────
 
 async def _gemini_analyze(faculty: dict, papers: list) -> dict:
     """
@@ -52,7 +18,7 @@ async def _gemini_analyze(faculty: dict, papers: list) -> dict:
     Returns fit score, reasoning, paper keywords, and conversation angles.
     Falls back to empty dict if Gemini is disabled or fails.
     """
-    if os.getenv("GEMINI_ENABLED", "").lower() != "true":
+    if settings.GEMINI_ENABLED:
         return {}
 
     try:
@@ -60,11 +26,11 @@ async def _gemini_analyze(faculty: dict, papers: list) -> dict:
         from vertexai.generative_models import GenerativeModel
 
         vertexai.init(
-            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-            location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GOOGLE_CLOUD_LOCATION,
         )
         model = GenerativeModel(
-            os.getenv("GEMINI_MODEL", "gemini-1.5-flash-002")
+            settings.GEMINI_MODEL
         )
     except Exception as e:
         logger.warning(f"Vertex AI init failed: {e}")
@@ -130,7 +96,6 @@ Return ONLY a valid JSON object. No markdown, no backticks, no extra text.
         return {}
 
 
-# ── Main sub-agent ─────────────────────────────────────────────────────────────
 
 class FacultySubAgent:
     """
@@ -140,7 +105,7 @@ class FacultySubAgent:
         agent  = FacultySubAgent()
         result = await agent.analyze(faculty_dict)
         # result contains: papers, paper_keywords, fit_score,
-        #                  fit_reasoning, conversation_angles
+        # fit_reasoning, conversation_angles
     """
 
     async def analyze(self, faculty: dict) -> dict:

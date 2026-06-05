@@ -3,10 +3,9 @@ from pydantic import Field
 from functools import lru_cache
 from pathlib import Path
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file= ".env",
         env_file_encoding="utf-8"
     )
 

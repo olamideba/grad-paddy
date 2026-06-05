@@ -1,33 +1,13 @@
-"""
-ElasticsearchPipeline
-──────────────────────
-For each scraped item:
-  1. Chunk free-text fields (RecursiveCharacterTextSplitter)
-  2. Embed each chunk (ONNX MiniLM-L6-v2 OR OpenAI)
-  3. Index into Elasticsearch Serverless with structured metadata alongside vectors
-
-Serverless ES differences vs self-hosted:
-  - Auth is API key only (no basic auth)
-  - es.info() returns no 'version' key — we skip that log line
-  - Index creation: no 'number_of_shards'/'number_of_replicas' settings (serverless manages these)
-  - es.indices.exists() is not available — we use a try/except on get_mapping instead
-  - bulk() response uses 'items' list; error check is the same
-  - RRF (hybrid search) requires Elastic Platinum/Enterprise on serverless — handled in query.py
-"""
-
-import os
 import logging
 import numpy as np
 from datetime import datetime, timezone
 
-from dotenv import load_dotenv
 from itemadapter import ItemAdapter
+from src.core.config import get_settings
 
-load_dotenv()
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
-
-# ── Embedding backends ────────────────────────────────────────────────────────
 
 def _get_splitter():
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -47,10 +27,10 @@ def _get_embedding_fn():
 
     client = genai.Client(
         vertexai=True,
-        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-        location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GOOGLE_CLOUD_LOCATION,
     )
-    model = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    model = settings.EMBEDDING_MODEL
     dims  = 768
 
     def embed(texts: list[str]) -> list[list[float]]:
@@ -124,13 +104,11 @@ CHUNKABLE_FIELDS = [
 ]
 
 
-# ── Pipeline ──────────────────────────────────────────────────────────────────
-
 class ElasticsearchPipeline:
 
     def __init__(self):
         self.es       = None
-        self.index    = os.getenv("PROGRAM_ES_INDEX", "grad-programs")
+        self.index    = settings.PROGRAM_ES_INDEX
         self.splitter = None
         self.embed_fn = None
         self.dims     = None
@@ -143,8 +121,8 @@ class ElasticsearchPipeline:
         from elasticsearch import Elasticsearch
         print("DEBUG: open_spider start")
 
-        es_url   = os.getenv("ES_URL")         
-        api_key  = os.getenv("ES_API_KEY")     
+        es_url   = settings.ES_URL    
+        api_key  = settings.ES_API_KEY
 
         if not es_url or not api_key:
             raise RuntimeError(

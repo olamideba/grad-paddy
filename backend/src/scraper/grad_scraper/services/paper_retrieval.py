@@ -1,17 +1,10 @@
-"""
-paper_retrieval.py
-───────────────────
-Fetches faculty papers from Google Scholar (primary)
-with Semantic Scholar as fallback.
-"""
-
-import os
 import logging
 import asyncio
 import httpx
+from src.core.config import get_settings
 
+settings = get_settings()
 logger = logging.getLogger(__name__)
-
 
 async def _fetch_from_google_scholar(faculty_name: str, limit: int = 5) -> list:
     try:
@@ -57,7 +50,7 @@ async def _fetch_from_google_scholar(faculty_name: str, limit: int = 5) -> list:
 
 async def _fetch_from_semantic_scholar(faculty_name: str, limit: int = 5) -> list:
     headers = {}
-    api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
+    api_key = settings.SEMANTIC_SCHOLAR_API_KEY
     if api_key:
         headers["x-api-key"] = api_key
 

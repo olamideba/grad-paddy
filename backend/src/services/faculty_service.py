@@ -18,6 +18,14 @@ settings: Settings = get_settings()
 logger = logging.getLogger(__name__)
 _genai_client: genai.Client | None = None
 
+# Normalise university names before filtering
+UNI_MAP = {
+    "massachusetts institute of technology": "MIT",
+    "carnegie mellon university":            "CMU",
+    "stanford university":                   "STANFORD",
+    "university of california berkeley":     "BERKELEY",
+    "university of toronto":                 "TORONTO",
+}
 
 class FacultyService:
     @staticmethod
@@ -27,26 +35,27 @@ class FacultyService:
             _genai_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
         return _genai_client
 
-
-
     @staticmethod
     async def embed(text: str) -> list[float]:
         """Embed a query string using Gemini text-embedding-004."""
-        def _run():
-            import vertexai
-            from vertexai.language_models import TextEmbeddingModel
-
-            vertexai.init(
-                project=settings.GOOGLE_CLOUD_PROJECT,
-                location=settings.GOOGLE_CLOUD_LOCATION
-            )
-            model    = TextEmbeddingModel.from_pretrained(
-                settings.EMBEDDING_MODEL
-            )
-            response = model.get_embeddings([text])
-            return response[0].values
-
-        return await asyncio.to_thread(_run)
+        from google import genai
+        from google.genai import types
+        client = genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GOOGLE_CLOUD_LOCATION,
+        )
+        response = await asyncio.to_thread(
+            client.models.embed_content,
+            model=settings.EMBEDDING_MODEL,
+            contents=[text],
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+        )
+        return response.embeddings[0].values
+    
+    @staticmethod
+    def _normalise_uni(name: str) -> str:
+        return UNI_MAP.get(name.lower(), name.upper())
     
     @staticmethod
     async def search_faculty_profiles(query: list[str], user_id: str, min_fit_score: int = 0, top_k: int = 5,) -> dict:
@@ -81,7 +90,8 @@ class FacultyService:
             if min_fit_score > 0:
                 filters.append({"range": {"fit_score": {"gte": min_fit_score}}})
             if universities:
-                filters.append({"terms": {"university": [u.upper() for u in universities]}})
+                normalised = [FacultyService._normalise_uni(u) for u in universities]
+                filters.append({"terms": {"university": normalised}})
 
             body = {
                 "knn": {
@@ -121,42 +131,6 @@ class FacultyService:
     
 
     @staticmethod
-    async def fetch_google_scholar(faculty_name: str, limit: int) -> list:
-        """Fetch papers from Google Scholar via scholarly library."""
-        from scholarly import scholarly, ProxyGenerator
-        pg = ProxyGenerator()
-        pg.FreeProxies()   # or pg.ScraperAPI("your_key") for reliability
-        scholarly.use_proxy(pg)
-        def _run():
-            results = []
-            try:
-                search = scholarly.search_author(faculty_name)
-                author = next(search, None)
-                if not author:
-                    return []
-                scholarly.fill(author, sections=["publications"])
-                for pub in author.get("publications", [])[:limit * 2]:
-                    try:
-                        scholarly.fill(pub)
-                        results.append({
-                            "title":    pub["bib"].get("title", ""),
-                            "year":     pub["bib"].get("pub_year"),
-                            "citations":pub.get("num_citations", 0),
-                            "abstract": pub["bib"].get("abstract", "")[:600],
-                            "url":      pub.get("pub_url", ""),
-                            "authors":  pub["bib"].get("author", "").split(" and ")[:5],
-                            "source":   "google_scholar",
-                        })
-                    except Exception:
-                        continue
-            except Exception as e:
-                logger.warning(f"scholarly error for {faculty_name}: {e}")
-                print(f"DEBUG scholarly error: {e}")
-            return results[:limit]
-
-        return await asyncio.to_thread(_run)
-
-    @staticmethod
     async def fetch_semantic_scholar(faculty_name: str, limit: int) -> list:
         import httpx
         async with httpx.AsyncClient() as client:
@@ -165,19 +139,51 @@ class FacultyService:
                 params={"query": faculty_name, "fields": "name,papers.title,papers.year,papers.abstract,papers.citationCount,papers.externalIds"},
                 timeout=10,
             )
+            print(f"DEBUG SS status: {resp.status_code}")
+            if resp.status_code == 429:
+                logger.info("Semantic Scholar rate limited, falling back to Google Scholar")
+                return await FacultyService.fetch_google_scholar(faculty_name, limit)
+        
             data = resp.json()
             authors = data.get("data", [])
             if not authors:
-                return []
+                return await FacultyService.fetch_google_scholar(faculty_name, limit)
+        
             papers = authors[0].get("papers", [])[:limit]
             return [{
                 "title":     p.get("title", ""),
                 "year":      p.get("year"),
                 "citations": p.get("citationCount", 0),
                 "abstract":  (p.get("abstract") or "")[:600],
-                "url":       f"https://www.semanticscholar.org/paper/{p.get('paperId','')}",
+                "url":       f"https://www.semanticscholar.org/paper/{p.get('externalIds', {}).get('paperId','')}",
                 "source":    "semantic_scholar",
             } for p in papers]
+
+    @staticmethod
+    async def fetch_google_scholar(faculty_name: str, limit: int) -> list:
+        import asyncio
+        from scholarly import scholarly
+
+        print("DEBUG inside fetch_google_scholar")
+        def _fetch():
+            print("DEBUG calling scholarly.search_author")
+            search_query = scholarly.search_author(faculty_name)
+            author = next(search_query, None)
+            print(f"DEBUG author found: {author}")
+            if not author:
+                return []
+            author = scholarly.fill(author, sections=['publications'])
+            papers = author.get('publications', [])[:limit]
+            return [{
+                "title":     p['bib'].get('title', ''),
+                "year":      p['bib'].get('pub_year'),
+                "citations": p.get('num_citations', 0),
+                "abstract":  p['bib'].get('abstract', '')[:600],
+                "url":       f"https://scholar.google.com/scholar?q={p['bib'].get('title', '').replace(' ', '+')}",
+                "source":    "google_scholar",
+            } for p in papers]
+
+        return await asyncio.get_event_loop().run_in_executor(None, _fetch)
 
     @staticmethod
     async def get_faculty_papers(faculty_name: str, limit: int = 5) -> dict:
@@ -228,12 +234,14 @@ class FacultyService:
                 interests = ", ".join(interests)
 
             prompt = f"""Score the research fit between this faculty member and student.
+                ONLY reference the papers listed below — do not invent or assume any papers.
 
                 FACULTY:
                 Name:           {faculty_name}
                 Research Areas: {research_areas}
                 Bio:            {bio[:500]}
-                Recent Papers:  {papers_summary[:500]}
+                Verified Recent Papers:
+                {papers_summary if papers_summary else "No papers available"}
 
                 STUDENT:
                 Research Interests: {interests}
@@ -252,8 +260,7 @@ class FacultyService:
                     ]
                 }}"""
 
-            # Run blocking Gemini call in thread pool
-            result = await asyncio.to_thread(model.generate_content, prompt)
+            result = await model.generate_content_async(prompt)
             raw    = result.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             data   = json.loads(raw)
 
@@ -300,14 +307,18 @@ class FacultyService:
                 interests = ", ".join(interests)
 
             prompt = f"""Generate 5 specific conversation starters for a student
-            reaching out to this professor. Each must be concrete — reference a paper title,
-            specific finding, or direct connection to the student's background.
-            Never be generic. The student needs to stand out.
+            reaching out to this professor. 
+            CRITICAL: Only reference papers from the verified list below. 
+            Do NOT invent paper titles or findings.
+            If no papers are listed, base angles only on research areas.
 
             FACULTY:
             Name:           {faculty_name}
             Research Areas: {research_areas}
             Recent Papers:  {paper_titles}
+            Verified Papers (use ONLY these):
+            {paper_titles if paper_titles else "No papers available — use research areas only"}
+
 
             STUDENT:
             Background:  {student.get('background', '')}
@@ -316,14 +327,14 @@ class FacultyService:
 
             Return ONLY a JSON array of 5 strings. No keys, no markdown:
             [
-                "angle 1",
-                "angle 2",
-                "angle 3",
-                "angle 4",
-                "angle 5"
+                "angle referencing a specific paper title from the list above",
+                "angle connecting student background to a specific research area",
+                "angle asking about a specific finding from one of the papers above",
+                "angle about a research gap the student noticed in the papers above",
+                "angle about a skill the student has that applies to the faculty's work"
             ]"""
 
-            result = await asyncio.to_thread(model.generate_content, prompt)
+            result = await model.generate_content_async(prompt)
             raw    = result.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             angles = json.loads(raw)
 

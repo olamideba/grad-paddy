@@ -1,24 +1,5 @@
-"""
-GradProgramSpider
-─────────────────
-Two-phase crawl strategy:
-
-  Phase 1 — Index page
-    urls.txt contains department-level or program-index URLs.
-    The spider detects whether a page is an index (lists multiple programs)
-    or a direct program page, and routes accordingly.
-
-  Phase 2 — Program page
-    Each program URL is fetched. Fields are extracted via
-    structured selectors → heuristic regex fallback.
-
-  Phase 3 — Faculty page (optional)
-    Faculty directory links found on program pages are followed.
-"""
-
 import asyncio
 import json
-import os
 import hashlib
 import re
 import logging
@@ -26,13 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-
 import scrapy
 from scrapy_playwright.page import PageMethod
 
+from src.core.config import get_settings
 from grad_scraper.items.grad_program import GradProgramItem
 from grad_scraper.items.faculty_profile import FacultyProfileItem
 
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
@@ -86,7 +68,6 @@ class GradProgramSpider(scrapy.Spider):
     async def _gemini_extract(self, response):
         import vertexai
         from vertexai.generative_models import GenerativeModel
-        # Clean page text — strip HTML, collapse whitespace, cap length
         raw = response.css(
             "main *::text, article *::text, .content *::text, body *::text"
         ).getall()
@@ -94,37 +75,36 @@ class GradProgramSpider(scrapy.Spider):
         page_text = re.sub(r"\s+", " ", page_text)[:8000]
 
         prompt = f"""You are extracting graduate program information from a university webpage.
-    Extract the following fields and return ONLY a valid JSON object.
-    Use empty string "" for any field not found on the page.
-    Do not include markdown, backticks, or any text outside the JSON.
+            Extract the following fields and return ONLY a valid JSON object.
+            Use empty string "" for any field not found on the page.
+            Do not include markdown, backticks, or any text outside the JSON.
 
-    {{
-        "program": "full official degree program name",
-        "department": "department or school name",
-        "deadline": "application deadline date exactly as written",
-        "deadline_type": "hard, rolling, or priority",
-        "funding": "complete funding and stipend description",
-        "stipend_amount": "numeric dollar amount only, no $ symbol",
-        "funding_years": "number of years of guaranteed funding",
-        "research_focus": "research areas and themes, 2-4 sentences",
-        "research_groups": ["list", "of", "lab", "or", "group", "names"],
-        "program_description": "program overview, 2-4 sentences",
-        "requirements": "admission requirements summary",
-        "degree_length": "typical program duration e.g. 4-6 years",
-        "semesters": "which semesters intake happens e.g. Fall only",
-        "application_fee": "numeric dollar amount only, no $ symbol"
-    }}
+        {{
+            "program": "full official degree program name",
+            "department": "department or school name",
+            "deadline": "application deadline date exactly as written",
+            "deadline_type": "hard, rolling, or priority",
+            "funding": "complete funding and stipend description",
+            "stipend_amount": "numeric dollar amount only, no $ symbol",
+            "funding_years": "number of years of guaranteed funding",
+            "research_focus": "research areas and themes, 2-4 sentences",
+            "research_groups": ["list", "of", "lab", "or", "group", "names"],
+            "program_description": "program overview, 2-4 sentences",
+            "requirements": "admission requirements summary",
+            "degree_length": "typical program duration e.g. 4-6 years",
+            "semesters": "which semesters intake happens e.g. Fall only",
+            "application_fee": "numeric dollar amount only, no $ symbol"
+        }}
 
-    Page URL: {response.url}
-    Page content:
-    {page_text}"""
+        Page URL: {response.url}
+        Page content:{page_text}"""
 
         try:
             vertexai.init(
-                project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-                location=os.getenv("GOOGLE_CLOUD_LOCATION"),
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GOOGLE_CLOUD_LOCATION,
             )
-            model  = GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
+            model  = GenerativeModel(settings.GEMINI_MODEL)
             result = await asyncio.to_thread(model.generate_content, prompt)
             raw    = result.text.strip()
             raw    = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
@@ -133,7 +113,6 @@ class GradProgramSpider(scrapy.Spider):
             logger.warning(f"Gemini extraction failed for {response.url}: {e}")
             return {}
 
-    # ── Entry point ───────────────────────────────────────────────────────────
 
     async def start(self):
         print("DEBUG: start_requests called")
@@ -151,7 +130,6 @@ class GradProgramSpider(scrapy.Spider):
         else:
             logger.warning(f"Program URLs file not found: {self.program_urls_file}")
 
-        # ── Faculty URLs → parse_entry_point (detected as faculty directory) ──
         if self.faculty_urls_file.exists():
             with open(self.faculty_urls_file) as f:
                 faculty_urls = [
@@ -163,7 +141,7 @@ class GradProgramSpider(scrapy.Spider):
                 yield self._make_request(
                     url,
                     callback=self.parse_entry_point,
-                    meta_extra={"is_faculty_directory": True},  # force faculty routing
+                    meta_extra={"is_faculty_directory": True}, 
                     use_playwright=False
                 )
         else:
@@ -177,7 +155,7 @@ class GradProgramSpider(scrapy.Spider):
                 "playwright_page_methods": [
                     PageMethod("route", "**/*google-analytics*", lambda route, _: route.abort()),
                     PageMethod("route", "**/*gtag*", lambda route, _: route.abort()),
-                    PageMethod("wait_for_load_state", "domcontentloaded"),  # not networkidle
+                    PageMethod("wait_for_load_state", "domcontentloaded"), 
                     PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
                     PageMethod("wait_for_timeout", 1500),
                 ],
@@ -188,7 +166,6 @@ class GradProgramSpider(scrapy.Spider):
             meta.update(meta_extra)
         return scrapy.Request(url, callback=callback, meta=meta, errback=self.handle_error)
 
-    # ── Router ────────────────────────────────────────────────────────────────
 
     async def parse_entry_point(self, response):
         """
@@ -198,14 +175,13 @@ class GradProgramSpider(scrapy.Spider):
         page = response.meta.get("playwright_page")
         try:
             is_faculty_page = (
-                response.meta.get("is_faculty_directory", False)   # flagged from faculty_urls.txt
-                or any(kw in response.url.lower() for kw in [      # or URL looks like faculty dir
+                response.meta.get("is_faculty_directory", False)   
+                or any(kw in response.url.lower() for kw in [    
                     "/people/", "/faculty/", "/faculty-advisors", "/role/faculty",  "/directory/faculty"
                 ])
             )
 
             if is_faculty_page:
-                # handle as faculty directory — find profile links, follow them
                 logger.info(f"Faculty directory at {response.url}")
                 faculty_links = self.find_faculty_links(response)
                 for link_info in faculty_links[:50]:
@@ -249,7 +225,6 @@ class GradProgramSpider(scrapy.Spider):
                 except Exception:
                     pass
 
-    # ── Index page link detector ──────────────────────────────────────────────
 
     def _detect_program_links(self, response):
         """
@@ -277,7 +252,6 @@ class GradProgramSpider(scrapy.Spider):
                 return links
 
 
-        # Pattern 1: table with program + optional deadline columns (MIT-style)
         for table in response.css("table"):
             headers = [h.lower() for h in table.css("th::text").getall()]
             has_program_col = any(kw in " ".join(headers) for kw in ["program", "degree", "major"])
@@ -302,7 +276,6 @@ class GradProgramSpider(scrapy.Spider):
         if links:
             return links
 
-        # Pattern 2: list items linking to program-like URLs
         for li in response.css("li"):
             href = li.css("a::attr(href)").get("")
             name = li.css("a::text").get("").strip()
@@ -315,7 +288,7 @@ class GradProgramSpider(scrapy.Spider):
         if links:
             return links
 
-        # Pattern 3: any same-domain link whose href contains program keywords
+
         seen = set()
         for a in response.css("a"):
             href = a.attrib.get("href", "")
@@ -333,7 +306,7 @@ class GradProgramSpider(scrapy.Spider):
 
         return links
 
-    # ── Program page parser ───────────────────────────────────────────────────
+
 
     async def parse_program_page(self, response):
         page = response.meta.get("playwright_page")
@@ -347,7 +320,7 @@ class GradProgramSpider(scrapy.Spider):
             item["program"] = self.extract_program_name(response)
             item["department"] = self.extract_department(response)
             item["deadline"] = (
-                response.meta.get("index_deadline")  # passed from index page if found there
+                response.meta.get("index_deadline") 
                 or self.extract_deadline(response)
             )
             item["semesters"]        = self.extract_semesters(response)
@@ -364,15 +337,13 @@ class GradProgramSpider(scrapy.Spider):
             item["degree_length"]       = self.extract_degree_length(response)
 
 
-            # OGE-specific extraction — runs for all oge.mit.edu pages
             if "oge.mit.edu" in response.url:
                 oge_data = self.extract_oge_fields(response)
                 for field, value in oge_data.items():
-                    if value and not item.get(field):  # only fill empty fields
+                    if value and not item.get(field): 
                         item[field] = value
 
 
-            # Gemini fallback — only fires if critical fields are empty
             critical_empty = not any([
                 item.get("deadline"),
                 item.get("funding"),
@@ -380,7 +351,7 @@ class GradProgramSpider(scrapy.Spider):
                 item.get("requirements"),
             ])
 
-            if critical_empty and os.getenv("GEMINI_ENABLED", "").lower() == "true":
+            if critical_empty and settings.GEMINI_ENABLED.lower() == "true":
                 logger.info(f"Heuristics incomplete — calling Gemini for {response.url}")
                 gemini_data = await self._gemini_extract(response)
                 for field, value in gemini_data.items():
@@ -389,7 +360,6 @@ class GradProgramSpider(scrapy.Spider):
 
             yield item
 
-            # Follow faculty directory links
             for link_info in self.find_faculty_links(response)[:10]:
                 url = link_info["url"] if isinstance(link_info, dict) else link_info
                 meta = {"parent_item": dict(item)}
@@ -407,7 +377,6 @@ class GradProgramSpider(scrapy.Spider):
                 response.meta["_page_closed"] = True
                 await page.close()
 
-    # ── Faculty page parser ───────────────────────────────────────────────────
     async def parse_faculty_page(self, response):
         page   = response.meta.get("playwright_page")
         parent = response.meta.get("parent_item", {})
@@ -433,7 +402,6 @@ class GradProgramSpider(scrapy.Spider):
             if page:
                 await page.close()
 
-    # ── Extractors ────────────────────────────────────────────────────────────
 
     def extract_program_name(self, response):
         for candidate in [
@@ -458,13 +426,11 @@ class GradProgramSpider(scrapy.Spider):
 
     def _oge_labeled_field(self, response, label):
         """Gets the value next to a bold label like 'Fee:' or 'Deadline:'"""
-        # Try text node sibling first (e.g. <strong>Fee:</strong><br>\n$90.00)
         value = response.xpath(
             f"//strong[contains(text(),'{label}')]/following-sibling::text()[1]"
         ).get("")
         if value.strip():
             return value.strip()
-        # Fallback: next element's text (e.g. value is in a <span> or <p>)
         value = response.xpath(
             f"//strong[contains(text(),'{label}')]/../following-sibling::*[1]//text()"
         ).get("")
@@ -477,7 +443,6 @@ class GradProgramSpider(scrapy.Spider):
         """
         result = {}
 
-        # Helper: find accordion body by button label text
         def get_accordion_body(label):
             for btn in response.css("button.btn-link"):
                 if label.lower() in btn.css("::text").get("").lower():
@@ -486,7 +451,6 @@ class GradProgramSpider(scrapy.Spider):
                         return response.css(f"#{target} .accordion-body")
             return None
 
-        # --- Deadline (labeled strong tag) ---
         for strong in response.css("strong"):
             if "deadline" in strong.css("::text").get("").lower():
                 value = strong.xpath("following-sibling::text()[1]").get("")
@@ -494,7 +458,6 @@ class GradProgramSpider(scrapy.Spider):
                     result["deadline"] = self._oge_labeled_field(response, "Deadline")
                 break
 
-        # --- Fee ---
         for strong in response.css("strong"):
             if strong.css("::text").get("").strip().lower() == "fee:":
                 value = strong.xpath("../following-sibling::*[1]//text()").get("")
@@ -504,32 +467,27 @@ class GradProgramSpider(scrapy.Spider):
                     result["application_fee"] = self._oge_labeled_field(response, "Fee").replace("$", "").replace(".00", "").strip()
                 break
 
-        # --- Entry terms / semesters ---
         body = get_accordion_body("Entry Term")
         if body:
             terms = [t.strip() for t in body.css("*::text").getall() if t.strip()]
             result["semesters"] = ", ".join(terms)
 
-        # --- Degrees ---
         body = get_accordion_body("Degrees")
         if body:
             degrees = [t.strip() for t in body.css("h2::text, h3::text").getall() if t.strip()]
             result["degree_length"] = ", ".join(degrees)
 
-        # --- Areas of research ---
         body = get_accordion_body("Areas of Research")
         if body:
             areas = [t.strip() for t in body.css("li::text").getall() if t.strip()]
             result["research_focus"]  = ", ".join(areas)
             result["research_groups"] = areas
 
-        # --- Application requirements ---
         body = get_accordion_body("Application Requirements")
         if body:
             reqs = [t.strip() for t in body.css("*::text").getall() if t.strip()]
             result["requirements"] = " ".join(reqs)
 
-        # --- Financial support ---
         body = get_accordion_body("Financial Support")
         if body:
             funding_texts = [t.strip() for t in body.css("*::text").getall() if t.strip()]
@@ -538,14 +496,12 @@ class GradProgramSpider(scrapy.Spider):
         return result
 
     def extract_deadline(self, response):
-        # Try dedicated deadline elements first
         structured = response.css(
             '[class*="deadline"]::text, [id*="deadline"]::text, time::attr(datetime)'
         ).getall()
         if structured:
             return structured[0].strip()
 
-        # Try table where a column header mentions deadline
         for table in response.css("table"):
             headers = [h.lower() for h in table.css("th::text").getall()]
             idx = next((i for i, h in enumerate(headers) if "deadline" in h), None)
@@ -554,7 +510,6 @@ class GradProgramSpider(scrapy.Spider):
                 if val.strip():
                     return val.strip()
 
-        # Regex fallback on full page text
         full_text = " ".join(response.css("*::text").getall())
         for pattern in DEADLINE_PATTERNS:
             match = re.search(pattern, full_text, re.IGNORECASE)
@@ -579,7 +534,6 @@ class GradProgramSpider(scrapy.Spider):
 
     def extract_stipend_amount(self, response):
         text = " ".join(response.css("*::text").getall())
-        # Must have $ and be in context of stipend/funding, not institute codes
         for pattern in [
             r"stipend[^\$]*\$\s*([\d,]+)",
             r"\$\s*([\d,]+)\s*(?:per\s+year|annually|/year)",
@@ -588,7 +542,6 @@ class GradProgramSpider(scrapy.Spider):
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 amount = match.group(1).replace(",", "")
-                # Sanity check — stipends are between $5,000 and $100,000
                 if 5000 <= int(amount) <= 100000:
                     return amount
         return ""
@@ -670,7 +623,6 @@ class GradProgramSpider(scrapy.Spider):
         links = []
         base = response.url
 
-        # ── MIT EECS people page (div.people-entry cards) ─────────────────────
         cards = response.css("div.people-entry")
         if cards:
             for card in cards:
@@ -690,7 +642,6 @@ class GradProgramSpider(scrapy.Spider):
             logger.info(f"MIT EECS people page — found {len(links)} faculty")
             return links
 
-        # ----Generic Fallback --------------------
         for a in response.css("a"):
             text = a.css("::text").get("").lower()
             href = a.attrib.get("href", "")
@@ -712,7 +663,6 @@ class GradProgramSpider(scrapy.Spider):
         if "summer" in text:
             semesters.append("Summer")
 
-        # Also try to find "fall only" or "spring admission" patterns
         match = re.search(
             r"(fall|spring|summer)\s+(?:only|admission|intake|semester|term)",
             text, re.IGNORECASE
@@ -724,7 +674,6 @@ class GradProgramSpider(scrapy.Spider):
 
     def extract_application_fee(self, response):
         text = " ".join(response.css("*::text").getall())
-        # Looks for patterns like "$75 application fee" or "fee of $100"
         match = re.search(
             r"\$\s*(\d+)\s*(?:application\s+)?fee|fee\s+(?:of\s+)?\$\s*(\d+)",
             text, re.IGNORECASE
@@ -734,7 +683,6 @@ class GradProgramSpider(scrapy.Spider):
         return ""
 
     def extract_requirements_url(self, response):
-        # Look for links whose text or href mentions requirements/admissions
         for a in response.css("a"):
             text = a.css("::text").get("").lower()
             href = a.attrib.get("href", "")
@@ -744,7 +692,6 @@ class GradProgramSpider(scrapy.Spider):
                 return urljoin(response.url, href)
         return ""
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _infer_university(self, url):
         domain = urlparse(url).netloc.lower()
