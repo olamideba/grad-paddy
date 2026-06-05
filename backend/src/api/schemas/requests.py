@@ -100,7 +100,7 @@ class ApplicationCreateRequest(BaseModel):
     status: str = "tracking"
     sop_status: str = "not_started"
     cv_status: str = "not_started"
-    recommenders: list[dict] = Field(default_factory=list)
+    recommenders: list[RecommenderAddRequest] = Field(default_factory=list)
     funded: str = "unknown"
     notes: Optional[str] = None
 
@@ -113,7 +113,7 @@ class ApplicationUpdateRequest(BaseModel):
     status: Optional[str] = None
     sop_status: Optional[str] = None
     cv_status: Optional[str] = None
-    recommenders: Optional[list[dict]] = None
+    recommenders: Optional[list[RecommenderAddRequest]] = None
     funded: Optional[str] = None
     notes: Optional[str] = None
 
