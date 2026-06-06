@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import type { Draft as ApiDraft, DraftStats } from "../../lib/api";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type DraftType = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
@@ -675,6 +676,7 @@ export default function DraftsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [approvingDraft, setApprovingDraft] = useState<Draft | null>(null);
+  const [confirmDeleteDraft, setConfirmDeleteDraft] = useState<Draft | null>(null);
 
   function updateDraft(updated: Draft) {
     setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
@@ -685,7 +687,6 @@ export default function DraftsPage() {
     );
   }
   async function deleteDraft(draft: Draft) {
-    if (!window.confirm(`Delete "${draft.title}"? This cannot be undone.`)) return;
     setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
     try {
       const { draftsApi } = await import("../../lib/api");
@@ -884,7 +885,7 @@ export default function DraftsPage() {
                 draft={draft}
                 onEdit={() => setEditingDraft(draft)}
                 onApprove={() => setApprovingDraft(draft)}
-                onDelete={() => deleteDraft(draft)}
+                onDelete={() => setConfirmDeleteDraft(draft)}
               />
             ))}
           </div>
@@ -914,6 +915,17 @@ export default function DraftsPage() {
           onConfirmed={() => {
             approveDraft(approvingDraft.id);
             setApprovingDraft(null);
+          }}
+        />
+      )}
+      {confirmDeleteDraft && (
+        <ConfirmModal
+          title="Delete draft"
+          message={`Delete “${confirmDeleteDraft.title}”? This cannot be undone.`}
+          onClose={() => setConfirmDeleteDraft(null)}
+          onConfirm={() => {
+            deleteDraft(confirmDeleteDraft);
+            setConfirmDeleteDraft(null);
           }}
         />
       )}
