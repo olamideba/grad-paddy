@@ -18,7 +18,7 @@ type StepStatus = "pending" | "running" | "done" | "error";
 
 // Map tool names to human-friendly descriptions
 const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; description: string }> = {
-  transfer_to_agent: { label: "Processing", emoji: "⚡", description: "Connecting to agent..." },
+  transfer_to_agent: { label: "Thinking", emoji: "⚡", description: "Connecting to agent..." },
   researcher_google_search_agent: {
     label: "Searching the web",
     emoji: "🔍",
@@ -204,7 +204,7 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
   for (const e of events) {
     const type = e.type as string;
     if (type === "RUN_STARTED") {
-      items.push({ type: "phase", id: `run-${messageId}`, label: "Processing", status: "done" });
+      items.push({ type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" });
     } else if (type === "STEP_STARTED") {
       const name = e.stepName as string;
       items.push({ type: "phase", id: `step-${name}-${messageId}`, label: name, status: "done" });
@@ -718,10 +718,10 @@ function ApprovalGate({
               />
             ) : item.kind === "choice" && item.options?.length ? (
               <div className="flex flex-col gap-1.5">
-                {item.options.map((o, i) => (
+                {item.options.map((o) => (
                   <PermissionOption
                     key={o.id}
-                    index={i + 1}
+                    icon="solar:check-circle-bold"
                     label={o.label}
                     onClick={() =>
                       onResolve(item.id, "approved", { optionId: o.id, label: o.label })
@@ -729,7 +729,7 @@ function ApprovalGate({
                   />
                 ))}
                 <PermissionOption
-                  index={item.options.length + 1}
+                  icon="solar:close-circle-bold"
                   label="Cancel"
                   muted
                   onClick={() => onResolve(item.id, "rejected")}
@@ -740,19 +740,22 @@ function ApprovalGate({
             ) : (
               <div className="flex flex-col gap-1.5">
                 <PermissionOption
-                  index={1}
+                  icon="solar:check-circle-bold"
                   label="Yes, allow"
+                  description="Approve this action"
                   primary
                   onClick={() => onResolve(item.id, "approved")}
                 />
                 <PermissionOption
-                  index={2}
+                  icon="solar:shield-check-bold"
                   label="Yes, and don't ask again"
+                  description="Auto-approve future actions"
                   onClick={() => onAlwaysAllow(item.id)}
                 />
                 <PermissionOption
-                  index={3}
+                  icon="solar:close-circle-bold"
                   label="No, reject"
+                  description="Don't make this change"
                   muted
                   onClick={() => onResolve(item.id, "rejected")}
                 />
@@ -768,14 +771,16 @@ function ApprovalGate({
 // A single selectable permission option (numbered, full-width) — mirrors the
 // Claude-style permission prompt.
 function PermissionOption({
-  index,
+  icon,
   label,
+  description,
   onClick,
   primary,
   muted,
 }: {
-  index: number;
+  icon: string;
   label: string;
+  description?: string;
   onClick: () => void;
   primary?: boolean;
   muted?: boolean;
@@ -783,12 +788,11 @@ function PermissionOption({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2 px-3 py-2 text-xs font-semibold font-space text-left bouncy"
+      className="flex items-center gap-3 px-3 py-2.5 text-left bouncy w-full"
       style={{
         background: primary ? "#4ECDC4" : "#FFFFFF",
-        color: muted ? "#9CA3AF" : "#0D0D0D",
         border: `1.5px solid ${primary ? "#0D0D0D" : "#C8C0AF"}`,
-        borderRadius: "6px",
+        borderRadius: "8px",
       }}
       onMouseEnter={(e) => {
         if (!primary) e.currentTarget.style.background = "#F7F0E3";
@@ -797,17 +801,28 @@ function PermissionOption({
         if (!primary) e.currentTarget.style.background = "#FFFFFF";
       }}
     >
-      <span
-        className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-mono shrink-0"
-        style={{
-          background: primary ? "rgba(0,0,0,0.15)" : "#EDE6D3",
-          color: muted ? "#9CA3AF" : "#0D0D0D",
-          borderRadius: "3px",
-        }}
-      >
-        {index}
+      <Icon
+        icon={icon}
+        width={16}
+        className="shrink-0"
+        style={{ color: muted ? "#9CA3AF" : primary ? "#0D0D0D" : "#E8472A" }}
+      />
+      <span className="flex flex-col min-w-0">
+        <span
+          className="text-sm font-semibold font-space leading-tight"
+          style={{ color: muted ? "#9CA3AF" : "#0D0D0D" }}
+        >
+          {label}
+        </span>
+        {description && (
+          <span
+            className="text-[11px] font-dm leading-tight mt-0.5"
+            style={{ color: primary ? "rgba(13,13,13,0.65)" : "#9CA3AF" }}
+          >
+            {description}
+          </span>
+        )}
       </span>
-      {label}
     </button>
   );
 }
@@ -891,12 +906,19 @@ function ReviewGate({
       />
       <div className="flex flex-col gap-1.5">
         <PermissionOption
-          index={1}
+          icon="solar:check-circle-bold"
           label={edited ? "Update & approve" : "Approve"}
+          description={edited ? "Save your edited version" : "Save as drafted"}
           primary
           onClick={() => onApprove(text)}
         />
-        <PermissionOption index={2} label="Reject" muted onClick={onReject} />
+        <PermissionOption
+          icon="solar:close-circle-bold"
+          label="Reject"
+          description="Don't save"
+          muted
+          onClick={onReject}
+        />
       </div>
     </div>
   );
@@ -1426,7 +1448,7 @@ export default function ChatPage() {
     } else if (type === "RUN_STARTED") {
       setStream((p) => [
         ...p,
-        { type: "phase", id: phaseId, label: "Processing", status: "running" },
+        { type: "phase", id: phaseId, label: "Thinking", status: "running" },
       ]);
       // Expanded while running; collapsed automatically on finish (see RUN_FINISHED).
     } else if (type === "TEXT_MESSAGE_START") {
@@ -1458,18 +1480,29 @@ export default function ChatPage() {
       ];
     } else if (type === "TOOL_CALL_START") {
       const e = event as unknown as { toolCallId: string; toolCallName: string };
+      // transfer_to_agent is internal routing — skip it so the activity card
+      // isn't full of consecutive duplicate "Thinking" steps.
+      if (e.toolCallName === "transfer_to_agent") return;
       flushSync(() => {
-        setStream((p) => [
-          ...p,
-          {
-            type: "step",
-            id: e.toolCallId,
-            label: e.toolCallName.replace(/_/g, " "),
-            status: "running",
-            tool: e.toolCallName,
-            detail: e.toolCallName,
-          },
-        ]);
+        setStream((p) => {
+          // Collapse consecutive duplicate tool calls (e.g. the agent listing
+          // drafts repeatedly) into a single step.
+          const lastStep = [...p].reverse().find((it) => it.type === "step");
+          if (lastStep && lastStep.type === "step" && lastStep.tool === e.toolCallName) {
+            return p;
+          }
+          return [
+            ...p,
+            {
+              type: "step",
+              id: e.toolCallId,
+              label: e.toolCallName.replace(/_/g, " "),
+              status: "running",
+              tool: e.toolCallName,
+              detail: e.toolCallName,
+            },
+          ];
+        });
       });
     } else if (type === "TOOL_CALL_END") {
       const e = event as unknown as { toolCallId: string };
@@ -1505,21 +1538,27 @@ export default function ChatPage() {
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
       const phaseIds: string[] = [];
-      // Multi-message run (a reasoning chain) → collapse ALL its agent messages
-      // into "thinking"; the visible answer is the result card. A single-message
-      // run is a normal answer and stays visible.
-      const runAgentCount = stream.filter(
-        (item) => item.type === "agent" && item.run === phaseId
-      ).length;
-      const collapseAll = runAgentCount >= 2;
+      // A multi-message run is a reasoning chain: collapse every agent message
+      // EXCEPT the last into a "Thinking" dropdown; the last stays as the visible
+      // answer (plus any result card). A single-message run stays fully visible.
+      const runAgentIdxs = stream
+        .map((item, i) => (item.type === "agent" && item.run === phaseId ? i : -1))
+        .filter((i) => i >= 0);
+      const lastAgentIdx = runAgentIdxs[runAgentIdxs.length - 1] ?? -1;
+      const collapseThinking = runAgentIdxs.length >= 2;
       setStream((p) =>
-        p.map((item) => {
+        p.map((item, i) => {
           if (item.type === "phase") {
             phaseIds.push(item.id);
             if (item.id === phaseId && item.status === "running") return { ...item, status };
           }
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
-          if (collapseAll && item.type === "agent" && item.run === phaseId) {
+          if (
+            collapseThinking &&
+            item.type === "agent" &&
+            item.run === phaseId &&
+            i !== lastAgentIdx
+          ) {
             return { ...item, thinking: true };
           }
           return item;
@@ -2162,23 +2201,24 @@ export default function ChatPage() {
               </button>
               <button
                 onClick={() => toggleAutoApprove(!autoApprove)}
-                className="p-2 bouncy"
+                className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold font-space bouncy"
                 style={{
                   border: "1.5px solid #0D0D0D",
                   background: autoApprove ? "#4ECDC4" : "#F7F0E3",
-                  color: autoApprove ? "#0D0D0D" : "#B0A898",
+                  color: autoApprove ? "#0D0D0D" : "#5A5A5A",
                   borderRadius: "4px",
                 }}
                 title={
                   autoApprove
-                    ? "Always allow: on — agent acts without asking"
-                    : "Always allow: off — agent asks before changes"
+                    ? "Agent acts without asking — click to require approval"
+                    : "Agent asks before changes — click to always allow"
                 }
               >
                 <Icon
                   icon={autoApprove ? "solar:shield-check-bold" : "solar:shield-keyhole-bold"}
                   width={14}
                 />
+                {autoApprove ? "Always allow" : "Ask before changes"}
               </button>
             </div>
             <button
