@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import ReactMarkdown from "react-markdown";
@@ -155,7 +156,14 @@ function getToolDescription(toolName: string): { label: string; emoji: string } 
 
 type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
-  | { type: "agent"; id: string; content: string; timestamp: Date }
+  | {
+      type: "agent";
+      id: string;
+      content: string;
+      timestamp: Date;
+      run?: string;
+      thinking?: boolean;
+    }
   | {
       type: "step";
       id: string;
@@ -175,8 +183,18 @@ type ChatItem =
       items?: string[];
       options?: { id: string; label: string }[];
       schema?: Record<string, unknown> | null;
+      reviewContent?: string; // editable draft/body to review before saving
+      navTarget?: { route: string; label: string }; // where to open the result
       expiresAt?: string | null;
       resolved?: "approved" | "rejected";
+    }
+  | {
+      type: "result";
+      id: string;
+      title: string;
+      subtitle: string;
+      route: string;
+      label: string;
     };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
@@ -389,11 +407,23 @@ type PhaseGroup = {
   steps: Extract<ChatItem, { type: "step" }>[];
 };
 
+// Map a HITL payload `entity` hint to where the saved result lives.
+function entityNav(entity?: string): { route: string; label: string } | undefined {
+  if (!entity) return undefined;
+  const e = entity.toLowerCase();
+  if (["draft", "sop", "outreach", "outreach-prep", "research-narrative", "narrative"].includes(e))
+    return { route: "/drafts", label: "Drafts" };
+  if (["tracker", "application", "app"].includes(e)) return { route: "/tracker", label: "Tracker" };
+  if (["shortlist", "faculty"].includes(e)) return { route: "/shortlist", label: "Shortlist" };
+  return undefined;
+}
+
 function groupStream(stream: ChatItem[]) {
   const out: Array<
     | { kind: "standalone"; item: Exclude<ChatItem, { type: "phase" | "step" }> }
     | { kind: "group"; group: PhaseGroup }
     | { kind: "orphan"; item: Extract<ChatItem, { type: "step" }> }
+    | { kind: "thinking"; items: Extract<ChatItem, { type: "agent" }>[] }
   > = [];
   for (const item of stream) {
     if (item.type === "phase") {
@@ -402,11 +432,58 @@ function groupStream(stream: ChatItem[]) {
       const last = out[out.length - 1];
       if (last?.kind === "group") last.group.steps.push(item);
       else out.push({ kind: "orphan", item });
+    } else if (item.type === "agent" && item.thinking) {
+      const last = out[out.length - 1];
+      if (last?.kind === "thinking") last.items.push(item);
+      else out.push({ kind: "thinking", items: [item] });
     } else {
       out.push({ kind: "standalone", item: item as Exclude<ChatItem, { type: "phase" | "step" }> });
     }
   }
   return out;
+}
+
+// Collapsible "Thinking" disclosure — holds a run's intermediate agent messages
+// so the chat stays tidy (the visible answer is the result card / final reply).
+function ThinkingBlock({ items }: { items: Extract<ChatItem, { type: "agent" }>[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="py-1 msg-enter flex gap-3">
+      <div
+        className="w-7 h-7 shrink-0 flex items-center justify-center mt-0.5"
+        style={{ background: "#EDE6D3", border: "2px solid #0D0D0D", borderRadius: "50%" }}
+      >
+        <span className="text-xs leading-none">🎓</span>
+      </div>
+      <div className="flex flex-col gap-2 min-w-0 flex-1">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 w-fit bouncy"
+          title={open ? "Hide thinking" : "Show thinking"}
+        >
+          <Icon icon="solar:lightbulb-bolt-bold" width={13} style={{ color: "#E8472A" }} />
+          <span className="text-xs font-semibold font-space" style={{ color: "#9CA3AF" }}>
+            Thinking
+          </span>
+          <Icon
+            icon="solar:alt-arrow-down-bold"
+            width={11}
+            className={clsx("transition-transform duration-150", !open && "-rotate-90")}
+            style={{ color: "#B0A898" }}
+          />
+        </button>
+        {open && (
+          <div className="pl-3 flex flex-col gap-3" style={{ borderLeft: "2px solid #EDE6D3" }}>
+            {items.map((it) => (
+              <div key={it.id} className="text-xs" style={{ opacity: 0.7 }}>
+                <StreamingText content={it.content} messageId={it.id} isStreaming={false} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function AgentWorkCard({
@@ -562,38 +639,39 @@ function ApprovalGate({
   onResolve: (id: string, d: "approved" | "rejected", response?: Record<string, unknown>) => void;
   onAlwaysAllow: (id: string) => void;
 }) {
+  const resolvedView = item.resolved || expired;
   return (
-    <div className="flex gap-3 msg-enter">
+    <div className="msg-enter w-full max-w-xl">
       <div
-        className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
+        className="overflow-hidden"
         style={{
-          background: "#EDE6D3",
-          color: "#5A5A5A",
+          background: "#FFFFFF",
           border: "2px solid #0D0D0D",
-          borderRadius: "50%",
+          boxShadow: "3px 3px 0 #0D0D0D",
+          borderRadius: "8px",
         }}
       >
-        <span className="text-xs leading-none">🎓</span>
-      </div>
-      <div className="flex flex-col gap-3 max-w-[75%]">
-        <div
-          className="px-4 py-3 text-sm font-dm leading-relaxed"
-          style={{
-            background: "#FFFFFF",
-            color: "#0D0D0D",
-            border: "2px solid #0D0D0D",
-            boxShadow: "3px 3px 0 #0D0D0D",
-            borderRadius: "8px",
-          }}
-        >
-          <p className="font-semibold font-space mb-1" style={{ color: "#0D0D0D" }}>
+        {/* Permission header */}
+        <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#0D0D0D" }}>
+          <Icon icon="solar:shield-keyhole-bold" width={14} style={{ color: "#E8472A" }} />
+          <span
+            className="text-[10px] font-bold uppercase tracking-widest font-space"
+            style={{ color: "#FFFFFF" }}
+          >
+            Permission required
+          </span>
+        </div>
+
+        {/* Body */}
+        <div className="px-4 py-3">
+          <p className="font-bold font-space text-sm mb-1" style={{ color: "#0D0D0D" }}>
             {item.title}
           </p>
-          <p className="text-xs font-dm mb-3" style={{ color: "#5A5A5A" }}>
+          <p className="text-xs font-dm leading-relaxed" style={{ color: "#5A5A5A" }}>
             {item.description}
           </p>
-          {item.items && (
-            <ul className="space-y-1 mb-1">
+          {item.items && item.items.length > 0 && (
+            <ul className="space-y-1 mt-2">
               {item.items.map((it, i) => (
                 <li
                   key={i}
@@ -608,80 +686,217 @@ function ApprovalGate({
               ))}
             </ul>
           )}
+
+          {/* Options */}
+          <div className="mt-3">
+            {resolvedView ? (
+              <div
+                className="flex items-center gap-2 text-xs font-semibold font-space"
+                style={{ color: item.resolved === "approved" ? "#4ECDC4" : "#9CA3AF" }}
+              >
+                <Icon
+                  icon={
+                    item.resolved === "approved"
+                      ? "solar:check-circle-bold"
+                      : expired
+                        ? "solar:clock-circle-bold"
+                        : "solar:close-circle-bold"
+                  }
+                  width={13}
+                />
+                {item.resolved === "approved"
+                  ? "Approved"
+                  : item.resolved === "rejected"
+                    ? "Rejected"
+                    : "Expired — no longer awaiting input"}
+              </div>
+            ) : typeof item.reviewContent === "string" ? (
+              <ReviewGate
+                initial={item.reviewContent}
+                onApprove={(content) => onResolve(item.id, "approved", { content })}
+                onReject={() => onResolve(item.id, "rejected")}
+              />
+            ) : item.kind === "choice" && item.options?.length ? (
+              <div className="flex flex-col gap-1.5">
+                {item.options.map((o, i) => (
+                  <PermissionOption
+                    key={o.id}
+                    index={i + 1}
+                    label={o.label}
+                    onClick={() =>
+                      onResolve(item.id, "approved", { optionId: o.id, label: o.label })
+                    }
+                  />
+                ))}
+                <PermissionOption
+                  index={item.options.length + 1}
+                  label="Cancel"
+                  muted
+                  onClick={() => onResolve(item.id, "rejected")}
+                />
+              </div>
+            ) : item.kind === "input" ? (
+              <HITLInput item={item} onResolve={onResolve} />
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <PermissionOption
+                  index={1}
+                  label="Yes, allow"
+                  primary
+                  onClick={() => onResolve(item.id, "approved")}
+                />
+                <PermissionOption
+                  index={2}
+                  label="Yes, and don't ask again"
+                  onClick={() => onAlwaysAllow(item.id)}
+                />
+                <PermissionOption
+                  index={3}
+                  label="No, reject"
+                  muted
+                  onClick={() => onResolve(item.id, "rejected")}
+                />
+              </div>
+            )}
+          </div>
         </div>
-        {item.resolved ? (
-          <div
-            className="flex items-center gap-2 text-xs font-semibold font-space"
-            style={{ color: item.resolved === "approved" ? "#4ECDC4" : "#9CA3AF" }}
-          >
-            <Icon
-              icon={
-                item.resolved === "approved" ? "solar:check-circle-bold" : "solar:close-circle-bold"
-              }
-              width={13}
-            />
-            {item.resolved === "approved" ? "Approved" : "Rejected"}
+      </div>
+    </div>
+  );
+}
+
+// A single selectable permission option (numbered, full-width) — mirrors the
+// Claude-style permission prompt.
+function PermissionOption({
+  index,
+  label,
+  onClick,
+  primary,
+  muted,
+}: {
+  index: number;
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 px-3 py-2 text-xs font-semibold font-space text-left bouncy"
+      style={{
+        background: primary ? "#4ECDC4" : "#FFFFFF",
+        color: muted ? "#9CA3AF" : "#0D0D0D",
+        border: `1.5px solid ${primary ? "#0D0D0D" : "#C8C0AF"}`,
+        borderRadius: "6px",
+      }}
+      onMouseEnter={(e) => {
+        if (!primary) e.currentTarget.style.background = "#F7F0E3";
+      }}
+      onMouseLeave={(e) => {
+        if (!primary) e.currentTarget.style.background = "#FFFFFF";
+      }}
+    >
+      <span
+        className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-mono shrink-0"
+        style={{
+          background: primary ? "rgba(0,0,0,0.15)" : "#EDE6D3",
+          color: muted ? "#9CA3AF" : "#0D0D0D",
+          borderRadius: "3px",
+        }}
+      >
+        {index}
+      </span>
+      {label}
+    </button>
+  );
+}
+
+// Result card shown after a write is approved — links to the saved item.
+function ResultCard({
+  item,
+  onOpen,
+}: {
+  item: Extract<ChatItem, { type: "result" }>;
+  onOpen: () => void;
+}) {
+  const icon =
+    item.route === "/tracker"
+      ? "solar:calendar-bold"
+      : item.route === "/shortlist"
+        ? "solar:star-bold"
+        : "solar:document-text-bold";
+  return (
+    <div className="flex gap-3 msg-enter">
+      <div
+        className="w-7 h-7 shrink-0 flex items-center justify-center mt-0.5"
+        style={{ background: "#EDE6D3", border: "2px solid #0D0D0D", borderRadius: "50%" }}
+      >
+        <span className="text-xs leading-none">🎓</span>
+      </div>
+      <div
+        className="flex items-center gap-3 px-3 py-2.5 max-w-[88%] w-full"
+        style={{
+          background: "#FFFFFF",
+          border: "2px solid #0D0D0D",
+          boxShadow: "3px 3px 0 #0D0D0D",
+          borderRadius: "8px",
+        }}
+      >
+        <div
+          className="w-9 h-9 shrink-0 flex items-center justify-center"
+          style={{ background: "#F7F0E3", border: "1.5px solid #0D0D0D", borderRadius: "6px" }}
+        >
+          <Icon icon={icon} width={17} style={{ color: "#E8472A" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold font-space truncate" style={{ color: "#0D0D0D" }}>
+            {item.title}
           </div>
-        ) : expired ? (
-          <div
-            className="flex items-center gap-2 text-xs font-semibold font-space"
-            style={{ color: "#9CA3AF" }}
-          >
-            <Icon icon="solar:clock-circle-bold" width={13} />
-            Expired
+          <div className="text-[11px] font-dm" style={{ color: "#9CA3AF" }}>
+            {item.subtitle} · {item.label}
           </div>
-        ) : item.kind === "choice" && item.options?.length ? (
-          <div className="flex flex-col gap-2">
-            {item.options.map((o) => (
-              <button
-                key={o.id}
-                onClick={() => onResolve(item.id, "approved", { optionId: o.id, label: o.label })}
-                className="btn-white btn-sm gap-1.5 text-xs justify-start"
-              >
-                <Icon icon="solar:check-circle-bold" width={12} />
-                {o.label}
-              </button>
-            ))}
-            <button
-              onClick={() => onResolve(item.id, "rejected")}
-              className="btn-sm gap-1.5 text-xs"
-              style={{ color: "#9CA3AF" }}
-            >
-              <Icon icon="solar:close-circle-bold" width={12} />
-              Cancel
-            </button>
-          </div>
-        ) : item.kind === "input" ? (
-          <HITLInput item={item} onResolve={onResolve} />
-        ) : (
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <button
-                onClick={() => onResolve(item.id, "approved")}
-                className="btn-teal btn-sm gap-1.5 text-xs"
-              >
-                <Icon icon="solar:check-circle-bold" width={12} />
-                Approve
-              </button>
-              <button
-                onClick={() => onResolve(item.id, "rejected")}
-                className="btn-white btn-sm gap-1.5 text-xs"
-              >
-                <Icon icon="solar:close-circle-bold" width={12} />
-                Reject
-              </button>
-            </div>
-            <button
-              onClick={() => onAlwaysAllow(item.id)}
-              className="bouncy flex items-center gap-1.5 text-[11px] font-semibold font-space w-fit"
-              style={{ color: "#9CA3AF" }}
-              title="Approve and stop asking for future actions"
-            >
-              <Icon icon="solar:shield-check-bold" width={12} />
-              Approve &amp; always allow
-            </button>
-          </div>
-        )}
+        </div>
+        <button onClick={onOpen} className="btn-black btn-sm text-xs shrink-0">
+          Open in {item.label}
+          <Icon icon="solar:arrow-right-up-bold" width={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Review-and-edit gate: the proposed draft/body is shown in an editable area;
+// the user approves as-is or edits then approves. The (possibly edited) content
+// is sent back so the backend saves exactly what was reviewed.
+function ReviewGate({
+  initial,
+  onApprove,
+  onReject,
+}: {
+  initial: string;
+  onApprove: (content: string) => void;
+  onReject: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  const edited = text !== initial;
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={10}
+        className="input-brutal w-full text-xs font-dm resize-y"
+        style={{ minHeight: 160 }}
+      />
+      <div className="flex flex-col gap-1.5">
+        <PermissionOption
+          index={1}
+          label={edited ? "Update & approve" : "Approve"}
+          primary
+          onClick={() => onApprove(text)}
+        />
+        <PermissionOption index={2} label="Reject" muted onClick={onReject} />
       </div>
     </div>
   );
@@ -1039,6 +1254,7 @@ export default function ChatPage() {
   const justCreatedSession = useRef(false);
 
   const { setRunning } = useAgent();
+  const router = useRouter();
 
   const isAgentRunning = running;
   const runningStep = stream.find(
@@ -1182,7 +1398,6 @@ export default function ChatPage() {
 
   function handleEvent(event: BaseEvent, phaseId: string) {
     const type = event.type as string;
-    console.log("[chat] event:", type);
 
     if (type === "HITL_REQUIRED") {
       // Instant gate (mid-stream) — the poll on `complete` is the fallback.
@@ -1220,7 +1435,7 @@ export default function ChatPage() {
       agMsgContent.current.set(e.messageId, "");
       setStream((p) => [
         ...p,
-        { type: "agent", id: e.messageId, content: "", timestamp: new Date() },
+        { type: "agent", id: e.messageId, content: "", timestamp: new Date(), run: phaseId },
       ]);
     } else if (type === "TEXT_MESSAGE_CONTENT") {
       const e = event as unknown as { messageId: string; delta: string };
@@ -1290,6 +1505,13 @@ export default function ChatPage() {
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
       const phaseIds: string[] = [];
+      // Multi-message run (a reasoning chain) → collapse ALL its agent messages
+      // into "thinking"; the visible answer is the result card. A single-message
+      // run is a normal answer and stays visible.
+      const runAgentCount = stream.filter(
+        (item) => item.type === "agent" && item.run === phaseId
+      ).length;
+      const collapseAll = runAgentCount >= 2;
       setStream((p) =>
         p.map((item) => {
           if (item.type === "phase") {
@@ -1297,6 +1519,9 @@ export default function ChatPage() {
             if (item.id === phaseId && item.status === "running") return { ...item, status };
           }
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
+          if (collapseAll && item.type === "agent" && item.run === phaseId) {
+            return { ...item, thinking: true };
+          }
           return item;
         })
       );
@@ -1325,12 +1550,24 @@ export default function ChatPage() {
     expiresAt?: string | null;
   }) {
     if (!a.id) return;
-    const items =
-      a.payload && typeof a.payload === "object"
-        ? Object.entries(a.payload).map(
-            ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-          )
-        : undefined;
+    const payload = (a.payload && typeof a.payload === "object" ? a.payload : {}) as Record<
+      string,
+      unknown
+    >;
+    // A draft/body to review-and-edit before saving.
+    const reviewContent =
+      typeof payload.content === "string"
+        ? payload.content
+        : typeof payload.body === "string"
+          ? payload.body
+          : undefined;
+    // Where the saved result lives, for the result-card link.
+    const entity = typeof payload.entity === "string" ? payload.entity : undefined;
+    const navTarget = entityNav(entity);
+    // Build the readable summary list, hiding the bulky review content.
+    const items = Object.entries(payload)
+      .filter(([k]) => k !== "content" && k !== "body" && k !== "entity")
+      .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
     setStream((p) =>
       p.some((i) => i.type === "approval" && i.id === a.id)
         ? p
@@ -1342,9 +1579,11 @@ export default function ChatPage() {
               kind: a.kind ?? "approval",
               title: a.title || "Approval required",
               description: a.description || "Review the proposed action below.",
-              items,
+              items: items.length ? items : undefined,
               options: a.options ?? undefined,
               schema: a.schema ?? undefined,
+              reviewContent,
+              navTarget,
               expiresAt: a.expiresAt ?? undefined,
             },
           ]
@@ -1356,7 +1595,6 @@ export default function ChatPage() {
       const { hitlApi } = await import("../../lib/api");
       const res = await hitlApi.getPending(threadId.current);
       const hitl = res.data;
-      console.log("[chat] checkHITL → pending:", hitl);
       if (!hitl || (hitl.status && hitl.status !== "pending")) return;
       addApproval({
         id: hitl.id,
@@ -1379,12 +1617,24 @@ export default function ChatPage() {
     try {
       const { hitlApi } = await import("../../lib/api");
       await hitlApi.resolve(id, decision, response);
-      // Flip the gate only after the server confirms.
-      setStream((prev) =>
-        prev.map((item) =>
+      // Flip the gate, and on approval drop a result card linking to the saved item.
+      setStream((prev) => {
+        const gate = prev.find((i) => i.id === id && i.type === "approval");
+        const next = prev.map((item) =>
           item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
-        )
-      );
+        );
+        if (decision === "approved" && gate && gate.type === "approval" && gate.navTarget) {
+          next.push({
+            type: "result",
+            id: `result-${id}`,
+            title: gate.title,
+            subtitle: "Saved",
+            route: gate.navTarget.route,
+            label: gate.navTarget.label,
+          });
+        }
+        return next;
+      });
       // Continue the same turn: resume the run with the human decision.
       resumeRun(id, decision, response);
     } catch (err) {
@@ -1720,7 +1970,15 @@ export default function ChatPage() {
                     />
                   </div>
                 );
+              if (item.type === "result")
+                return (
+                  <div key={item.id} className="py-1">
+                    <ResultCard item={item} onOpen={() => router.push(item.route)} />
+                  </div>
+                );
             }
+            if (entry.kind === "thinking")
+              return <ThinkingBlock key={entry.items[0].id} items={entry.items} />;
             if (!showEvents) return null;
             if (entry.kind === "group")
               return (
