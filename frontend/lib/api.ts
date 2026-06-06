@@ -45,7 +45,17 @@ export interface Preferences {
   target_universities: string[];
   degree_type: string;
   funding_required: boolean;
+  auto_approve?: boolean;
 }
+
+export const preferencesApi = {
+  // Patch only the auto-approve flag, preserving other preferences server-side
+  // by merging into the latest values fetched here.
+  setAutoApprove: async (value: boolean) => {
+    const cur = await usersApi.getPreferences();
+    return usersApi.upsertPreferences({ ...cur.data, auto_approve: value });
+  },
+};
 
 export const usersApi = {
   createOrFetch: (email: string, name: string, avatar_url?: string) =>
@@ -334,23 +344,37 @@ export const groupsApi = {
 
 // ── HITL ──────────────────────────────────────────────────────────────────────
 
+export type HITLKind = "approval" | "choice" | "input";
+export type HITLDecision = "approved" | "rejected";
+
+export interface HITLOption {
+  id: string;
+  label: string;
+}
+
 export interface HITLItem {
   id: string;
   session_id: string;
-  type: string;
+  run_id: string;
+  kind: HITLKind;
+  title: string;
+  description: string;
   payload: Record<string, unknown>;
+  options?: HITLOption[] | null;
+  schema?: Record<string, unknown> | null;
   status: string;
   response: Record<string, unknown> | null;
   created_at: string;
   resolved_at: string | null;
+  expires_at?: string | null;
 }
 
 export const hitlApi = {
   getPending: (sessionId: string) =>
     request<Std<HITLItem | null>>(`/api/hitl/sessions/${sessionId}/pending`),
-  resolve: (hitlId: string, approved: boolean) =>
+  resolve: (hitlId: string, decision: HITLDecision, response?: Record<string, unknown>) =>
     request<Std<HITLItem>>(`/api/hitl/${hitlId}/resolve`, {
       method: "POST",
-      body: JSON.stringify({ approved }),
+      body: JSON.stringify({ decision, response: response ?? null }),
     }),
 };

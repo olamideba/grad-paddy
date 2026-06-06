@@ -21,6 +21,9 @@ class PreferencesUpdateRequest(BaseModel):
     target_universities: list[str] = Field(default_factory=list)
     degree_type: str = "Either"
     funding_required: bool = False
+    # When true, the agent may create/update/delete without asking for approval.
+    # Default false = always ask (HITL gate).
+    auto_approve: bool = False
 
 
 class ValueRequest(BaseModel):

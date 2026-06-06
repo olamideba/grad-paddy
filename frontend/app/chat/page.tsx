@@ -43,6 +43,106 @@ const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; descript
     emoji: "🔗",
     description: "Locating important resources...",
   },
+  // Orchestration / planning
+  planner: { label: "Planning", emoji: "🧭", description: "Planning the approach..." },
+  domain_orchestrator_agent: {
+    label: "Coordinating",
+    emoji: "🧩",
+    description: "Coordinating sub-agents...",
+  },
+  researcher: { label: "Researching", emoji: "🔬", description: "Researching in depth..." },
+  governance_agent: {
+    label: "Reviewing action",
+    emoji: "🛡️",
+    description: "Checking before changes...",
+  },
+  operations_agent: { label: "Saving changes", emoji: "💾", description: "Applying updates..." },
+  request_hitl: {
+    label: "Requesting approval",
+    emoji: "👤",
+    description: "Waiting for your input...",
+  },
+  // Faculty / shortlist
+  faculty_discovery_agent: {
+    label: "Finding faculty",
+    emoji: "🎓",
+    description: "Searching for professors...",
+  },
+  faculty_profile_deep_dive_agent: {
+    label: "Reading faculty profile",
+    emoji: "📄",
+    description: "Analyzing a professor's work...",
+  },
+  funding_requirement_flag_detection_agent: {
+    label: "Checking funding",
+    emoji: "💰",
+    description: "Assessing funding requirements...",
+  },
+  // Tracker / applications
+  application_agent: {
+    label: "Updating tracker",
+    emoji: "🗂️",
+    description: "Managing applications...",
+  },
+  application_tracker_agent: {
+    label: "Updating tracker",
+    emoji: "🗂️",
+    description: "Managing applications...",
+  },
+  internal_app_agent: {
+    label: "Updating tracker",
+    emoji: "🗂️",
+    description: "Managing applications...",
+  },
+  account_agent: {
+    label: "Updating profile",
+    emoji: "👤",
+    description: "Reading or editing settings...",
+  },
+  // Outreach drafting
+  outreach_crm_draft: {
+    label: "Drafting outreach",
+    emoji: "✉️",
+    description: "Writing outreach...",
+  },
+  outreach_talking_points: {
+    label: "Drafting outreach",
+    emoji: "✉️",
+    description: "Preparing talking points...",
+  },
+  outreach_paper_summary: {
+    label: "Summarizing papers",
+    emoji: "📚",
+    description: "Summarizing recent work...",
+  },
+  // SOP drafting
+  sop_translation_intake: {
+    label: "Drafting SOP",
+    emoji: "📝",
+    description: "Gathering SOP details...",
+  },
+  sop_translation_strategy: {
+    label: "Drafting SOP",
+    emoji: "📝",
+    description: "Shaping SOP strategy...",
+  },
+  sop_translation_draft: { label: "Drafting SOP", emoji: "📝", description: "Writing the SOP..." },
+  // Research narrative
+  research_evidence_synthesis: {
+    label: "Shaping research narrative",
+    emoji: "🧠",
+    description: "Synthesizing evidence...",
+  },
+  research_framing_recommendation: {
+    label: "Shaping research narrative",
+    emoji: "🧠",
+    description: "Framing your research...",
+  },
+  research_narrative_angles: {
+    label: "Shaping research narrative",
+    emoji: "🧠",
+    description: "Exploring angles...",
+  },
 };
 
 function getToolDescription(toolName: string): { label: string; emoji: string } {
@@ -57,23 +157,27 @@ type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
   | { type: "agent"; id: string; content: string; timestamp: Date }
   | {
-    type: "step";
-    id: string;
-    label: string;
-    status: StepStatus;
-    detail?: string;
-    tool?: string;
-    children?: { label: string; status: StepStatus; detail?: string }[];
-  }
+      type: "step";
+      id: string;
+      label: string;
+      status: StepStatus;
+      detail?: string;
+      tool?: string;
+      children?: { label: string; status: StepStatus; detail?: string }[];
+    }
   | { type: "phase"; id: string; label: string; status: StepStatus }
   | {
-    type: "approval";
-    id: string;
-    title: string;
-    description: string;
-    items?: string[];
-    resolved?: "approved" | "rejected";
-  };
+      type: "approval";
+      id: string; // hitlId
+      kind: "approval" | "choice" | "input";
+      title: string;
+      description: string;
+      items?: string[];
+      options?: { id: string; label: string }[];
+      schema?: Record<string, unknown> | null;
+      expiresAt?: string | null;
+      resolved?: "approved" | "rejected";
+    };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
@@ -140,23 +244,27 @@ function StreamingText({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="text-xs font-dm">{children}</li>,
+          p: ({ children }) => <p className="mb-3.5 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc pl-5 mb-3.5 space-y-1.5">{children}</ul>,
+          ol: ({ children }) => (
+            <ol className="list-decimal pl-5 mb-3.5 space-y-1.5">{children}</ol>
+          ),
+          li: ({ children }) => <li className="text-[15px] font-dm leading-7">{children}</li>,
           strong: ({ children }) => (
             <strong className="font-bold" style={{ color: "#0D0D0D" }}>
               {children}
             </strong>
           ),
           h1: ({ children }) => (
-            <h1 className="font-bold font-space text-base mb-2 mt-3 first:mt-0">{children}</h1>
+            <h1 className="font-bold font-space text-lg mb-2.5 mt-4 first:mt-0">{children}</h1>
           ),
           h2: ({ children }) => (
-            <h2 className="font-bold font-space text-sm mb-2 mt-3 first:mt-0">{children}</h2>
+            <h2 className="font-bold font-space text-base mb-2 mt-4 first:mt-0">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="font-semibold font-space text-sm mb-1 mt-2 first:mt-0">{children}</h3>
+            <h3 className="font-semibold font-space text-[15px] mb-1.5 mt-3 first:mt-0">
+              {children}
+            </h3>
           ),
           code: ({ children }) => (
             <code
@@ -445,10 +553,14 @@ function AgentWorkCard({
 
 function ApprovalGate({
   item,
+  expired,
   onResolve,
+  onAlwaysAllow,
 }: {
   item: Extract<ChatItem, { type: "approval" }>;
-  onResolve: (id: string, d: "approved" | "rejected") => void;
+  expired: boolean;
+  onResolve: (id: string, d: "approved" | "rejected", response?: Record<string, unknown>) => void;
+  onAlwaysAllow: (id: string) => void;
 }) {
   return (
     <div className="flex gap-3 msg-enter">
@@ -510,21 +622,63 @@ function ApprovalGate({
             />
             {item.resolved === "approved" ? "Approved" : "Rejected"}
           </div>
-        ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={() => onResolve(item.id, "approved")}
-              className="btn-teal btn-sm gap-1.5 text-xs"
-            >
-              <Icon icon="solar:check-circle-bold" width={12} />
-              Yes, save
-            </button>
+        ) : expired ? (
+          <div
+            className="flex items-center gap-2 text-xs font-semibold font-space"
+            style={{ color: "#9CA3AF" }}
+          >
+            <Icon icon="solar:clock-circle-bold" width={13} />
+            Expired
+          </div>
+        ) : item.kind === "choice" && item.options?.length ? (
+          <div className="flex flex-col gap-2">
+            {item.options.map((o) => (
+              <button
+                key={o.id}
+                onClick={() => onResolve(item.id, "approved", { optionId: o.id, label: o.label })}
+                className="btn-white btn-sm gap-1.5 text-xs justify-start"
+              >
+                <Icon icon="solar:check-circle-bold" width={12} />
+                {o.label}
+              </button>
+            ))}
             <button
               onClick={() => onResolve(item.id, "rejected")}
-              className="btn-white btn-sm gap-1.5 text-xs"
+              className="btn-sm gap-1.5 text-xs"
+              style={{ color: "#9CA3AF" }}
             >
               <Icon icon="solar:close-circle-bold" width={12} />
-              No, discard
+              Cancel
+            </button>
+          </div>
+        ) : item.kind === "input" ? (
+          <HITLInput item={item} onResolve={onResolve} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => onResolve(item.id, "approved")}
+                className="btn-teal btn-sm gap-1.5 text-xs"
+              >
+                <Icon icon="solar:check-circle-bold" width={12} />
+                Approve
+              </button>
+              <button
+                onClick={() => onResolve(item.id, "rejected")}
+                className="btn-white btn-sm gap-1.5 text-xs"
+              >
+                <Icon icon="solar:close-circle-bold" width={12} />
+                Reject
+              </button>
+            </div>
+            <button
+              onClick={() => onAlwaysAllow(item.id)}
+              className="bouncy flex items-center gap-1.5 text-[11px] font-semibold font-space w-fit"
+              style={{ color: "#9CA3AF" }}
+              title="Approve and stop asking for future actions"
+            >
+              <Icon icon="solar:shield-check-bold" width={12} />
+              Approve &amp; always allow
             </button>
           </div>
         )}
@@ -533,11 +687,135 @@ function ApprovalGate({
   );
 }
 
-// Stable per-id offset so bubbles bob out of sync instead of in lockstep.
-function floatDelay(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return `-${(h % 45) / 10}s`;
+// HITL "input" kind: a schema-driven form when `schema.properties` is present,
+// otherwise a freeform textarea. Submits the collected response object.
+function HITLInput({
+  item,
+  onResolve,
+}: {
+  item: Extract<ChatItem, { type: "approval" }>;
+  onResolve: (id: string, d: "approved" | "rejected", response?: Record<string, unknown>) => void;
+}) {
+  const schema = (item.schema ?? null) as {
+    properties?: Record<
+      string,
+      { title?: string; type?: string; enum?: string[]; format?: string }
+    >;
+    required?: string[];
+  } | null;
+  const props =
+    schema?.properties && typeof schema.properties === "object" ? schema.properties : null;
+  const required = Array.isArray(schema?.required) ? schema!.required! : [];
+
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [text, setText] = useState("");
+
+  const setField = (k: string, v: string) => setFields((f) => ({ ...f, [k]: v }));
+
+  if (props) {
+    const keys = Object.keys(props);
+    const missing = required.some((k) => !(fields[k] ?? "").trim());
+    const submit = () => {
+      const out: Record<string, string> = {};
+      for (const k of keys) if ((fields[k] ?? "").trim()) out[k] = fields[k].trim();
+      onResolve(item.id, "approved", out);
+    };
+    return (
+      <div className="flex flex-col gap-2">
+        {keys.map((k) => {
+          const spec = props[k] ?? {};
+          const label = spec.title || k.replace(/_/g, " ");
+          const isReq = required.includes(k);
+          return (
+            <div key={k}>
+              <label
+                className="block text-[10px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                {label}
+                {isReq && <span style={{ color: "#E8472A" }}> *</span>}
+              </label>
+              {spec.enum?.length ? (
+                <select
+                  value={fields[k] ?? ""}
+                  onChange={(e) => setField(k, e.target.value)}
+                  className="input-brutal w-full text-xs"
+                >
+                  <option value="">Select…</option>
+                  {spec.enum.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : spec.format === "textarea" ? (
+                <textarea
+                  value={fields[k] ?? ""}
+                  onChange={(e) => setField(k, e.target.value)}
+                  rows={2}
+                  className="input-brutal w-full text-xs resize-none"
+                />
+              ) : (
+                <input
+                  value={fields[k] ?? ""}
+                  onChange={(e) => setField(k, e.target.value)}
+                  className="input-brutal w-full text-xs"
+                />
+              )}
+            </div>
+          );
+        })}
+        <div className="flex gap-2 pt-0.5">
+          <button
+            onClick={submit}
+            disabled={missing}
+            className="btn-teal btn-sm gap-1.5 text-xs"
+            style={missing ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+          >
+            <Icon icon="solar:check-circle-bold" width={12} />
+            Submit
+          </button>
+          <button
+            onClick={() => onResolve(item.id, "rejected")}
+            className="btn-white btn-sm gap-1.5 text-xs"
+          >
+            <Icon icon="solar:close-circle-bold" width={12} />
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={2}
+        placeholder="Type your response…"
+        className="input-brutal w-full text-xs resize-none"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={() => onResolve(item.id, "approved", { input: text.trim() })}
+          disabled={!text.trim()}
+          className="btn-teal btn-sm gap-1.5 text-xs"
+          style={!text.trim() ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+        >
+          <Icon icon="solar:check-circle-bold" width={12} />
+          Submit
+        </button>
+        <button
+          onClick={() => onResolve(item.id, "rejected")}
+          className="btn-white btn-sm gap-1.5 text-xs"
+        >
+          <Icon icon="solar:close-circle-bold" width={12} />
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 type GlassBubble = {
@@ -665,26 +943,24 @@ function MessageBubble({
           document.body
         )}
       <div className={clsx("flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
-        <div
-          className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
-          style={{
-            background: isUser ? "#0D0D0D" : "#EDE6D3",
-            color: isUser ? "#fff" : "#5A5A5A",
-            border: "2px solid #0D0D0D",
-            borderRadius: "50%",
-          }}
-        >
-          {isUser ? (
-            <Icon icon="solar:user-bold" width={13} />
-          ) : (
+        {!isUser && (
+          <div
+            className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
+            style={{
+              background: "#EDE6D3",
+              color: "#5A5A5A",
+              border: "2px solid #0D0D0D",
+              borderRadius: "50%",
+            }}
+          >
             <span className="text-xs leading-none">🎓</span>
-          )}
-        </div>
+          </div>
+        )}
         <div className={clsx("flex flex-col gap-1 max-w-[88%]", isUser && "items-end")}>
           <div
             ref={boxRef}
             onPointerDown={spawnRipple}
-            className="float-water relative overflow-hidden px-4 py-2.5 text-xs font-dm leading-relaxed"
+            className="relative overflow-hidden px-5 py-3 text-[15px] font-dm leading-7"
             style={{
               background: isUser ? "#0D0D0D" : "#FFFFFF",
               color: isUser ? "#fff" : "#0D0D0D",
@@ -692,7 +968,6 @@ function MessageBubble({
               boxShadow: "3px 3px 0 #0D0D0D",
               borderRadius: "8px",
               minHeight: isStreaming ? "100px" : "auto",
-              animationDelay: floatDelay(item.id),
             }}
           >
             {ripples.map((r) => (
@@ -741,6 +1016,8 @@ export default function ChatPage() {
   const [urlInput, setUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showEvents, setShowEvents] = useState(true);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [now, setNow] = useState(0);
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
@@ -771,13 +1048,41 @@ export default function ChatPage() {
     ? `${getToolDescription(runningStep.tool).label}...`
     : "Working...";
   const pendingApproval = stream.some(
-    (i) => i.type === "approval" && !("resolved" in i && i.resolved)
+    (i) => i.type === "approval" && !i.resolved && !(i.expiresAt && Date.parse(i.expiresAt) < now)
   );
   const inputBlocked = isAgentRunning || pendingApproval;
 
   useEffect(() => {
     setRunning(isAgentRunning);
   }, [isAgentRunning, setRunning]);
+  // Load the auto-approve preference once.
+  useEffect(() => {
+    import("../../lib/api")
+      .then(({ usersApi }) => usersApi.getPreferences())
+      .then((res) => setAutoApprove(!!res.data.auto_approve))
+      .catch(() => {});
+  }, []);
+
+  // Clock for HITL expiry checks (set in callbacks, not the effect body).
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const initial = setTimeout(tick, 0);
+    const interval = setInterval(tick, 15000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function toggleAutoApprove(value: boolean) {
+    setAutoApprove(value);
+    try {
+      const { preferencesApi } = await import("../../lib/api");
+      await preferencesApi.setAutoApprove(value);
+    } catch {
+      setAutoApprove(!value);
+    }
+  }
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [stream]);
@@ -798,6 +1103,8 @@ export default function ChatPage() {
         { type: "user", id: first.id, content: first.content, timestamp: new Date() },
       ]);
       setQueue(rest);
+      // sendToBackend is a hoisted function declaration; safe to call here.
+      // eslint-disable-next-line react-hooks/immutability
       sendToBackend(first.content, first.id);
     }
   }, [isAgentRunning]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -855,9 +1162,13 @@ export default function ChatPage() {
           // Restored runs are already finished → collapse their activity cards.
           setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
+          // Re-surface a pending HITL gate if this session paused awaiting input.
+          // eslint-disable-next-line react-hooks/immutability
+          checkHITL();
         })
         .catch((err) => console.error("[chat] load session messages error", err))
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
   function togglePhase(id: string) {
@@ -871,8 +1182,33 @@ export default function ChatPage() {
 
   function handleEvent(event: BaseEvent, phaseId: string) {
     const type = event.type as string;
+    console.log("[chat] event:", type);
 
-    if (type === "RUN_STARTED") {
+    if (type === "HITL_REQUIRED") {
+      // Instant gate (mid-stream) — the poll on `complete` is the fallback.
+      const e = event as unknown as {
+        hitlId?: string;
+        kind?: "approval" | "choice" | "input";
+        title?: string;
+        description?: string;
+        payload?: Record<string, unknown>;
+        options?: { id: string; label: string }[];
+        schema?: Record<string, unknown>;
+        expiresAt?: string;
+      };
+      if (e.hitlId) {
+        addApproval({
+          id: e.hitlId,
+          kind: e.kind,
+          title: e.title,
+          description: e.description,
+          payload: e.payload,
+          options: e.options,
+          schema: e.schema,
+          expiresAt: e.expiresAt,
+        });
+      }
+    } else if (type === "RUN_STARTED") {
       setStream((p) => [
         ...p,
         { type: "phase", id: phaseId, label: "Processing", status: "running" },
@@ -973,40 +1309,129 @@ export default function ChatPage() {
     }
   }
 
+  // Poll for a pending HITL gate (after a run finishes / interrupts, and on
+  // session restore). The backend creates the record before ending the run, so
+  // a pending result here means the run paused for human input.
+  // Push a HITL gate into the stream (deduped by id). Shared by the live
+  // HITL_REQUIRED event and the getPending poll/restore path.
+  function addApproval(a: {
+    id: string;
+    kind?: "approval" | "choice" | "input";
+    title?: string;
+    description?: string;
+    payload?: Record<string, unknown> | null;
+    options?: { id: string; label: string }[] | null;
+    schema?: Record<string, unknown> | null;
+    expiresAt?: string | null;
+  }) {
+    if (!a.id) return;
+    const items =
+      a.payload && typeof a.payload === "object"
+        ? Object.entries(a.payload).map(
+            ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+          )
+        : undefined;
+    setStream((p) =>
+      p.some((i) => i.type === "approval" && i.id === a.id)
+        ? p
+        : [
+            ...p,
+            {
+              type: "approval",
+              id: a.id,
+              kind: a.kind ?? "approval",
+              title: a.title || "Approval required",
+              description: a.description || "Review the proposed action below.",
+              items,
+              options: a.options ?? undefined,
+              schema: a.schema ?? undefined,
+              expiresAt: a.expiresAt ?? undefined,
+            },
+          ]
+    );
+  }
+
   async function checkHITL() {
     try {
       const { hitlApi } = await import("../../lib/api");
       const res = await hitlApi.getPending(threadId.current);
-      if (!res.data) return;
       const hitl = res.data;
-      const items = hitl.payload
-        ? Object.entries(hitl.payload).map(
-          ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-        )
-        : undefined;
-      setStream((p) => [
-        ...p,
-        {
-          type: "approval",
-          id: hitl.id,
-          title: hitl.type.replace(/_/g, " "),
-          description: "Review the proposed action below.",
-          items,
-        },
-      ]);
-    } catch { }
+      console.log("[chat] checkHITL → pending:", hitl);
+      if (!hitl || (hitl.status && hitl.status !== "pending")) return;
+      addApproval({
+        id: hitl.id,
+        kind: hitl.kind,
+        title: hitl.title,
+        description: hitl.description,
+        payload: hitl.payload,
+        options: hitl.options,
+        schema: hitl.schema,
+        expiresAt: hitl.expires_at,
+      });
+    } catch {}
   }
 
-  async function resolveApproval(id: string, decision: "approved" | "rejected") {
-    setStream((prev) =>
-      prev.map((item) =>
-        item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
-      )
-    );
+  async function resolveApproval(
+    id: string,
+    decision: "approved" | "rejected",
+    response?: Record<string, unknown>
+  ) {
     try {
       const { hitlApi } = await import("../../lib/api");
-      await hitlApi.resolve(id, decision === "approved");
-    } catch { }
+      await hitlApi.resolve(id, decision, response);
+      // Flip the gate only after the server confirms.
+      setStream((prev) =>
+        prev.map((item) =>
+          item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
+        )
+      );
+      // Continue the same turn: resume the run with the human decision.
+      resumeRun(id, decision, response);
+    } catch (err) {
+      console.error("[chat] resolve HITL error", err);
+    }
+  }
+
+  // Resume a suspended turn after a HITL is resolved (same thread, new run,
+  // resume marker in forwardedProps). Streams the continuation.
+  function resumeRun(
+    hitlId: string,
+    decision: "approved" | "rejected",
+    response?: Record<string, unknown>
+  ) {
+    subscription.current?.unsubscribe();
+    setLocalRunning(true);
+    const phaseId = `phase-${crypto.randomUUID()}`;
+    import("../../lib/ag-ui")
+      .then(async ({ createChatAgent }) => {
+        const agent = await createChatAgent(agMessages.current, threadId.current);
+        subscription.current = agent
+          .run({
+            messages: agMessages.current,
+            threadId: threadId.current,
+            runId: crypto.randomUUID(),
+            tools: [],
+            context: [],
+            state: {},
+            forwardedProps: { resume: { hitlId, decision, response } },
+          })
+          .subscribe({
+            next: (event: BaseEvent) => handleEvent(event, phaseId),
+            error: (err: unknown) => {
+              console.error("[chat] resume error", err);
+              setLocalRunning(false);
+              checkHITL();
+            },
+            complete: () => {
+              setLocalRunning(false);
+              checkHITL();
+            },
+          });
+      })
+      .catch((err) => {
+        console.error("[chat] resume setup error", err);
+        setLocalRunning(false);
+      });
   }
 
   async function sendToBackend(content: string, msgId: string) {
@@ -1016,12 +1441,17 @@ export default function ChatPage() {
     const userMsg = { id: msgId, role: "user", content } as Message;
     agMessages.current = [...agMessages.current, userMsg];
 
-    const phaseId = `phase-${Date.now()}`;
+    const phaseId = `phase-${crypto.randomUUID()}`;
 
     const pushError = (msg: string) => {
       setStream((p) => [
         ...p,
-        { type: "agent", id: `err-${Date.now()}`, content: `Error: ${msg}`, timestamp: new Date() },
+        {
+          type: "agent",
+          id: `err-${crypto.randomUUID()}`,
+          content: `Error: ${msg}`,
+          timestamp: new Date(),
+        },
       ]);
       setLocalRunning(false);
     };
@@ -1038,7 +1468,7 @@ export default function ChatPage() {
         // If this chat was started from inside a group, assign it.
         if (pendingGroupId) {
           created.group_id = pendingGroupId;
-          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => { });
+          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => {});
           setPendingGroupId(null);
         }
         setActiveSessionId(created.id);
@@ -1049,7 +1479,7 @@ export default function ChatPage() {
     } else {
       // Subsequent messages: save user msg now, before agent runs
       import("../../lib/api").then(({ sessionsApi }) =>
-        sessionsApi.createMessage(threadId.current, "user", content).catch(() => { })
+        sessionsApi.createMessage(threadId.current, "user", content).catch(() => {})
       );
     }
 
@@ -1071,6 +1501,9 @@ export default function ChatPage() {
           next: (event: BaseEvent) => handleEvent(event, phaseId),
           error: (err: unknown) => {
             console.error("[chat] agent error", err);
+            // A custom HITL_REQUIRED event can trip the AG-UI parser; the gate
+            // may still have been created server-side, so poll before erroring.
+            checkHITL();
             pushError(err instanceof Error ? err.message : String(err));
           },
           complete: () => {
@@ -1097,7 +1530,7 @@ export default function ChatPage() {
     const text = input.trim();
     if (!text && urls.length === 0) return;
     const content = text + (urls.length > 0 ? "\n" + urls.map((u) => `• ${u}`).join("\n") : "");
-    const id = `u${Date.now()}`;
+    const id = `u${crypto.randomUUID()}`;
     if (inputBlocked) {
       setQueue((p) => [...p, { id, content }]);
     } else {
@@ -1276,7 +1709,15 @@ export default function ChatPage() {
               if (item.type === "approval")
                 return (
                   <div key={item.id} className="py-2">
-                    <ApprovalGate item={item} onResolve={resolveApproval} />
+                    <ApprovalGate
+                      item={item}
+                      expired={!!item.expiresAt && Date.parse(item.expiresAt) < now}
+                      onResolve={resolveApproval}
+                      onAlwaysAllow={(id) => {
+                        toggleAutoApprove(true);
+                        resolveApproval(id, "approved");
+                      }}
+                    />
                   </div>
                 );
             }
@@ -1413,7 +1854,7 @@ export default function ChatPage() {
           style={{
             border: "2px solid #0D0D0D",
             boxShadow: "4px 4px 0 #0D0D0D",
-            borderRadius: "4px",
+            borderRadius: "18px",
           }}
         >
           <textarea
@@ -1460,6 +1901,26 @@ export default function ChatPage() {
                 title={showEvents ? "Hide agent events" : "Show agent events"}
               >
                 <Icon icon={showEvents ? "solar:eye-bold" : "solar:eye-closed-bold"} width={14} />
+              </button>
+              <button
+                onClick={() => toggleAutoApprove(!autoApprove)}
+                className="p-2 bouncy"
+                style={{
+                  border: "1.5px solid #0D0D0D",
+                  background: autoApprove ? "#4ECDC4" : "#F7F0E3",
+                  color: autoApprove ? "#0D0D0D" : "#B0A898",
+                  borderRadius: "4px",
+                }}
+                title={
+                  autoApprove
+                    ? "Always allow: on — agent acts without asking"
+                    : "Always allow: off — agent asks before changes"
+                }
+              >
+                <Icon
+                  icon={autoApprove ? "solar:shield-check-bold" : "solar:shield-keyhole-bold"}
+                  width={14}
+                />
               </button>
             </div>
             <button

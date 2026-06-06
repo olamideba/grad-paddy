@@ -19,6 +19,7 @@ type Application = {
   id: string;
   program: string;
   university: string;
+  department: string;
   deadline: Date;
   status: AppStatus;
   sop: DocStatus;
@@ -47,6 +48,7 @@ function mapApp(a: ApiApp): Application {
     id: a.id,
     program: a.program,
     university: a.university,
+    department: a.department,
     deadline: new Date(a.deadline),
     status: (a.status || "tracking") as AppStatus,
     sop: normalizeDocStatus(a.sop_status),
@@ -125,9 +127,97 @@ const DOC_META: Record<DocStatus, { icon: string; color: string }> = {
   ready: { icon: "solar:check-circle-bold", color: "#4ECDC4" },
 };
 
-function DocCell({ status }: { status: DocStatus }) {
+const DOC_CYCLE: DocStatus[] = ["not-started", "in-progress", "ready"];
+
+// Application readiness: SOP + CV ready, plus each recommender submitted.
+function readiness(app: Application): number {
+  const items = [
+    app.sop === "ready",
+    app.cv === "ready",
+    ...app.recommenders.map((r) => r.status === "submitted"),
+  ];
+  if (items.length === 0) return 0;
+  return Math.round((items.filter(Boolean).length / items.length) * 100);
+}
+
+function ReadinessBar({ value }: { value: number }) {
+  const color = value === 100 ? "#4ECDC4" : value >= 50 ? "#0D0D0D" : "#E8472A";
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="flex-1 h-2.5 overflow-hidden"
+        style={{ background: "#EDE6D3", border: "1.5px solid #0D0D0D", borderRadius: "999px" }}
+      >
+        <div
+          className="h-full"
+          style={{ width: `${value}%`, background: color, transition: "width 200ms ease-out" }}
+        />
+      </div>
+      <span className="text-[10px] font-mono shrink-0" style={{ color: "#5A5A5A" }}>
+        {value}%
+      </span>
+    </div>
+  );
+}
+
+function FilterChip({
+  label,
+  count,
+  active,
+  accent = "#0D0D0D",
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  accent?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="bouncy inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold font-space"
+      style={{
+        background: active ? accent : "#FFFFFF",
+        color: active ? "#FFFFFF" : "#5A5A5A",
+        border: `1.5px solid ${active ? accent : "#C8C0AF"}`,
+        borderRadius: "4px",
+      }}
+    >
+      {label}
+      <span
+        className="text-[10px] font-mono px-1 rounded"
+        style={{
+          background: active ? "rgba(255,255,255,0.2)" : "#EDE6D3",
+          color: active ? "#FFFFFF" : "#9CA3AF",
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function DocCell({
+  status,
+  label,
+  onCycle,
+}: {
+  status: DocStatus;
+  label: string;
+  onCycle?: () => void;
+}) {
   const { icon, color } = DOC_META[status];
-  return <Icon icon={icon} width={16} color={color} />;
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      title={`${label}: ${status.replace(/-/g, " ")} — click to change`}
+      className="bouncy p-0.5"
+    >
+      <Icon icon={icon} width={18} color={color} />
+    </button>
+  );
 }
 
 const REC_STYLE: Record<RecommenderStatus, { bg: string; border: string }> = {
@@ -477,6 +567,362 @@ function AddApplicationModal({
   );
 }
 
+function toDateInput(d: Date): string {
+  if (isNaN(d.getTime())) return "";
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  const day = `${d.getDate()}`.padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function EditApplicationModal({
+  app,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  app: Application;
+  onClose: () => void;
+  onSaved: (a: Application) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [form, setForm] = useState<AddAppForm>({
+    university: app.university,
+    program: app.program,
+    department: app.department,
+    deadline: toDateInput(app.deadline),
+    status: app.status,
+    funded: app.funded === true ? "yes" : app.funded === false ? "no" : "unknown",
+    notes: app.notes ?? "",
+  });
+  const [recs, setRecs] = useState<{ name: string; status: RecommenderStatus }[]>(app.recommenders);
+  const [recInput, setRecInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+  }, []);
+
+  function set<K extends keyof AddAppForm>(key: K, value: AddAppForm[K]) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function addRec() {
+    const name = recInput.trim();
+    if (name && !recs.some((r) => r.name === name))
+      setRecs((r) => [...r, { name, status: "not-asked" }]);
+    setRecInput("");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.university.trim() || !form.program.trim() || !form.department.trim()) {
+      setError("University, program, and department are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const { trackerApi } = await import("../../lib/api");
+      const res = await trackerApi.update(app.id, {
+        university: form.university.trim(),
+        program: form.program.trim(),
+        department: form.department.trim(),
+        ...(form.deadline && { deadline: form.deadline }),
+        status: form.status,
+        funded: form.funded,
+        notes: form.notes.trim(),
+        recommenders: recs.map((r) => ({ name: r.name, status: r.status.replace(/-/g, "_") })),
+      });
+      onSaved(mapApp(res.data));
+      onClose();
+    } catch {
+      setError("Failed to save changes. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete the ${app.university} application? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const { trackerApi } = await import("../../lib/api");
+      await trackerApi.delete(app.id);
+      onDeleted(app.id);
+      onClose();
+    } catch {
+      setError("Failed to delete. Try again.");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(13,13,13,0.6)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-lg flex flex-col max-h-[90vh] overflow-y-auto"
+        style={{
+          background: "#F7F0E3",
+          border: "2px solid #0D0D0D",
+          boxShadow: "6px 6px 0 #0D0D0D",
+          borderRadius: "4px",
+        }}
+      >
+        <div
+          className="px-5 py-4 flex items-center justify-between shrink-0"
+          style={{ background: "#0D0D0D", borderRadius: "2px 2px 0 0" }}
+        >
+          <span className="font-bold font-space text-sm" style={{ color: "#FFFFFF" }}>
+            Edit Application
+          </span>
+          <button onClick={onClose} className="bouncy" style={{ color: "rgba(255,255,255,0.5)" }}>
+            <Icon icon="solar:close-circle-bold" width={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-3">
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              University <span style={{ color: "#E8472A" }}>*</span>
+            </label>
+            <input
+              ref={firstRef}
+              type="text"
+              value={form.university}
+              onChange={(e) => set("university", e.target.value)}
+              className="input-brutal w-full text-sm"
+              placeholder="MIT"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                Program <span style={{ color: "#E8472A" }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={form.program}
+                onChange={(e) => set("program", e.target.value)}
+                className="input-brutal w-full text-sm"
+                placeholder="PhD Computer Science"
+              />
+            </div>
+            <div>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                Department <span style={{ color: "#E8472A" }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={form.department}
+                onChange={(e) => set("department", e.target.value)}
+                className="input-brutal w-full text-sm"
+                placeholder="EECS"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                Deadline
+              </label>
+              <input
+                type="date"
+                value={form.deadline}
+                onChange={(e) => set("deadline", e.target.value)}
+                className="input-brutal w-full text-sm"
+              />
+            </div>
+            <div>
+              <label
+                className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                Status
+              </label>
+              <select
+                value={form.status}
+                onChange={(e) => set("status", e.target.value as AppStatus)}
+                className="input-brutal w-full text-sm"
+              >
+                {(Object.keys(STATUS_META) as AppStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_META[s].label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Funding
+            </label>
+            <select
+              value={form.funded}
+              onChange={(e) => set("funded", e.target.value)}
+              className="input-brutal w-full text-sm"
+            >
+              <option value="unknown">Unknown</option>
+              <option value="yes">Funded</option>
+              <option value="no">Not Funded</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Recommenders
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={recInput}
+                onChange={(e) => setRecInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addRec();
+                  }
+                }}
+                className="input-brutal flex-1 text-sm"
+                placeholder="Prof. Name (Enter to add)"
+              />
+              <button type="button" onClick={addRec} className="btn-white btn-sm shrink-0">
+                <Icon icon="solar:add-circle-bold" width={13} />
+              </button>
+            </div>
+            {recs.length > 0 && (
+              <div className="flex flex-col gap-1.5 mt-2">
+                {recs.map((r) => (
+                  <div
+                    key={r.name}
+                    className="flex items-center gap-2 px-2 py-1 text-[11px] font-dm"
+                    style={{
+                      background: "#EDE6D3",
+                      border: "1.5px solid #C8C0AF",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    <span
+                      className="w-2.5 h-2.5 shrink-0"
+                      style={{
+                        background: REC_STYLE[r.status].bg,
+                        border: `1px solid ${REC_STYLE[r.status].border}`,
+                        borderRadius: "2px",
+                      }}
+                    />
+                    <span className="flex-1 min-w-0 truncate">{r.name}</span>
+                    <select
+                      value={r.status}
+                      onChange={(e) =>
+                        setRecs((rs) =>
+                          rs.map((x) =>
+                            x.name === r.name
+                              ? { ...x, status: e.target.value as RecommenderStatus }
+                              : x
+                          )
+                        )
+                      }
+                      className="text-[11px] font-dm bg-white px-1 py-0.5 shrink-0"
+                      style={{ border: "1.5px solid #0D0D0D", borderRadius: "4px" }}
+                    >
+                      {(
+                        ["not-asked", "asked", "confirmed", "submitted"] as RecommenderStatus[]
+                      ).map((s) => (
+                        <option key={s} value={s}>
+                          {s.replace(/-/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setRecs((rs) => rs.filter((x) => x.name !== r.name))}
+                      className="shrink-0"
+                      style={{ color: "#9CA3AF" }}
+                    >
+                      <Icon icon="solar:close-circle-bold" width={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Notes
+            </label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              className="input-brutal w-full text-sm resize-none"
+              rows={2}
+              placeholder="Any additional notes..."
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs font-dm font-semibold" style={{ color: "#E8472A" }}>
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={saving || deleting} className="btn-coral btn-sm flex-1">
+              {saving ? (
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+              ) : (
+                <Icon icon="solar:check-circle-bold" width={14} />
+              )}
+              <span className="text-sm">{saving ? "Saving…" : "Save Changes"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={saving || deleting}
+              className="btn-white btn-sm"
+              style={{ color: "#E8472A", borderColor: "#E8472A" }}
+            >
+              <Icon icon="solar:trash-bin-trash-bold" width={14} />
+              <span className="text-sm">Delete</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function TrackerPage() {
   const [apps, setApps] = useState<Application[]>([]);
   const [stats, setStats] = useState<TrackerStats | null>(null);
@@ -484,6 +930,29 @@ export default function TrackerPage() {
   const [sortKey, setSortKey] = useState<SortKey>("deadline");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editApp, setEditApp] = useState<Application | null>(null);
+  const [filter, setFilter] = useState<"all" | "due-soon" | AppStatus>("all");
+
+  function patchApp(id: string, patch: Partial<Application>) {
+    setApps((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  }
+
+  async function setStatus(app: Application, status: AppStatus) {
+    patchApp(app.id, { status });
+    const { trackerApi } = await import("../../lib/api");
+    trackerApi.updateStatus(app.id, status).catch(() => {});
+  }
+
+  async function cycleDoc(app: Application, field: "sop" | "cv") {
+    const next = DOC_CYCLE[(DOC_CYCLE.indexOf(app[field]) + 1) % DOC_CYCLE.length];
+    patchApp(app.id, { [field]: next });
+    const api = (await import("../../lib/api")).trackerApi;
+    const value = next.replace(/-/g, "_");
+    (field === "sop"
+      ? api.updateSopStatus(app.id, value)
+      : api.updateCvStatus(app.id, value)
+    ).catch(() => {});
+  }
 
   useEffect(() => {
     import("../../lib/api").then(({ trackerApi }) =>
@@ -505,7 +974,13 @@ export default function TrackerPage() {
     }
   }
 
-  const sorted = [...apps].sort((a, b) => {
+  const filtered = apps.filter((a) => {
+    if (filter === "all") return true;
+    if (filter === "due-soon") return daysUntil(a.deadline) < 30;
+    return a.status === filter;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
     let cmp = 0;
     if (sortKey === "deadline") cmp = a.deadline.getTime() - b.deadline.getTime();
     else if (sortKey === "program") cmp = a.university.localeCompare(b.university);
@@ -514,6 +989,10 @@ export default function TrackerPage() {
   });
 
   const totalDue30 = apps.filter((a) => daysUntil(a.deadline) < 30).length;
+  // Statuses present, for filter chips.
+  const presentStatuses = (Object.keys(STATUS_META) as AppStatus[]).filter((s) =>
+    apps.some((a) => a.status === s)
+  );
   const totalDrafting = apps.filter((a) => a.status === "drafting").length;
 
   const statCards = [
@@ -570,50 +1049,34 @@ export default function TrackerPage() {
         </div>
       </div>
 
-      {/* Filter / legend bar */}
+      {/* Filter bar */}
       <div
-        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-4 sm:gap-6 flex-wrap"
+        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-2 flex-wrap"
         style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
       >
-        <div className="flex items-center gap-3 text-xs font-dm" style={{ color: "#9CA3AF" }}>
-          <span
-            className="font-bold font-space text-[10px] uppercase tracking-wider"
-            style={{ color: "#5A5A5A" }}
-          >
-            Docs
-          </span>
-          {(["not-started", "in-progress", "ready"] as DocStatus[]).map((s) => {
-            const { icon, color } = DOC_META[s];
-            return (
-              <div key={s} className="flex items-center gap-1">
-                <Icon icon={icon} width={12} color={color} />
-                <span className="text-[10px]">{s.replace(/-/g, " ")}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-2 text-xs font-dm" style={{ color: "#9CA3AF" }}>
-          <span
-            className="font-bold font-space text-[10px] uppercase tracking-wider"
-            style={{ color: "#5A5A5A" }}
-          >
-            Recs
-          </span>
-          {(["not-asked", "asked", "confirmed", "submitted"] as RecommenderStatus[]).map((s) => (
-            <div key={s} className="flex items-center gap-1">
-              <div
-                className="w-3 h-3"
-                title={s.replace(/-/g, " ")}
-                style={{
-                  background: REC_STYLE[s].bg,
-                  border: `1px solid ${REC_STYLE[s].border}`,
-                  borderRadius: "2px",
-                }}
-              />
-              <span className="text-[10px]">{s.replace(/-/g, " ")}</span>
-            </div>
-          ))}
-        </div>
+        <FilterChip
+          label="All"
+          count={apps.length}
+          active={filter === "all"}
+          onClick={() => setFilter("all")}
+        />
+        <FilterChip
+          label="Due <30d"
+          count={totalDue30}
+          active={filter === "due-soon"}
+          accent="#E8472A"
+          onClick={() => setFilter("due-soon")}
+        />
+        <span className="w-px h-5" style={{ background: "#E0D8CA" }} />
+        {presentStatuses.map((s) => (
+          <FilterChip
+            key={s}
+            label={STATUS_META[s].label}
+            count={apps.filter((a) => a.status === s).length}
+            active={filter === s}
+            onClick={() => setFilter(s)}
+          />
+        ))}
       </div>
 
       {/* Content */}
@@ -721,14 +1184,12 @@ export default function TrackerPage() {
                       <SortArrow active={sortKey === "status"} dir={sortDir} />
                     </span>
                   </th>
+                  <th className="min-w-28">Readiness</th>
                   <th className="text-center w-14" title="Statement of Purpose">
                     SOP
                   </th>
                   <th className="text-center w-12" title="CV / Resume">
                     CV
-                  </th>
-                  <th className="text-center w-16" title="Writing Sample">
-                    WS
                   </th>
                   <th className="min-w-32">Recommenders</th>
                   <th className="w-20 text-center">Funded</th>
@@ -765,8 +1226,10 @@ export default function TrackerPage() {
                         <DeadlineBadge date={app.deadline} />
                       </td>
                       <td>
-                        <span
-                          className="inline-flex items-center px-2.5 py-0.5 text-xs font-bold font-space"
+                        <select
+                          value={app.status}
+                          onChange={(e) => setStatus(app, e.target.value as AppStatus)}
+                          className="text-xs font-bold font-space px-2 py-0.5 cursor-pointer"
                           style={{
                             background: meta.bg,
                             color: meta.color,
@@ -774,22 +1237,32 @@ export default function TrackerPage() {
                             borderRadius: "4px",
                           }}
                         >
-                          {meta.label}
-                        </span>
+                          {(Object.keys(STATUS_META) as AppStatus[]).map((s) => (
+                            <option
+                              key={s}
+                              value={s}
+                              style={{ background: "#FFFFFF", color: "#0D0D0D" }}
+                            >
+                              {STATUS_META[s].label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <ReadinessBar value={readiness(app)} />
                       </td>
                       <td className="text-center">
                         <div className="flex justify-center">
-                          <DocCell status={app.sop} />
+                          <DocCell
+                            status={app.sop}
+                            label="SOP"
+                            onCycle={() => cycleDoc(app, "sop")}
+                          />
                         </div>
                       </td>
                       <td className="text-center">
                         <div className="flex justify-center">
-                          <DocCell status={app.cv} />
-                        </div>
-                      </td>
-                      <td className="text-center">
-                        <div className="flex justify-center">
-                          <DocCell status={app.writingSample} />
+                          <DocCell status={app.cv} label="CV" onCycle={() => cycleDoc(app, "cv")} />
                         </div>
                       </td>
                       <td>
@@ -806,6 +1279,8 @@ export default function TrackerPage() {
                       </td>
                       <td>
                         <button
+                          onClick={() => setEditApp(app)}
+                          title="Edit application"
                           className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bouncy"
                           style={{
                             border: "1.5px solid #0D0D0D",
@@ -821,7 +1296,7 @@ export default function TrackerPage() {
                             e.currentTarget.style.color = "#9CA3AF";
                           }}
                         >
-                          <Icon icon="solar:menu-dots-bold" width={14} />
+                          <Icon icon="solar:pen-bold" width={14} />
                         </button>
                       </td>
                     </tr>
@@ -837,6 +1312,17 @@ export default function TrackerPage() {
         <AddApplicationModal
           onClose={() => setShowAddModal(false)}
           onAdd={(a) => setApps((prev) => [a, ...prev])}
+        />
+      )}
+
+      {editApp && (
+        <EditApplicationModal
+          app={editApp}
+          onClose={() => setEditApp(null)}
+          onSaved={(updated) =>
+            setApps((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
+          }
+          onDeleted={(id) => setApps((prev) => prev.filter((a) => a.id !== id))}
         />
       )}
     </div>

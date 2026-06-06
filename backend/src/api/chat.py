@@ -19,6 +19,7 @@ from src.core.config import get_settings
 from src.core.firebase import verify_firebase_auth
 from src.repositories.sessions_repo import SessionRepository
 from src.services.hitl_service import HITLService
+from src.services.users_service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,13 @@ class PersistentChatAgent(ADKAgent):
         """Apply forwardedProps.resume by injecting a tool result for the suspended call."""
         state = dict(input.state) if isinstance(input.state, dict) else {}
         state["current_run_id"] = input.run_id
+        # Surface the user's auto-approve preference so agents know whether to
+        # gate writes behind HITL. Default false = always ask.
+        try:
+            prefs = await UserService.get_preferences(user_id)
+            state["auto_approve"] = bool((prefs or {}).get("auto_approve", False))
+        except Exception:
+            state["auto_approve"] = False
         input = input.model_copy(update={"state": state})
 
         forwarded = input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
