@@ -555,10 +555,12 @@ function ApprovalGate({
   item,
   expired,
   onResolve,
+  onAlwaysAllow,
 }: {
   item: Extract<ChatItem, { type: "approval" }>;
   expired: boolean;
   onResolve: (id: string, d: "approved" | "rejected", response?: Record<string, unknown>) => void;
+  onAlwaysAllow: (id: string) => void;
 }) {
   return (
     <div className="flex gap-3 msg-enter">
@@ -652,20 +654,31 @@ function ApprovalGate({
         ) : item.kind === "input" ? (
           <HITLInput item={item} onResolve={onResolve} />
         ) : (
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => onResolve(item.id, "approved")}
+                className="btn-teal btn-sm gap-1.5 text-xs"
+              >
+                <Icon icon="solar:check-circle-bold" width={12} />
+                Approve
+              </button>
+              <button
+                onClick={() => onResolve(item.id, "rejected")}
+                className="btn-white btn-sm gap-1.5 text-xs"
+              >
+                <Icon icon="solar:close-circle-bold" width={12} />
+                Reject
+              </button>
+            </div>
             <button
-              onClick={() => onResolve(item.id, "approved")}
-              className="btn-teal btn-sm gap-1.5 text-xs"
+              onClick={() => onAlwaysAllow(item.id)}
+              className="bouncy flex items-center gap-1.5 text-[11px] font-semibold font-space w-fit"
+              style={{ color: "#9CA3AF" }}
+              title="Approve and stop asking for future actions"
             >
-              <Icon icon="solar:check-circle-bold" width={12} />
-              Approve
-            </button>
-            <button
-              onClick={() => onResolve(item.id, "rejected")}
-              className="btn-white btn-sm gap-1.5 text-xs"
-            >
-              <Icon icon="solar:close-circle-bold" width={12} />
-              Reject
+              <Icon icon="solar:shield-check-bold" width={12} />
+              Approve &amp; always allow
             </button>
           </div>
         )}
@@ -1003,6 +1016,8 @@ export default function ChatPage() {
   const [urlInput, setUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showEvents, setShowEvents] = useState(true);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [now, setNow] = useState(0);
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
@@ -1033,14 +1048,41 @@ export default function ChatPage() {
     ? `${getToolDescription(runningStep.tool).label}...`
     : "Working...";
   const pendingApproval = stream.some(
-    (i) =>
-      i.type === "approval" && !i.resolved && !(i.expiresAt && Date.parse(i.expiresAt) < Date.now())
+    (i) => i.type === "approval" && !i.resolved && !(i.expiresAt && Date.parse(i.expiresAt) < now)
   );
   const inputBlocked = isAgentRunning || pendingApproval;
 
   useEffect(() => {
     setRunning(isAgentRunning);
   }, [isAgentRunning, setRunning]);
+  // Load the auto-approve preference once.
+  useEffect(() => {
+    import("../../lib/api")
+      .then(({ usersApi }) => usersApi.getPreferences())
+      .then((res) => setAutoApprove(!!res.data.auto_approve))
+      .catch(() => {});
+  }, []);
+
+  // Clock for HITL expiry checks (set in callbacks, not the effect body).
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const initial = setTimeout(tick, 0);
+    const interval = setInterval(tick, 15000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function toggleAutoApprove(value: boolean) {
+    setAutoApprove(value);
+    try {
+      const { preferencesApi } = await import("../../lib/api");
+      await preferencesApi.setAutoApprove(value);
+    } catch {
+      setAutoApprove(!value);
+    }
+  }
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [stream]);
@@ -1061,6 +1103,8 @@ export default function ChatPage() {
         { type: "user", id: first.id, content: first.content, timestamp: new Date() },
       ]);
       setQueue(rest);
+      // sendToBackend is a hoisted function declaration; safe to call here.
+      // eslint-disable-next-line react-hooks/immutability
       sendToBackend(first.content, first.id);
     }
   }, [isAgentRunning]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1119,6 +1163,7 @@ export default function ChatPage() {
           setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
           // Re-surface a pending HITL gate if this session paused awaiting input.
+          // eslint-disable-next-line react-hooks/immutability
           checkHITL();
         })
         .catch((err) => console.error("[chat] load session messages error", err))
@@ -1356,7 +1401,7 @@ export default function ChatPage() {
   ) {
     subscription.current?.unsubscribe();
     setLocalRunning(true);
-    const phaseId = `phase-${Date.now()}`;
+    const phaseId = `phase-${crypto.randomUUID()}`;
     import("../../lib/ag-ui")
       .then(async ({ createChatAgent }) => {
         const agent = await createChatAgent(agMessages.current, threadId.current);
@@ -1396,12 +1441,17 @@ export default function ChatPage() {
     const userMsg = { id: msgId, role: "user", content } as Message;
     agMessages.current = [...agMessages.current, userMsg];
 
-    const phaseId = `phase-${Date.now()}`;
+    const phaseId = `phase-${crypto.randomUUID()}`;
 
     const pushError = (msg: string) => {
       setStream((p) => [
         ...p,
-        { type: "agent", id: `err-${Date.now()}`, content: `Error: ${msg}`, timestamp: new Date() },
+        {
+          type: "agent",
+          id: `err-${crypto.randomUUID()}`,
+          content: `Error: ${msg}`,
+          timestamp: new Date(),
+        },
       ]);
       setLocalRunning(false);
     };
@@ -1480,7 +1530,7 @@ export default function ChatPage() {
     const text = input.trim();
     if (!text && urls.length === 0) return;
     const content = text + (urls.length > 0 ? "\n" + urls.map((u) => `• ${u}`).join("\n") : "");
-    const id = `u${Date.now()}`;
+    const id = `u${crypto.randomUUID()}`;
     if (inputBlocked) {
       setQueue((p) => [...p, { id, content }]);
     } else {
@@ -1661,8 +1711,12 @@ export default function ChatPage() {
                   <div key={item.id} className="py-2">
                     <ApprovalGate
                       item={item}
-                      expired={!!item.expiresAt && Date.parse(item.expiresAt) < Date.now()}
+                      expired={!!item.expiresAt && Date.parse(item.expiresAt) < now}
                       onResolve={resolveApproval}
+                      onAlwaysAllow={(id) => {
+                        toggleAutoApprove(true);
+                        resolveApproval(id, "approved");
+                      }}
                     />
                   </div>
                 );
@@ -1847,6 +1901,26 @@ export default function ChatPage() {
                 title={showEvents ? "Hide agent events" : "Show agent events"}
               >
                 <Icon icon={showEvents ? "solar:eye-bold" : "solar:eye-closed-bold"} width={14} />
+              </button>
+              <button
+                onClick={() => toggleAutoApprove(!autoApprove)}
+                className="p-2 bouncy"
+                style={{
+                  border: "1.5px solid #0D0D0D",
+                  background: autoApprove ? "#4ECDC4" : "#F7F0E3",
+                  color: autoApprove ? "#0D0D0D" : "#B0A898",
+                  borderRadius: "4px",
+                }}
+                title={
+                  autoApprove
+                    ? "Always allow: on — agent acts without asking"
+                    : "Always allow: off — agent asks before changes"
+                }
+              >
+                <Icon
+                  icon={autoApprove ? "solar:shield-check-bold" : "solar:shield-keyhole-bold"}
+                  width={14}
+                />
               </button>
             </div>
             <button

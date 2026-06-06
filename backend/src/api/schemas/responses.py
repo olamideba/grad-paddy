@@ -33,6 +33,7 @@ class PreferencesResponse(BaseModel):
     target_universities: list[str] = Field(default_factory=list)
     degree_type: str = "Either"
     funding_required: bool = False
+    auto_approve: bool = False
 
 
 # Chat/Sessions responses

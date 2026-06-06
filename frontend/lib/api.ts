@@ -45,7 +45,17 @@ export interface Preferences {
   target_universities: string[];
   degree_type: string;
   funding_required: boolean;
+  auto_approve?: boolean;
 }
+
+export const preferencesApi = {
+  // Patch only the auto-approve flag, preserving other preferences server-side
+  // by merging into the latest values fetched here.
+  setAutoApprove: async (value: boolean) => {
+    const cur = await usersApi.getPreferences();
+    return usersApi.upsertPreferences({ ...cur.data, auto_approve: value });
+  },
+};
 
 export const usersApi = {
   createOrFetch: (email: string, name: string, avatar_url?: string) =>

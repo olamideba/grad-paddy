@@ -438,6 +438,17 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [autoApprove, setAutoApprove] = useState(false);
+
+  async function toggleAutoApprove(value: boolean) {
+    setAutoApprove(value);
+    try {
+      const { preferencesApi } = await import("../../lib/api");
+      await preferencesApi.setAutoApprove(value);
+    } catch {
+      setAutoApprove(!value); // revert on failure
+    }
+  }
   const { signOut } = useAuth();
 
   const [savedSnapshot, setSavedSnapshot] = useState({
@@ -455,6 +466,7 @@ export default function SettingsPage() {
           setInterests(p.research_interests);
           setUniversities(p.target_universities);
           setCountries(p.target_countries);
+          setAutoApprove(!!p.auto_approve);
           setSavedSnapshot({
             interests: p.research_interests,
             universities: p.target_universities,
@@ -480,6 +492,7 @@ export default function SettingsPage() {
         target_countries: countries,
         degree_type: "Either",
         funding_required: false,
+        auto_approve: autoApprove,
       });
       setSavedSnapshot({ interests, universities, countries });
       setSaved(true);
@@ -539,6 +552,67 @@ export default function SettingsPage() {
       {/* Content */}
       <div className="p-4 sm:p-6">
         <div className="max-w-2xl mx-auto space-y-6">
+          {/* Agent approval */}
+          <div
+            className="p-5"
+            style={{
+              background: "#FFFFFF",
+              border: "2px solid #0D0D0D",
+              boxShadow: "4px 4px 0 #0D0D0D",
+              borderRadius: "4px",
+            }}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <div
+                    className="w-7 h-7 flex items-center justify-center"
+                    style={{
+                      background: "#0D0D0D",
+                      border: "2px solid #0D0D0D",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    <Icon icon="solar:shield-check-bold" width={13} style={{ color: "#FFFFFF" }} />
+                  </div>
+                  <span className="font-bold font-space text-sm" style={{ color: "#0D0D0D" }}>
+                    Always allow actions
+                  </span>
+                </div>
+                <p className="text-xs font-dm" style={{ color: "#9CA3AF" }}>
+                  When off, the agent asks you to approve before any change. When on, it acts
+                  without asking.
+                </p>
+              </div>
+              <button
+                onClick={() => toggleAutoApprove(!autoApprove)}
+                role="switch"
+                aria-checked={autoApprove}
+                className="relative shrink-0 bouncy"
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 999,
+                  border: "2px solid #0D0D0D",
+                  background: autoApprove ? "#4ECDC4" : "#EDE6D3",
+                }}
+              >
+                <span
+                  className="absolute top-1/2"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 999,
+                    background: "#0D0D0D",
+                    transform: "translateY(-50%)",
+                    left: autoApprove ? 22 : 2,
+                    transition: "left 150ms ease-out",
+                  }}
+                />
+              </button>
+            </div>
+          </div>
+
           {/* Research Interests */}
           <div
             className="p-5"
