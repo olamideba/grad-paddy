@@ -16,6 +16,16 @@ NO_LEAK_RULE = (
     "Speak as one assistant and present only the outcome and any necessary natural next step."
 )
 
+APPROVAL_RULE = (
+    "APPROVAL POLICY: Before any create, update, or delete action (shortlist, tracker, drafts, "
+    "profile, preferences, sessions, groups), you MUST first call request_hitl with kind='approval', "
+    "options_json='[{\"id\":\"yes\",\"label\":\"Approve\"},{\"id\":\"no\",\"label\":\"Reject\"}]', and a title/"
+    "description stating exactly what you will change, then WAIT for the human's decision. Perform the write "
+    "only after approval; if rejected, do not write. "
+    "EXCEPTION: when auto_approve is true (current value: {auto_approve}), skip the gate and perform the "
+    "action directly. Read-only actions never require approval."
+)
+
 
 def build_web_search_agent(name: str) -> LlmAgent:
     """Agent specialized in web search."""
@@ -92,9 +102,10 @@ def build_account_agent() -> LlmAgent:
             "You handle identity, preferences, session lifecycle, and groups. "
             "Use the tools to read and update the current user's data. "
             "Prefer concise, structured updates and preserve existing values unless the user asks to change them. "
+            f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
-        tools=ACCOUNT_TOOLS + SESSION_TOOLS + GROUP_TOOLS,
+        tools=ACCOUNT_TOOLS + SESSION_TOOLS + GROUP_TOOLS + GOVERNANCE_TOOLS,
     )
 
 
@@ -108,9 +119,10 @@ def build_application_agent() -> LlmAgent:
         instruction=(
             "You handle application planning artifacts: shortlist entries, tracker records, and drafts. "
             "Use the tools to keep these records in sync with the user's current application workflow. "
+            f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
-        tools=APPLICATION_TOOLS,
+        tools=APPLICATION_TOOLS + GOVERNANCE_TOOLS,
     )
 
 
@@ -142,6 +154,7 @@ def build_operations_agent() -> LlmAgent:
             "You are the operational specialist for the Grad Paddy app. "
             "Use the tools for user data, sessions, groups, shortlist, tracker, drafts, and HITL. "
             "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed. "
+            f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
         tools=OPERATIONS_TOOLS,

@@ -1,3 +1,5 @@
+import json
+
 from google.adk.tools import FunctionTool, LongRunningFunctionTool, ToolContext
 
 from src.agents.context import require_user_id
@@ -19,7 +21,6 @@ from src.agents.schemas import (
     ProfileUpdateToolRequest,
     RecommenderAddToolRequest,
     RecommenderStatusToolRequest,
-    RequestHITLRequest,
     ShortlistListToolRequest,
 )
 from src.services.drafts_service import DraftsService
@@ -494,33 +495,66 @@ async def get_pending_hitl(session_id: str, tool_context: ToolContext) -> dict[s
     return _response(hitl or {})
 
 
-async def request_hitl(payload: RequestHITLRequest, tool_context: ToolContext) -> dict[str, object]:
-    """Pause the current turn and ask the human to approve, choose, or supply input."""
+async def request_hitl(
+    kind: str,
+    title: str,
+    description: str,
+    tool_context: ToolContext,
+    options_json: str = "",
+    input_schema_json: str = "",
+    payload_json: str = "",
+    expires_in_seconds: int = 0,
+) -> dict[str, object]:
+    """Pause the current turn and ask the human to approve, choose, or supply input.
+
+    Args:
+      kind: One of "approval", "choice", or "input".
+      title: Short title shown to the human.
+      description: What the human is being asked to decide.
+      options_json: For kind "approval"/"choice", a JSON array of
+        {"id": "...", "label": "..."} options, e.g.
+        '[{"id":"yes","label":"Yes"},{"id":"no","label":"No"}]'.
+      input_schema_json: For kind "input", a JSON object schema with a
+        "properties" map describing the fields to collect.
+      payload_json: Optional JSON object of context to show the human.
+      expires_in_seconds: Optional expiry in seconds (0 = no expiry).
+
+    Use simple flat JSON strings; do not nest beyond what is described.
+    """
     user_id = require_user_id(tool_context)
     session_id = tool_context.session.id
     run_id = str(tool_context.state.get("current_run_id") or "")
     tool_call_id = tool_context.function_call_id
 
-    if payload.kind in {"choice", "approval"} and not payload.options:
-        raise ValueError(f"options are required for kind={payload.kind}")
-    if payload.kind == "input" and not payload.input_schema:
-        raise ValueError("schema is required for kind=input")
+    def _parse(label: str, raw: str):
+        if not raw or not raw.strip():
+            return None
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{label} must be valid JSON: {exc}") from exc
 
-    options = (
-        [opt.model_dump() for opt in payload.options] if payload.options else None
-    )
+    options = _parse("options_json", options_json)
+    input_schema = _parse("input_schema_json", input_schema_json)
+    payload = _parse("payload_json", payload_json) or {}
+
+    if kind in {"choice", "approval"} and not options:
+        raise ValueError(f"options are required for kind={kind}")
+    if kind == "input" and not input_schema:
+        raise ValueError("input_schema is required for kind=input")
+
     hitl = await HITLService.create_hitl(
         user_id=user_id,
         session_id=session_id,
         run_id=run_id,
-        kind=payload.kind,
-        title=payload.title,
-        description=payload.description,
-        payload=payload.payload,
+        kind=kind,
+        title=title,
+        description=description,
+        payload=payload,
         tool_call_id=tool_call_id,
         options=options,
-        input_schema=payload.input_schema,
-        expires_in_seconds=payload.expires_in_seconds,
+        input_schema=input_schema,
+        expires_in_seconds=expires_in_seconds or None,
     )
     return {
         "status": "pending",

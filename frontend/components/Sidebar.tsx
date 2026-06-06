@@ -106,10 +106,9 @@ export default function Sidebar() {
     >
       {/* Logo */}
       <div
-        className={`flex-shrink-0 flex ${collapsed ? "flex-row items-center justify-between px-2 py-2.5" : "flex-row items-center gap-3 p-4"}`}
+        className={`flex-shrink-0 flex ${collapsed ? "flex-row items-center justify-center px-2 py-2.5" : "flex-row items-center gap-3 p-4"}`}
         style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
       >
-        {collapsed && <Logo size="sm" iconOnly />}
         {!collapsed && (
           <>
             <div className="flex-1 min-w-0">
@@ -212,26 +211,43 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Spacer pushes the chat-history panel down so it bottom-anchors above the footer */}
+      {!collapsed && <div className="flex-1 min-h-0" />}
+
       {/* Chat history */}
       {!collapsed && <ChatHistory />}
 
       {/* Footer */}
       <div
-        className="p-3 flex items-center justify-between flex-shrink-0 gap-2"
+        className={clsx(
+          "p-3 flex items-center flex-shrink-0 gap-2",
+          collapsed ? "justify-center" : "justify-between"
+        )}
         style={{ borderTop: "2px solid #0D0D0D" }}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <div
-            className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-xs font-bold"
-            style={{
-              background: "#E8472A",
-              color: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            {avatarLetter}
-          </div>
+          {user?.photoURL ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.photoURL}
+              alt={displayName}
+              referrerPolicy="no-referrer"
+              className="w-7 h-7 flex-shrink-0 object-cover"
+              style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}
+            />
+          ) : (
+            <div
+              className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-xs font-bold"
+              style={{
+                background: "#E8472A",
+                color: "#FFFFFF",
+                border: "2px solid #0D0D0D",
+                borderRadius: "4px",
+              }}
+            >
+              {avatarLetter}
+            </div>
+          )}
           {!collapsed && (
             <div className="min-w-0">
               <div

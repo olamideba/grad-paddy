@@ -2,7 +2,7 @@ name: Deploy frontend to Cloud Run
 
 on:
   push:
-    branches: [dev, frontend-branch]
+    branches: [main]
     paths:
       - 'frontend/**'
       - '.github/workflows/deploy-frontend.yml'

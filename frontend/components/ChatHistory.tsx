@@ -61,6 +61,29 @@ export default function ChatHistory() {
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<Group | null>(null);
   const [deleteChatTarget, setDeleteChatTarget] = useState<Session | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [height, setHeight] = useState(340);
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = height;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "row-resize";
+    function move(ev: MouseEvent) {
+      // Drag up grows the panel.
+      const next = startH + (startY - ev.clientY);
+      setHeight(Math.min(Math.max(140, next), window.innerHeight * 0.75));
+    }
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    }
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
 
   function toggleGroup(id: string) {
     setCollapsedGroups((prev) => {
@@ -232,14 +255,57 @@ export default function ChatHistory() {
   );
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col" style={{ borderTop: "2px solid #0D0D0D" }}>
-      <div className="flex items-center justify-between px-4 py-2 flex-shrink-0">
-        <span
-          className="text-[10px] font-semibold uppercase tracking-widest font-space"
-          style={{ color: "#9CA3AF" }}
+    <div
+      className="flex-shrink-0 flex flex-col"
+      style={{
+        borderTop: "2px solid #0D0D0D",
+        height: panelOpen ? height : undefined,
+      }}
+    >
+      {/* Resize handle (drag to adjust height) */}
+      {panelOpen && (
+        <div
+          onMouseDown={startResize}
+          title="Drag to resize"
+          className="group/resize h-2 shrink-0 cursor-row-resize flex items-center justify-center"
         >
-          Chats
-        </span>
+          <div className="h-1 w-10 rounded-full bg-[#C8C0AF] transition-all group-hover/resize:w-16 group-hover/resize:bg-[#0D0D0D]" />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-1 px-2 py-1.5 flex-shrink-0">
+        <button
+          onClick={() => setPanelOpen((v) => !v)}
+          className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1.5 bouncy"
+          style={{ borderRadius: "6px", color: "#5A5A5A" }}
+          title={panelOpen ? "Collapse chats" : "Expand chats"}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#EDE6D3")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+        >
+          <span
+            className="flex items-center justify-center w-4 h-4 shrink-0"
+            style={{ border: "1.5px solid #0D0D0D", borderRadius: "4px", background: "#FFFFFF" }}
+          >
+            <Icon
+              icon="solar:alt-arrow-down-bold"
+              width={11}
+              className={clsx("transition-transform duration-150", !panelOpen && "-rotate-90")}
+              style={{ color: "#0D0D0D" }}
+            />
+          </span>
+          <span
+            className="text-[11px] font-bold uppercase tracking-widest font-space"
+            style={{ color: "#0D0D0D" }}
+          >
+            Chats
+          </span>
+          <span
+            className="text-[10px] font-mono px-1.5 rounded-full"
+            style={{ background: "#FFFFFF", border: "1px solid #C8C0AF", color: "#9CA3AF" }}
+          >
+            {sessions.length}
+          </span>
+        </button>
         <button
           onClick={() => newChat(null)}
           className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
@@ -260,73 +326,78 @@ export default function ChatHistory() {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {sessionsLoading ? (
-          <div className="flex items-center justify-center py-4">
-            <div
-              className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
-              style={{ borderColor: "#E8472A", borderTopColor: "transparent" }}
-            />
-          </div>
-        ) : sessions.length === 0 && groups.length === 0 ? (
-          <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
-            No chats yet
-          </p>
-        ) : (
-          <>
-            {starred.length > 0 && (
-              <Section label="Starred" icon="solar:star-bold">
-                {starred.map(renderRow)}
-              </Section>
-            )}
+      {panelOpen && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {sessionsLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <div
+                className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
+                style={{ borderColor: "#E8472A", borderTopColor: "transparent" }}
+              />
+            </div>
+          ) : sessions.length === 0 && groups.length === 0 ? (
+            <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
+              No chats yet
+            </p>
+          ) : (
+            <>
+              {starred.length > 0 && (
+                <Section label="Starred" icon="solar:star-bold">
+                  {starred.map(renderRow)}
+                </Section>
+              )}
 
-            {groups.length > 0 && (
-              <div className="pt-1">
-                <div className="px-4 pt-2 pb-1">
-                  <span
-                    className="text-[10px] font-semibold uppercase tracking-widest font-space"
-                    style={{ color: "#9CA3AF" }}
-                  >
-                    Groups
-                  </span>
-                </div>
-                {groups.map((g) => {
-                  const items = (grouped.get(g.id) ?? []).sort(byUpdated);
-                  return (
-                    <GroupFolder
-                      key={g.id}
-                      group={g}
-                      count={items.length}
-                      open={!collapsedGroups.has(g.id)}
-                      onToggle={() => toggleGroup(g.id)}
-                      onNewChat={() => newChat(g.id)}
-                      onDelete={() => setDeleteGroupTarget(g)}
+              {groups.length > 0 && (
+                <div className="pt-1">
+                  <div className="px-4 pt-2 pb-1">
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-widest font-space"
+                      style={{ color: "#9CA3AF" }}
                     >
-                      {items.length > 0 ? (
-                        items.map(renderRow)
-                      ) : (
-                        <p className="text-[11px] font-dm px-4 py-1.5" style={{ color: "#B0A898" }}>
-                          No chats yet
-                        </p>
-                      )}
-                    </GroupFolder>
-                  );
-                })}
-              </div>
-            )}
+                      Groups
+                    </span>
+                  </div>
+                  {groups.map((g) => {
+                    const items = (grouped.get(g.id) ?? []).sort(byUpdated);
+                    return (
+                      <GroupFolder
+                        key={g.id}
+                        group={g}
+                        count={items.length}
+                        open={!collapsedGroups.has(g.id)}
+                        onToggle={() => toggleGroup(g.id)}
+                        onNewChat={() => newChat(g.id)}
+                        onDelete={() => setDeleteGroupTarget(g)}
+                      >
+                        {items.length > 0 ? (
+                          items.map(renderRow)
+                        ) : (
+                          <p
+                            className="text-[11px] font-dm px-4 py-1.5"
+                            style={{ color: "#B0A898" }}
+                          >
+                            No chats yet
+                          </p>
+                        )}
+                      </GroupFolder>
+                    );
+                  })}
+                </div>
+              )}
 
-            {ungrouped.length > 0 && (
-              <div className="pt-1">
-                {groupSessionsByTime(ungrouped).map((bucket) => (
-                  <Section key={bucket.label} label={bucket.label}>
-                    {bucket.items.map(renderRow)}
-                  </Section>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              {ungrouped.length > 0 && (
+                <div className="pt-1">
+                  {groupSessionsByTime(ungrouped).map((bucket) => (
+                    <Section key={bucket.label} label={bucket.label}>
+                      {bucket.items.map(renderRow)}
+                    </Section>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {menu && (
         <ContextMenu
