@@ -20,8 +20,10 @@ APPROVAL_RULE = (
     "APPROVAL POLICY: Before any create, update, or delete action (shortlist, tracker, drafts, "
     "profile, preferences, sessions, groups), you MUST first call request_hitl with kind='approval', "
     "options_json='[{\"id\":\"yes\",\"label\":\"Approve\"},{\"id\":\"no\",\"label\":\"Reject\"}]', and a title/"
-    "description stating exactly what you will change, then WAIT for the human's decision. Perform the write "
-    "only after approval; if rejected, do not write. "
+    "description stating exactly what you will change. In payload_json include an \"entity\" key naming the "
+    "target (\"tracker\", \"shortlist\", or \"draft\") and the proposed fields the user should review (use a "
+    "\"content\" string for long text like a draft). Then WAIT for the human's decision. Perform the write only "
+    "after approval, using the (possibly edited) values from the response; if rejected, do not write. "
     "EXCEPTION: when auto_approve is true (current value: {auto_approve}), skip the gate and perform the "
     "action directly. Read-only actions never require approval."
 )

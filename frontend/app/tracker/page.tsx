@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import type { Application as ApiApp, TrackerStats } from "../../lib/api";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type DocStatus = "not-started" | "in-progress" | "ready";
 type AppStatus =
@@ -598,6 +599,7 @@ function EditApplicationModal({
   const [recInput, setRecInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const firstRef = useRef<HTMLInputElement>(null);
 
@@ -645,8 +647,8 @@ function EditApplicationModal({
     }
   }
 
-  async function handleDelete() {
-    if (!window.confirm(`Delete the ${app.university} application? This cannot be undone.`)) return;
+  async function performDelete() {
+    setConfirmDelete(false);
     setDeleting(true);
     try {
       const { trackerApi } = await import("../../lib/api");
@@ -908,7 +910,7 @@ function EditApplicationModal({
             </button>
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setConfirmDelete(true)}
               disabled={saving || deleting}
               className="btn-white btn-sm"
               style={{ color: "#E8472A", borderColor: "#E8472A" }}
@@ -919,6 +921,14 @@ function EditApplicationModal({
           </div>
         </form>
       </div>
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete application"
+          message={`Delete the ${app.university} application? This cannot be undone.`}
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={performDelete}
+        />
+      )}
     </div>
   );
 }
