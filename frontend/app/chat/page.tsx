@@ -1398,7 +1398,6 @@ export default function ChatPage() {
 
   function handleEvent(event: BaseEvent, phaseId: string) {
     const type = event.type as string;
-    console.log("[chat] event:", type);
 
     if (type === "HITL_REQUIRED") {
       // Instant gate (mid-stream) — the poll on `complete` is the fallback.
@@ -1596,7 +1595,6 @@ export default function ChatPage() {
       const { hitlApi } = await import("../../lib/api");
       const res = await hitlApi.getPending(threadId.current);
       const hitl = res.data;
-      console.log("[chat] checkHITL → pending:", hitl);
       if (!hitl || (hitl.status && hitl.status !== "pending")) return;
       addApproval({
         id: hitl.id,
