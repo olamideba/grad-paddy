@@ -178,10 +178,10 @@ class PersistentChatAgent(ADKAgent):
                 pending = await HITLService.get_pending_hitl(user_id, session_id)
                 status = "interrupted" if pending else "completed"
 
-                if pending:
-                    run_id = str(getattr(event, "run_id", None) or input.run_id)
-                    required = HITLService.to_required_event(pending, session_id, run_id)
-                    yield required
+                # NOTE: do NOT emit a custom HITL_REQUIRED event — the AG-UI client
+                # rejects unknown event types (invalid_union_discriminator) and
+                # aborts the stream. The frontend surfaces the gate by polling
+                # GET /api/hitl/.../pending once the run finishes/interrupts.
 
                 if status == "completed" and current_message_id and current_message_complete:
                     content = "".join(current_text_parts).strip()
