@@ -14,6 +14,7 @@ type Draft = {
   title: string;
   status: DraftStatus;
   wordCount: number;
+  content: string;
   excerpt: string;
   lastEdited: Date;
   sourceTags: string[];
@@ -43,6 +44,7 @@ function mapDraft(a: ApiDraft): Draft {
     title: a.title,
     status: normalizeDraftStatus(a.status),
     wordCount: a.word_count,
+    content: a.content,
     excerpt: excerpt || a.title,
     lastEdited: new Date(a.updated_at),
     sourceTags: a.source_tags,
@@ -100,7 +102,7 @@ function EditDraftModal({
   onClose: () => void;
   onSaved: (updated: Draft) => void;
 }) {
-  const [content, setContent] = useState(draft.excerpt);
+  const [content, setContent] = useState(draft.content);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);

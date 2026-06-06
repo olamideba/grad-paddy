@@ -156,7 +156,7 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-center p-12" style={{ background: "#F7F0E3" }}>
           <div
-            className="float-water w-full max-w-sm p-8"
+            className="w-full max-w-sm p-8"
             style={{
               background: "#FFFFFF",
               border: "2px solid #0D0D0D",
