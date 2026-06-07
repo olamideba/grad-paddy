@@ -14,6 +14,7 @@ def _configure_logging() -> None:
     # logger levels for the app and ADK namespaces.
     for logger_name in ("google.adk", "google_adk", "ag_ui_adk", "src"):
         logging.getLogger(logger_name).setLevel(logging.DEBUG)
+    logging.getLogger("opentelemetry.context").setLevel(logging.CRITICAL)
 
 
 _configure_logging()

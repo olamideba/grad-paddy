@@ -10,7 +10,7 @@ from ag_ui.core import BaseEvent
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from src.services.firestore_adk_session import FirestoreSessionService
 from google.genai import types
 
 from src.agents.root import root_agent
@@ -297,8 +297,9 @@ def build_chat_agent() -> ADKAgent:
         )
         or settings.AG_UI_USER_ID,
         session_timeout_seconds=settings.AG_UI_SESSION_TIMEOUT_SECONDS,
-        use_in_memory_services=True,
+        session_service=FirestoreSessionService(),
         use_thread_id_as_session_id=True,
+        delete_session_on_cleanup=False,
     )
 
 
@@ -350,7 +351,7 @@ def _extract_text(content: types.Content | None) -> str:
 )
 async def debug_chat(payload: DebugChatRequest) -> DebugChatResponse:
     settings = get_settings()
-    session_service = InMemorySessionService()
+    session_service = FirestoreSessionService()
     runner = Runner(
         app_name=settings.AG_UI_APP_NAME,
         agent=root_agent,

@@ -252,3 +252,38 @@ class SessionRepository:
             .document(message_id)
         )
         await doc_ref.set({"ag_ui_events": events}, merge=True)
+
+    # ── ADK Internal State ────────────────────────────────────────
+
+    @staticmethod
+    async def get_adk_session_state(user_id: str, session_id: str) -> str | None:
+        """Get the serialized ADK Session object."""
+        db = get_db()
+        settings = get_settings()
+        doc = await (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_SESSIONS)
+            .document(session_id)
+            .collection("adk")
+            .document("state")
+            .get()
+        )
+        if doc.exists:
+            return doc.to_dict().get("session_json")
+        return None
+
+    @staticmethod
+    async def upsert_adk_session_state(user_id: str, session_id: str, session_json: str) -> None:
+        """Persist the serialized ADK Session object."""
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_SESSIONS)
+            .document(session_id)
+            .collection("adk")
+            .document("state")
+        )
+        await doc_ref.set({"session_json": session_json})

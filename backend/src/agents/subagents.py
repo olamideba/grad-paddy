@@ -92,16 +92,19 @@ def build_researcher_agent() -> LlmAgent:
 
 
 def build_account_agent() -> LlmAgent:
-    """Agent for user account, sessions, and group management."""
+    """Agent for user account and preferences management."""
     return LlmAgent(
         name="account_agent",
         model="gemini-3.1-pro-preview",
-        description="Manages user profiles, preferences, sessions, and groups.",
+        description="Manages user profiles and preferences.",
         sub_agents=[],
         instruction=(
-            "You handle identity, preferences, session lifecycle, and groups. "
-            "Use the tools to read and update the current user's data. "
-            "Prefer concise, structured updates and preserve existing values unless the user asks to change them. "
+            "You handle identity and preferences. "
+            "Use the tools to read and update the current user's profile and preferences. "
+            "When updating preferences list fields (research interests, countries, universities), "
+            "always call get_preferences first to retrieve the current list, then supply the "
+            "complete desired list to update_preferences — do not pass only the delta. "
+            "Preserve existing values unless the user explicitly asks to change them. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
@@ -152,7 +155,7 @@ def build_operations_agent() -> LlmAgent:
         sub_agents=[],
         instruction=(
             "You are the operational specialist for the Grad Paddy app. "
-            "Use the tools for user data, sessions, groups, shortlist, tracker, drafts, and HITL. "
+            "Use the tools for user profile, preferences, shortlist, tracker, drafts, and HITL. "
             "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
