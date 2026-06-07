@@ -34,6 +34,7 @@ class PreferencesResponse(BaseModel):
     degree_type: str = "Either"
     funding_required: bool = False
     auto_approve: bool = False
+    reminder_offsets_days: list[int] = Field(default_factory=lambda: [7, 1])
 
 
 # Chat/Sessions responses
@@ -119,6 +120,7 @@ class ApplicationResponse(BaseModel):
     attachments: list[dict] = Field(default_factory=list)
     funded: str = "unknown"
     notes: Optional[str] = None
+    calendar_event_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -150,6 +152,27 @@ class DraftStatsResponse(BaseModel):
     total: int
     approved: int
     need_review: int
+
+
+# Email responses
+class EmailResponse(BaseModel):
+    id: str
+    to: str = ""
+    subject: str = ""
+    body_markdown: str = ""
+    kind: str = "faculty"
+    ref_id: Optional[str] = None
+    linked_application_id: Optional[str] = None
+    status: str = "draft"
+    sent_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# Integrations responses
+class GoogleStatusResponse(BaseModel):
+    connected: bool = False
+    email: Optional[str] = None
 
 
 # CV / resume responses

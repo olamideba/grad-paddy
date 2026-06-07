@@ -374,3 +374,91 @@ h6,
 .backdrop-fade {
   animation: backdropFade 200ms ease-out forwards;
 }
+
+/* ── Markdown canvas (TipTap WYSIWYG) ── */
+.canvas-prose {
+  font-family: "DM Sans", sans-serif;
+  color: #0d0d0d;
+  font-size: 15px;
+  line-height: 1.65;
+  padding: 20px 24px;
+  min-height: 100%;
+}
+.canvas-prose:focus {
+  outline: none;
+}
+.canvas-prose > * + * {
+  margin-top: 0.75em;
+}
+.canvas-prose h1 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.6em;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 1.2em;
+}
+.canvas-prose h2 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.3em;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1.1em;
+}
+.canvas-prose h3 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.1em;
+  font-weight: 700;
+  margin-top: 1em;
+}
+.canvas-prose ul,
+.canvas-prose ol {
+  padding-left: 1.4em;
+}
+.canvas-prose ul {
+  list-style: disc;
+}
+.canvas-prose ol {
+  list-style: decimal;
+}
+.canvas-prose li > p {
+  margin: 0;
+}
+.canvas-prose blockquote {
+  border-left: 3px solid #e8472a;
+  padding-left: 1em;
+  color: #5a5a5a;
+  font-style: italic;
+}
+.canvas-prose a {
+  color: #e8472a;
+  text-decoration: underline;
+}
+.canvas-prose code {
+  font-family: "Space Mono", monospace;
+  font-size: 0.88em;
+  background: #ede6d3;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.canvas-prose pre {
+  background: #0d0d0d;
+  color: #f7f0e3;
+  padding: 12px 14px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.canvas-prose pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.canvas-prose strong {
+  font-weight: 700;
+}
+.canvas-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #b0a898;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

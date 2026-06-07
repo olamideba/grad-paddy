@@ -5,6 +5,7 @@ import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import type { Draft as ApiDraft, DraftStats } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
+import MarkdownCanvas from "@/components/MarkdownCanvas";
 
 type DraftType = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
@@ -104,23 +105,21 @@ function EditDraftModal({
   onSaved: (updated: Draft) => void;
 }) {
   const [content, setContent] = useState(draft.content);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    textRef.current?.focus();
-  }, []);
-
-  // Fetch the full draft so the editor always shows the latest stored content
-  // (the list payload can be stale or trimmed).
+  // Fetch the full draft so the canvas opens with the latest stored content
+  // (the list payload can be stale or trimmed). Gate the canvas on this so it
+  // initializes with the real markdown, not the trimmed excerpt.
   useEffect(() => {
     import("../../lib/api")
       .then(({ draftsApi }) => draftsApi.get(draft.id))
       .then((res) => {
         if (typeof res.data.content === "string") setContent(res.data.content);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, [draft.id]);
 
   const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
@@ -149,7 +148,7 @@ function EditDraftModal({
       }}
     >
       <div
-        className="w-full max-w-2xl flex flex-col max-h-[90vh]"
+        className="w-full max-w-3xl flex flex-col h-[90vh]"
         style={{
           background: "#F7F0E3",
           border: "2px solid #0D0D0D",
@@ -178,16 +177,33 @@ function EditDraftModal({
           </button>
         </div>
 
-        {/* Editor */}
-        <div className="flex-1 overflow-hidden flex flex-col p-5 gap-3">
-          <textarea
-            ref={textRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="flex-1 input-brutal w-full text-sm font-dm resize-none"
-            style={{ minHeight: "320px" }}
-          />
-          <div className="flex items-center justify-between">
+        {/* Canvas editor */}
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <div
+            className="flex-1 min-h-0 overflow-hidden flex flex-col m-4"
+            style={{
+              background: "#FFFFFF",
+              border: "2px solid #0D0D0D",
+              borderRadius: "4px",
+            }}
+          >
+            {loaded ? (
+              <MarkdownCanvas
+                key={draft.id}
+                initialMarkdown={content}
+                onChange={setContent}
+                className="flex-1 min-h-0"
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div
+                  className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
+                  style={{ color: "#E8472A" }}
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2 px-4 pb-4 shrink-0">
             <span className="text-[10px] font-mono" style={{ color: "#9CA3AF" }}>
               {wordCount} words
             </span>

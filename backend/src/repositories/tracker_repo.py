@@ -45,8 +45,10 @@ class TrackerRepository:
             "sop_status": data.get("sop_status", "not_started"),
             "cv_status": data.get("cv_status", "not_started"),
             "recommenders": data.get("recommenders") or [],
+            "attachments": data.get("attachments") or [],
             "funded": data.get("funded", "unknown"),
             "notes": data.get("notes"),
+            "calendar_event_id": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -271,6 +273,27 @@ class TrackerRepository:
         attachments = [a for a in (data.get("attachments") or []) if a.get("ref_id") != ref_id]
         await doc_ref.update({
             "attachments": attachments,
+            "updated_at": datetime.now(timezone.utc),
+        })
+        doc = await doc_ref.get()
+        return doc.to_dict() if doc.exists else {}
+
+    @staticmethod
+    async def set_calendar_event_id(user_id: str, application_id: str, event_id: str | None) -> dict:
+        """Store (or clear) the linked Google Calendar event id. Returns the app."""
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_TRACKER)
+            .document(application_id)
+        )
+        snapshot = await doc_ref.get()
+        if not snapshot.exists:
+            raise NotFound("Application record not found")
+        await doc_ref.update({
+            "calendar_event_id": event_id,
             "updated_at": datetime.now(timezone.utc),
         })
         doc = await doc_ref.get()

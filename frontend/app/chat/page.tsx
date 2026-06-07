@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { useAgent } from "@/components/AgentProvider";
 import type { Message, BaseEvent } from "../../lib/ag-ui";
 import { useChatSessions } from "@/context/ChatSessionsContext";
+import MarkdownCanvas from "@/components/MarkdownCanvas";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,46 @@ const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; descript
     label: "Searching databases",
     emoji: "📚",
     description: "Querying research databases...",
+  },
+  "platform.core.index_explorer": {
+    label: "Inspecting Elastic indices",
+    emoji: "🔎",
+    description: "Finding relevant Elasticsearch indices...",
+  },
+  "platform.core.list_indices": {
+    label: "Listing Elastic indices",
+    emoji: "🗂️",
+    description: "Checking accessible Elasticsearch data...",
+  },
+  "platform.core.get_index_mapping": {
+    label: "Reading Elastic mappings",
+    emoji: "🧭",
+    description: "Inspecting field structure...",
+  },
+  "platform.core.search": {
+    label: "Elastic hybrid search",
+    emoji: "⚡",
+    description: "Searching indexed admissions evidence...",
+  },
+  "platform.core.generate_esql": {
+    label: "Generating ES|QL",
+    emoji: "🧠",
+    description: "Translating the question into an ES|QL query...",
+  },
+  "platform.core.execute_esql": {
+    label: "Running ES|QL scan",
+    emoji: "📊",
+    description: "Analyzing admissions data in Elasticsearch...",
+  },
+  "platform.core.get_document_by_id": {
+    label: "Opening Elastic evidence",
+    emoji: "📄",
+    description: "Retrieving a source document...",
+  },
+  "platform.core.create_visualization": {
+    label: "Creating Elastic visualization",
+    emoji: "📈",
+    description: "Preparing a Kibana-ready view...",
   },
   hitl_approval: {
     label: "Requesting approval",
@@ -413,7 +454,8 @@ function entityNav(entity?: string): { route: string; label: string } | undefine
   const e = entity.toLowerCase();
   if (["draft", "sop", "outreach", "outreach-prep", "research-narrative", "narrative"].includes(e))
     return { route: "/drafts", label: "Drafts" };
-  if (["tracker", "application", "app"].includes(e)) return { route: "/tracker", label: "Tracker" };
+  if (["tracker", "application", "app", "email", "recommender"].includes(e))
+    return { route: "/tracker", label: "Tracker" };
   if (["shortlist", "faculty"].includes(e)) return { route: "/shortlist", label: "Shortlist" };
   return undefined;
 }
@@ -897,13 +939,18 @@ function ReviewGate({
   const edited = text !== initial;
   return (
     <div className="flex flex-col gap-2">
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={10}
-        className="input-brutal w-full text-xs font-dm resize-y"
-        style={{ minHeight: 160 }}
-      />
+      <div
+        className="flex flex-col overflow-hidden"
+        style={{
+          background: "#FFFFFF",
+          border: "2px solid #0D0D0D",
+          borderRadius: "4px",
+          maxHeight: "50vh",
+          minHeight: 220,
+        }}
+      >
+        <MarkdownCanvas initialMarkdown={initial} onChange={setText} className="flex-1 min-h-0" />
+      </div>
       <div className="flex flex-col gap-1.5">
         <PermissionOption
           icon="solar:check-circle-bold"
