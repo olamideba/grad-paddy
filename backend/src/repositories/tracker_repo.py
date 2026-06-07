@@ -229,6 +229,54 @@ class TrackerRepository:
         await update_recommender_in_transaction(transaction, doc_ref)
     
     @staticmethod
+    async def add_attachment(user_id: str, application_id: str, attachment: dict) -> dict:
+        """Link an approved draft/CV. attachment shape: {kind, ref_id, title}.
+        De-duplicates by ref_id. Returns the updated application."""
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_TRACKER)
+            .document(application_id)
+        )
+        snapshot = await doc_ref.get()
+        if not snapshot.exists:
+            raise NotFound("Application record not found")
+        data = snapshot.to_dict()
+        attachments = [a for a in (data.get("attachments") or []) if a.get("ref_id") != attachment.get("ref_id")]
+        attachments.append(attachment)
+        await doc_ref.update({
+            "attachments": attachments,
+            "updated_at": datetime.now(timezone.utc),
+        })
+        doc = await doc_ref.get()
+        return doc.to_dict() if doc.exists else {}
+
+    @staticmethod
+    async def remove_attachment(user_id: str, application_id: str, ref_id: str) -> dict:
+        """Unlink an attachment by ref_id. Returns the updated application."""
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_TRACKER)
+            .document(application_id)
+        )
+        snapshot = await doc_ref.get()
+        if not snapshot.exists:
+            raise NotFound("Application record not found")
+        data = snapshot.to_dict()
+        attachments = [a for a in (data.get("attachments") or []) if a.get("ref_id") != ref_id]
+        await doc_ref.update({
+            "attachments": attachments,
+            "updated_at": datetime.now(timezone.utc),
+        })
+        doc = await doc_ref.get()
+        return doc.to_dict() if doc.exists else {}
+
+    @staticmethod
     async def delete_application(user_id: str, application_id: str) -> None:
         """Delete a tracker entry."""
         db = get_db()

@@ -1,5 +1,9 @@
 from google.api_core.exceptions import NotFound
 from src.repositories.tracker_repo import TrackerRepository
+from src.repositories.drafts_repo import DraftsRepository
+from src.repositories.cvs_repo import CVsRepository
+
+ATTACHMENT_KINDS = ("sop", "narrative", "cv")
 
 
 class TrackerService:
@@ -74,6 +78,45 @@ class TrackerService:
         """Update the status of a specific recommender within the list."""
         try:
             await TrackerRepository.update_recommender_status(user_id, application_id, recommender_name, status)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
+
+    @staticmethod
+    async def add_attachment(
+        user_id: str, application_id: str, kind: str, ref_id: str, title: str | None = None
+    ) -> dict:
+        """Link an approved draft (sop/narrative) or CV to an application.
+        Rejects unknown kinds, missing refs, and anything not yet approved."""
+        if kind not in ATTACHMENT_KINDS:
+            raise ValueError(f"Invalid attachment kind: {kind}")
+
+        if kind == "cv":
+            ref = await CVsRepository.get_cv(user_id, ref_id)
+            if ref is None:
+                raise ValueError("CV not found")
+        else:
+            ref = await DraftsRepository.get_draft(user_id, ref_id)
+            if ref is None:
+                raise ValueError("Draft not found")
+
+        if ref.get("status") != "approved":
+            raise ValueError("Only approved documents can be attached")
+
+        attachment = {
+            "kind": kind,
+            "ref_id": ref_id,
+            "title": title or ref.get("title") or ref.get("filename") or kind,
+        }
+        try:
+            return await TrackerRepository.add_attachment(user_id, application_id, attachment)
+        except NotFound as e:
+            raise ValueError("Application record not found") from e
+
+    @staticmethod
+    async def remove_attachment(user_id: str, application_id: str, ref_id: str) -> dict:
+        """Unlink an attachment by ref_id."""
+        try:
+            return await TrackerRepository.remove_attachment(user_id, application_id, ref_id)
         except NotFound as e:
             raise ValueError("Application record not found") from e
 

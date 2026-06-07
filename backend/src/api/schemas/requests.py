@@ -153,3 +153,16 @@ class DraftCreateRequest(BaseModel):
 
 class ContentUpdateRequest(BaseModel):
     content: str
+
+
+# CV / resume requests
+class CVUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    status: Optional[str] = None
+
+
+# Application attachments (link approved drafts / CVs)
+class AttachmentAddRequest(BaseModel):
+    kind: str  # 'sop' | 'narrative' | 'cv'
+    ref_id: str
+    title: Optional[str] = None

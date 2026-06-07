@@ -17,6 +17,9 @@ def initialize_firebase(settings: Settings) -> None:
     except ValueError:
         pass
 
+    # Only set storageBucket when configured; firebase_admin rejects None.
+    options = {"storageBucket": settings.STORAGE_BUCKET} if settings.STORAGE_BUCKET else None
+
     service_account_path = settings.GOOGLE_APPLICATION_CREDENTIALS
     if service_account_path:
         credential_path = Path(service_account_path)
@@ -25,10 +28,10 @@ def initialize_firebase(settings: Settings) -> None:
                 f"Firebase service account file not found: {credential_path}"
             )
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(credential_path)
-        firebase_admin.initialize_app(credentials.Certificate(str(credential_path)))
+        firebase_admin.initialize_app(credentials.Certificate(str(credential_path)), options)
         return
 
-    firebase_admin.initialize_app()
+    firebase_admin.initialize_app(options=options)
 
 
 async def get_current_user_id(
