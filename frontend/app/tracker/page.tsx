@@ -26,8 +26,9 @@ type Application = {
   sop: DocStatus;
   cv: DocStatus;
   writingSample: DocStatus;
-  recommenders: Array<{ name: string; status: RecommenderStatus }>;
+  recommenders: Array<{ name: string; status: RecommenderStatus; email?: string }>;
   attachments: Attachment[];
+  calendarEventId?: string | null;
   funded: boolean | "unknown";
   notes?: string;
 };
@@ -65,8 +66,10 @@ function mapApp(a: ApiApp): Application {
     recommenders: a.recommenders.map((r) => ({
       name: r.name,
       status: normalizeRecStatus(r.status),
+      email: r.email ?? "",
     })),
     attachments: a.attachments ?? [],
+    calendarEventId: a.calendar_event_id ?? null,
     funded: a.funded === "yes" ? true : a.funded === "no" ? false : "unknown",
     notes: a.notes ?? undefined,
   };
@@ -603,7 +606,9 @@ function EditApplicationModal({
     funded: app.funded === true ? "yes" : app.funded === false ? "no" : "unknown",
     notes: app.notes ?? "",
   });
-  const [recs, setRecs] = useState<{ name: string; status: RecommenderStatus }[]>(app.recommenders);
+  const [recs, setRecs] = useState<{ name: string; status: RecommenderStatus; email?: string }[]>(
+    app.recommenders
+  );
   const [recInput, setRecInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -612,6 +617,46 @@ function EditApplicationModal({
   const [attachments, setAttachments] = useState<Attachment[]>(app.attachments);
   const [linkOptions, setLinkOptions] = useState<Attachment[]>([]);
   const [linkBusy, setLinkBusy] = useState(false);
+  const [calendarEventId, setCalendarEventId] = useState<string | null>(
+    app.calendarEventId ?? null
+  );
+  const [calBusy, setCalBusy] = useState(false);
+  const [calError, setCalError] = useState<string | null>(null);
+
+  async function addToCalendar() {
+    setCalBusy(true);
+    setCalError(null);
+    try {
+      const { trackerApi } = await import("../../lib/api");
+      const res = await trackerApi.addToCalendar(app.id);
+      const id = res.data.calendar_event_id ?? null;
+      setCalendarEventId(id);
+      onSaved({ ...app, calendarEventId: id });
+    } catch (e) {
+      setCalError(
+        e instanceof Error && e.message.toLowerCase().includes("not connected")
+          ? "Connect Google in Settings first."
+          : "Couldn't add to calendar."
+      );
+    } finally {
+      setCalBusy(false);
+    }
+  }
+
+  async function removeFromCalendar() {
+    setCalBusy(true);
+    setCalError(null);
+    setCalendarEventId(null);
+    onSaved({ ...app, calendarEventId: null });
+    try {
+      const { trackerApi } = await import("../../lib/api");
+      await trackerApi.removeFromCalendar(app.id);
+    } catch {
+      // optimistic removal stays
+    } finally {
+      setCalBusy(false);
+    }
+  }
   const firstRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -684,7 +729,7 @@ function EditApplicationModal({
   function addRec() {
     const name = recInput.trim();
     if (name && !recs.some((r) => r.name === name))
-      setRecs((r) => [...r, { name, status: "not-asked" }]);
+      setRecs((r) => [...r, { name, status: "not-asked", email: "" }]);
     setRecInput("");
   }
 
@@ -706,7 +751,11 @@ function EditApplicationModal({
         status: form.status,
         funded: form.funded,
         notes: form.notes.trim(),
-        recommenders: recs.map((r) => ({ name: r.name, status: r.status.replace(/-/g, "_") })),
+        recommenders: recs.map((r) => ({
+          name: r.name,
+          status: r.status.replace(/-/g, "_"),
+          email: r.email ?? "",
+        })),
       });
       // Build the updated row from known values rather than the response body,
       // so the table reflects the edit immediately regardless of response shape.
@@ -721,6 +770,7 @@ function EditApplicationModal({
         notes: form.notes.trim() || undefined,
         recommenders: recs,
         attachments,
+        calendarEventId,
       });
       onClose();
     } catch {
@@ -908,52 +958,66 @@ function EditApplicationModal({
                 {recs.map((r) => (
                   <div
                     key={r.name}
-                    className="flex items-center gap-2 px-2 py-1 text-[11px] font-dm"
+                    className="flex flex-col gap-1.5 px-2 py-1.5 text-[11px] font-dm"
                     style={{
                       background: "#EDE6D3",
                       border: "1.5px solid #C8C0AF",
                       borderRadius: "4px",
                     }}
                   >
-                    <span
-                      className="w-2.5 h-2.5 shrink-0"
-                      style={{
-                        background: REC_STYLE[r.status].bg,
-                        border: `1px solid ${REC_STYLE[r.status].border}`,
-                        borderRadius: "2px",
-                      }}
-                    />
-                    <span className="flex-1 min-w-0 truncate">{r.name}</span>
-                    <select
-                      value={r.status}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 shrink-0"
+                        style={{
+                          background: REC_STYLE[r.status].bg,
+                          border: `1px solid ${REC_STYLE[r.status].border}`,
+                          borderRadius: "2px",
+                        }}
+                      />
+                      <span className="flex-1 min-w-0 truncate">{r.name}</span>
+                      <select
+                        value={r.status}
+                        onChange={(e) =>
+                          setRecs((rs) =>
+                            rs.map((x) =>
+                              x.name === r.name
+                                ? { ...x, status: e.target.value as RecommenderStatus }
+                                : x
+                            )
+                          )
+                        }
+                        className="text-[11px] font-dm bg-white px-1 py-0.5 shrink-0"
+                        style={{ border: "1.5px solid #0D0D0D", borderRadius: "4px" }}
+                      >
+                        {(
+                          ["not-asked", "asked", "confirmed", "submitted"] as RecommenderStatus[]
+                        ).map((s) => (
+                          <option key={s} value={s}>
+                            {s.replace(/-/g, " ")}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setRecs((rs) => rs.filter((x) => x.name !== r.name))}
+                        className="shrink-0"
+                        style={{ color: "#9CA3AF" }}
+                      >
+                        <Icon icon="solar:close-circle-bold" width={12} />
+                      </button>
+                    </div>
+                    <input
+                      type="email"
+                      value={r.email ?? ""}
                       onChange={(e) =>
                         setRecs((rs) =>
-                          rs.map((x) =>
-                            x.name === r.name
-                              ? { ...x, status: e.target.value as RecommenderStatus }
-                              : x
-                          )
+                          rs.map((x) => (x.name === r.name ? { ...x, email: e.target.value } : x))
                         )
                       }
-                      className="text-[11px] font-dm bg-white px-1 py-0.5 shrink-0"
-                      style={{ border: "1.5px solid #0D0D0D", borderRadius: "4px" }}
-                    >
-                      {(
-                        ["not-asked", "asked", "confirmed", "submitted"] as RecommenderStatus[]
-                      ).map((s) => (
-                        <option key={s} value={s}>
-                          {s.replace(/-/g, " ")}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setRecs((rs) => rs.filter((x) => x.name !== r.name))}
-                      className="shrink-0"
-                      style={{ color: "#9CA3AF" }}
-                    >
-                      <Icon icon="solar:close-circle-bold" width={12} />
-                    </button>
+                      placeholder="email@university.edu (for recommendation request)"
+                      className="w-full text-[11px] font-dm bg-white px-2 py-1"
+                      style={{ border: "1.5px solid #C8C0AF", borderRadius: "4px" }}
+                    />
                   </div>
                 ))}
               </div>
@@ -1052,6 +1116,61 @@ function EditApplicationModal({
                 </>
               );
             })()}
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Google Calendar
+            </label>
+            {calendarEventId ? (
+              <div
+                className="flex items-center justify-between gap-2 px-3 py-2"
+                style={{
+                  background: "#EDE6D3",
+                  border: "1.5px solid #C8C0AF",
+                  borderRadius: "4px",
+                }}
+              >
+                <span
+                  className="flex items-center gap-1.5 text-[11px] font-semibold font-space"
+                  style={{ color: "#0D0D0D" }}
+                >
+                  <Icon icon="solar:calendar-mark-bold" width={13} style={{ color: "#0D9268" }} />
+                  Deadline on your calendar
+                </span>
+                <button
+                  type="button"
+                  onClick={removeFromCalendar}
+                  disabled={calBusy}
+                  className="text-[11px] font-semibold font-space bouncy shrink-0"
+                  style={{ color: "#E8472A" }}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={addToCalendar}
+                disabled={calBusy}
+                className="btn-white btn-sm text-xs w-full justify-center"
+              >
+                {calBusy ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                ) : (
+                  <Icon icon="solar:calendar-add-bold" width={14} />
+                )}
+                Add deadline to Google Calendar
+              </button>
+            )}
+            {calError && (
+              <p className="text-[11px] font-dm mt-1" style={{ color: "#E8472A" }}>
+                {calError}
+              </p>
+            )}
           </div>
 
           {error && (

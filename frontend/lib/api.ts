@@ -46,6 +46,7 @@ export interface Preferences {
   degree_type: string;
   funding_required: boolean;
   auto_approve?: boolean;
+  reminder_offsets_days?: number[];
 }
 
 export const preferencesApi = {
@@ -55,6 +56,46 @@ export const preferencesApi = {
     const cur = await usersApi.getPreferences();
     return usersApi.upsertPreferences({ ...cur.data, auto_approve: value });
   },
+};
+
+// ── Emails (agent-drafted faculty / recommender emails) ─────────────────────────
+
+export interface Email {
+  id: string;
+  to: string;
+  subject: string;
+  body_markdown: string;
+  kind: "faculty" | "recommender";
+  ref_id: string | null;
+  linked_application_id: string | null;
+  status: "draft" | "sent";
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const emailsApi = {
+  list: () => request<Std<Email[]>>("/api/emails/"),
+  get: (id: string) => request<Std<Email>>(`/api/emails/${id}`),
+  update: (id: string, data: { to?: string; subject?: string; body_markdown?: string }) =>
+    request<Std<Email>>(`/api/emails/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  send: (id: string) => request<Std<Email>>(`/api/emails/${id}/send`, { method: "POST" }),
+  delete: (id: string) =>
+    request<Std<{ status: string }>>(`/api/emails/${id}`, { method: "DELETE" }),
+};
+
+// ── Integrations (Google: Gmail + Calendar) ─────────────────────────────────────
+
+export interface GoogleStatus {
+  connected: boolean;
+  email: string | null;
+}
+
+export const integrationsApi = {
+  googleStatus: () => request<Std<GoogleStatus>>("/api/integrations/google/status"),
+  googleAuthUrl: () => request<Std<{ url: string }>>("/api/integrations/google/auth-url"),
+  googleDisconnect: () =>
+    request<Std<{ status: string }>>("/api/integrations/google", { method: "DELETE" }),
 };
 
 export const usersApi = {
@@ -150,10 +191,11 @@ export interface Application {
   status: string;
   sop_status: string;
   cv_status: string;
-  recommenders: { name: string; status: string }[];
+  recommenders: { name: string; status: string; email?: string }[];
   attachments?: Attachment[];
   funded: string;
   notes: string | null;
+  calendar_event_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -226,6 +268,10 @@ export const trackerApi = {
     }),
   removeAttachment: (id: string, ref_id: string) =>
     request<Std<Application>>(`/api/tracker/${id}/attachments/${ref_id}`, { method: "DELETE" }),
+  addToCalendar: (id: string) =>
+    request<Std<Application>>(`/api/tracker/${id}/calendar`, { method: "POST" }),
+  removeFromCalendar: (id: string) =>
+    request<Std<Application>>(`/api/tracker/${id}/calendar`, { method: "DELETE" }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}`, { method: "DELETE" }),
 };

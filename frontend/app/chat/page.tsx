@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { useAgent } from "@/components/AgentProvider";
 import type { Message, BaseEvent } from "../../lib/ag-ui";
 import { useChatSessions } from "@/context/ChatSessionsContext";
+import MarkdownCanvas from "@/components/MarkdownCanvas";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -453,7 +454,8 @@ function entityNav(entity?: string): { route: string; label: string } | undefine
   const e = entity.toLowerCase();
   if (["draft", "sop", "outreach", "outreach-prep", "research-narrative", "narrative"].includes(e))
     return { route: "/drafts", label: "Drafts" };
-  if (["tracker", "application", "app"].includes(e)) return { route: "/tracker", label: "Tracker" };
+  if (["tracker", "application", "app", "email", "recommender"].includes(e))
+    return { route: "/tracker", label: "Tracker" };
   if (["shortlist", "faculty"].includes(e)) return { route: "/shortlist", label: "Shortlist" };
   return undefined;
 }
@@ -937,13 +939,18 @@ function ReviewGate({
   const edited = text !== initial;
   return (
     <div className="flex flex-col gap-2">
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={10}
-        className="input-brutal w-full text-xs font-dm resize-y"
-        style={{ minHeight: 160 }}
-      />
+      <div
+        className="flex flex-col overflow-hidden"
+        style={{
+          background: "#FFFFFF",
+          border: "2px solid #0D0D0D",
+          borderRadius: "4px",
+          maxHeight: "50vh",
+          minHeight: 220,
+        }}
+      >
+        <MarkdownCanvas initialMarkdown={initial} onChange={setText} className="flex-1 min-h-0" />
+      </div>
       <div className="flex flex-col gap-1.5">
         <PermissionOption
           icon="solar:check-circle-bold"
