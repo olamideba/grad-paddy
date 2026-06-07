@@ -61,6 +61,39 @@ class UserService:
             raise ValueError("Preferences not found") from e
 
     @staticmethod
+    async def update_preferences(user_id: str, data: dict) -> dict:
+        """Partial update for user preferences.
+
+        List fields (research_interests, target_countries, target_universities) are
+        fully replaced when present in *data*. Scalar fields (degree_type,
+        funding_required) are patched individually. Keys absent from *data* are
+        left unchanged.
+        """
+        # Remap tool-facing field names to the stored Firestore field names.
+        field_map = {
+            "research_interests": "research_interests",
+            "countries": "target_countries",
+            "universities": "target_universities",
+            "degree_type": "degree_type",
+            "funding_required": "funding_required",
+        }
+        patch: dict = {}
+        for tool_key, db_key in field_map.items():
+            if tool_key in data and data[tool_key] is not None:
+                patch[db_key] = data[tool_key]
+
+        if not patch:
+            # Nothing to update – return current preferences unchanged.
+            return await UserRepository.get_preferences(user_id) or {}
+
+        try:
+            await UserRepository.update_preferences(user_id, patch)
+        except NotFound as e:
+            raise ValueError("Preferences not found") from e
+
+        return await UserRepository.get_preferences(user_id) or {}
+
+    @staticmethod
     async def append_research_interest(user_id: str, interest: str) -> dict:
         """Append one interest and return updated preferences."""
         try:
