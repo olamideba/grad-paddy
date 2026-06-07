@@ -11,6 +11,11 @@ services:
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI}
       - ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL=${ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL}
       - ADK_LOG_PROMPT_CONTENT=${ADK_LOG_PROMPT_CONTENT}
+      - ELASTIC_MCP_URL=${ELASTIC_MCP_URL}
+      - ELASTIC_API_KEY=${ELASTIC_API_KEY}
+      - ELASTIC_MCP_TIMEOUT_SECONDS=${ELASTIC_MCP_TIMEOUT_SECONDS:-30}
+      - ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS=${ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS:-300}
+      - ELASTIC_MCP_TOOL_FILTER=${ELASTIC_MCP_TOOL_FILTER:-platform.core.index_explorer,platform.core.list_indices,platform.core.get_index_mapping,platform.core.search,platform.core.generate_esql,platform.core.execute_esql,platform.core.get_document_by_id,platform.core.create_visualization}
       - STORAGE_BUCKET=${STORAGE_BUCKET}
       # This points to the path INSIDE the container
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/service-account.json

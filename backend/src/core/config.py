@@ -28,6 +28,24 @@ class Settings(BaseSettings):
     # Firestore
     FIRESTORE_DATABASE_ID: str = Field(default="grad-paddy-db")
 
+    # Elastic Agent Builder MCP
+    ELASTIC_MCP_URL: str = Field(default="")
+    ELASTIC_API_KEY: str = Field(default="")
+    ELASTIC_MCP_TIMEOUT_SECONDS: int = Field(default=30)
+    ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS: int = Field(default=300)
+    ELASTIC_MCP_TOOL_FILTER: str = Field(
+        default=(
+            "platform.core.index_explorer,"
+            "platform.core.list_indices,"
+            "platform.core.get_index_mapping,"
+            "platform.core.search,"
+            "platform.core.generate_esql,"
+            "platform.core.execute_esql,"
+            "platform.core.get_document_by_id,"
+            "platform.core.create_visualization"
+        )
+    )
+
     # Collection names
     COLLECTION_USERS: str = Field(default="users")
     COLLECTION_SESSIONS: str = Field(default="sessions")
