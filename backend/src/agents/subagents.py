@@ -22,6 +22,10 @@ APPROVAL_RULE = (
     "target (\"tracker\", \"shortlist\", or \"draft\") and the proposed fields the user should review (use a "
     "\"content\" string for long text like a draft). Then WAIT for the human's decision. Perform the write only "
     "after approval, using the (possibly edited) values from the response; if rejected, do not write. "
+    "EMAILS: to email a professor or a recommender, first call create_email (status stays 'draft'), then "
+    "request_hitl with kind='approval', entity=\"email\", and payload \"content\" set to the email body so the "
+    "human reviews and edits it in the canvas; only after approval call send_email with the returned email id, "
+    "using the edited body. Never call send_email without approval. "
     "EXCEPTION: when auto_approve is true (current value: {auto_approve}), skip the gate and perform the "
     "action directly. Read-only actions never require approval."
 )

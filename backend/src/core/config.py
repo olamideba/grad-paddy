@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # Firebase Storage bucket (e.g. "<project>.appspot.com"). Required for CV uploads.
     STORAGE_BUCKET: str = Field(default="")
 
+    # Google OAuth (Gmail send + Calendar). Reuses the project's OAuth client.
+    GOOGLE_OAUTH_CLIENT_ID: str = Field(default="")
+    GOOGLE_OAUTH_CLIENT_SECRET: str = Field(default="")
+    GOOGLE_OAUTH_REDIRECT_URI: str = Field(default="")
+    # Where to send the user after the OAuth callback completes.
+    FRONTEND_URL: str = Field(default="http://localhost:3000")
+
     AG_UI_APP_NAME: str = Field(default="grad_paddy")
     AG_UI_USER_ID: str = Field(default="demo_user")
     AG_UI_SESSION_TIMEOUT_SECONDS: int = Field(default=3600)
@@ -45,6 +52,7 @@ class Settings(BaseSettings):
             "platform.core.create_visualization"
         )
     )
+    ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
 
     # Collection names
     COLLECTION_USERS: str = Field(default="users")
@@ -56,10 +64,14 @@ class Settings(BaseSettings):
     COLLECTION_DRAFTS: str = Field(default="drafts")
     COLLECTION_GROUPS: str = Field(default="groups")
     COLLECTION_CVS: str = Field(default="cvs")
+    COLLECTION_INTEGRATIONS: str = Field(default="integrations")
+    COLLECTION_OAUTH_STATES: str = Field(default="oauth_states")
+    COLLECTION_EMAILS: str = Field(default="emails")
 
     # Named document keys (single documents, not collections)
     DOC_PROFILE: str = Field(default="profile")
     DOC_PREFERENCES: str = Field(default="preferences")
+    DOC_GOOGLE_INTEGRATION: str = Field(default="google")
 
 
 @lru_cache

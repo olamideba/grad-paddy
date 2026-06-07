@@ -36,6 +36,7 @@ class DraftListToolRequest(ToolRequestBase):
 class RecommenderAddToolRequest(ToolRequestBase):
     name: str = Field(..., description="Name of the recommender (e.g., professor's name).")
     status: str = Field("not_asked", description="Current request status for this recommender (e.g., 'not_asked', 'requested', 'received').")
+    email: str = Field("", description="Recommender's email address, used to send the recommendation request.")
 
 
 class RecommenderStatusToolRequest(ToolRequestBase):
@@ -167,3 +168,12 @@ class ContentUpdateToolRequest(ToolRequestBase):
 
 class DraftStatusToolRequest(ToolRequestBase):
     status: str = Field(..., description="Current status of the draft (e.g., 'draft', 'reviewed', 'final').")
+
+
+class EmailCreateToolRequest(ToolRequestBase):
+    to: str = Field("", description="Recipient email address.")
+    subject: str = Field("", description="Email subject line.")
+    body_markdown: str = Field("", description="Email body in markdown. The user reviews and edits this before sending.")
+    kind: str = Field("faculty", description="'faculty' for cold outreach to a professor, or 'recommender' for a letter-of-recommendation request.")
+    ref_id: Optional[str] = Field(None, description="Faculty id (kind=faculty) or recommender name (kind=recommender) this email targets.")
+    linked_application_id: Optional[str] = Field(None, description="Application id this email relates to, if any (required to update recommender status on send).")

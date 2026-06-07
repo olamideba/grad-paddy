@@ -13,6 +13,17 @@ def _parse_tool_filter(raw: str) -> list[str] | None:
     return tools or None
 
 
+def _merge_tool_filters(default_tools: str, extra_tools: str) -> list[str] | None:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for tool in [*(_parse_tool_filter(default_tools) or []), *(_parse_tool_filter(extra_tools) or [])]:
+        if tool in seen:
+            continue
+        seen.add(tool)
+        merged.append(tool)
+    return merged or None
+
+
 def build_elastic_mcp_tools() -> list[Any]:
     """Build the Elastic Agent Builder MCP toolset when configured.
 
@@ -50,6 +61,9 @@ def build_elastic_mcp_tools() -> list[Any]:
                 timeout=settings.ELASTIC_MCP_TIMEOUT_SECONDS,
                 sse_read_timeout=settings.ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS,
             ),
-            tool_filter=_parse_tool_filter(settings.ELASTIC_MCP_TOOL_FILTER),
+            tool_filter=_merge_tool_filters(
+                settings.ELASTIC_MCP_TOOL_FILTER,
+                settings.ELASTIC_MCP_EXTRA_TOOL_FILTER,
+            ),
         )
     ]

@@ -19,7 +19,7 @@ def _configure_logging() -> None:
 
 _configure_logging()
 
-from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups, cvs
+from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups, cvs, integrations, emails
 
 
 @asynccontextmanager
@@ -54,6 +54,8 @@ app.include_router(tracker.router)
 app.include_router(drafts.router)
 app.include_router(groups.router)
 app.include_router(cvs.router)
+app.include_router(integrations.router)
+app.include_router(emails.router)
 
 
 app.add_middleware(

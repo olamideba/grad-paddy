@@ -16,7 +16,13 @@ services:
       - ELASTIC_MCP_TIMEOUT_SECONDS=${ELASTIC_MCP_TIMEOUT_SECONDS:-30}
       - ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS=${ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS:-300}
       - ELASTIC_MCP_TOOL_FILTER=${ELASTIC_MCP_TOOL_FILTER:-platform.core.index_explorer,platform.core.list_indices,platform.core.get_index_mapping,platform.core.search,platform.core.generate_esql,platform.core.execute_esql,platform.core.get_document_by_id,platform.core.create_visualization}
+      - ELASTIC_MCP_EXTRA_TOOL_FILTER=${ELASTIC_MCP_EXTRA_TOOL_FILTER}
       - STORAGE_BUCKET=${STORAGE_BUCKET}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      
       # This points to the path INSIDE the container
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/service-account.json
     volumes:
