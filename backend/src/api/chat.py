@@ -19,6 +19,7 @@ from src.core.config import get_settings
 from src.core.firebase import verify_firebase_auth
 from src.repositories.sessions_repo import SessionRepository
 from src.services.hitl_service import HITLService
+from src.services.users_service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,13 @@ class PersistentChatAgent(ADKAgent):
         """Apply forwardedProps.resume by injecting a tool result for the suspended call."""
         state = dict(input.state) if isinstance(input.state, dict) else {}
         state["current_run_id"] = input.run_id
+        # Surface the user's auto-approve preference so agents know whether to
+        # gate writes behind HITL. Default false = always ask.
+        try:
+            prefs = await UserService.get_preferences(user_id)
+            state["auto_approve"] = bool((prefs or {}).get("auto_approve", False))
+        except Exception:
+            state["auto_approve"] = False
         input = input.model_copy(update={"state": state})
 
         forwarded = input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
@@ -76,6 +84,47 @@ class PersistentChatAgent(ADKAgent):
         )
         return input.model_copy(update={"messages": [*input.messages, tool_message]}), False
 
+    @staticmethod
+    async def _create_hitl_from_args(
+        user_id: str, session_id: str, run_id: str, tool_call_id: str, raw_args: str
+    ) -> None:
+        """Persist a HITL record from the request_hitl tool-call args."""
+        if not raw_args or not raw_args.strip():
+            return
+        args = json.loads(raw_args)
+
+        def _maybe_json(value: Any) -> Any:
+            if isinstance(value, (dict, list)):
+                return value
+            if isinstance(value, str) and value.strip():
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return None
+            return None
+
+        kind = args.get("kind") or "approval"
+        options = _maybe_json(args.get("options_json")) or args.get("options")
+        input_schema = _maybe_json(args.get("input_schema_json")) or args.get("input_schema")
+        payload = _maybe_json(args.get("payload_json")) or args.get("payload") or {}
+        try:
+            await HITLService.create_hitl(
+                user_id=user_id,
+                session_id=session_id,
+                run_id=run_id,
+                kind=kind,
+                title=args.get("title") or "Approval required",
+                description=args.get("description") or "",
+                payload=payload if isinstance(payload, dict) else {},
+                tool_call_id=tool_call_id,
+                options=options if isinstance(options, list) else None,
+                input_schema=input_schema if isinstance(input_schema, dict) else None,
+                expires_in_seconds=args.get("expires_in_seconds") or None,
+            )
+        except ValueError:
+            # One-pending guard, or the long-running body already created it.
+            pass
+
     async def run(self, input: Any) -> AsyncGenerator[Any, None]:
         user_id = self._get_user_id(input)
         session_id = input.thread_id
@@ -113,6 +162,10 @@ class PersistentChatAgent(ADKAgent):
         current_text_parts: list[str] = []
         current_message_events: list[dict[str, Any]] = []
         current_message_complete = False
+        # request_hitl is a long-running tool: ag_ui_adk forwards the call to the
+        # client instead of executing the Python body, so the HITL record is
+        # never written. We reconstruct it from the tool-call stream here.
+        hitl_arg_buffers: dict[str, list[str]] = {}
         async for event in super().run(prepared):
             try:
                 event_payload = event.model_dump(by_alias=True, exclude_none=True)
@@ -125,10 +178,10 @@ class PersistentChatAgent(ADKAgent):
                 pending = await HITLService.get_pending_hitl(user_id, session_id)
                 status = "interrupted" if pending else "completed"
 
-                if pending:
-                    run_id = str(getattr(event, "run_id", None) or input.run_id)
-                    required = HITLService.to_required_event(pending, session_id, run_id)
-                    yield required
+                # NOTE: do NOT emit a custom HITL_REQUIRED event — the AG-UI client
+                # rejects unknown event types (invalid_union_discriminator) and
+                # aborts the stream. The frontend surfaces the gate by polling
+                # GET /api/hitl/.../pending once the run finishes/interrupts.
 
                 if status == "completed" and current_message_id and current_message_complete:
                     content = "".join(current_text_parts).strip()
@@ -174,6 +227,27 @@ class PersistentChatAgent(ADKAgent):
                 current_message_complete = False
                 pending_events = []
                 continue
+
+            # Reconstruct the HITL record from the request_hitl tool-call stream.
+            if event_type == EventType.TOOL_CALL_START and (
+                getattr(event, "tool_call_name", None) == REQUEST_HITL_TOOL_NAME
+            ):
+                hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))] = []
+            elif event_type == EventType.TOOL_CALL_ARGS and (
+                str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
+            ):
+                hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))].append(
+                    getattr(event, "delta", "") or ""
+                )
+            elif event_type == EventType.TOOL_CALL_END and (
+                str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
+            ):
+                tcid = str(getattr(event, "tool_call_id", ""))
+                raw = "".join(hitl_arg_buffers.pop(tcid, []))
+                try:
+                    await self._create_hitl_from_args(user_id, session_id, input.run_id, tcid, raw)
+                except Exception as exc:
+                    logger.error("Failed to create HITL from tool args: %s", exc, exc_info=True)
 
             pending_events.append(event_payload)
 

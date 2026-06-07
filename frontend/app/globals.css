@@ -301,26 +301,6 @@ h6,
   animation: caretBlink 1s steps(1) infinite;
 }
 
-@keyframes floatWater {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-4px) rotate(-0.18deg);
-  }
-}
-.float-water {
-  animation: floatWater 4.5s ease-in-out infinite;
-  will-change: transform;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .float-water {
-    animation: none;
-  }
-}
-
 @keyframes rippleExpand {
   from {
     transform: translate(-50%, -50%) scale(0);

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import ReactMarkdown from "react-markdown";
@@ -17,7 +18,7 @@ type StepStatus = "pending" | "running" | "done" | "error";
 
 // Map tool names to human-friendly descriptions
 const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; description: string }> = {
-  transfer_to_agent: { label: "Processing", emoji: "⚡", description: "Connecting to agent..." },
+  transfer_to_agent: { label: "Thinking", emoji: "⚡", description: "Connecting to agent..." },
   researcher_google_search_agent: {
     label: "Searching the web",
     emoji: "🔍",
@@ -43,6 +44,106 @@ const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; descript
     emoji: "🔗",
     description: "Locating important resources...",
   },
+  // Orchestration / planning
+  planner: { label: "Planning", emoji: "🧭", description: "Planning the approach..." },
+  domain_orchestrator_agent: {
+    label: "Coordinating",
+    emoji: "🧩",
+    description: "Coordinating sub-agents...",
+  },
+  researcher: { label: "Researching", emoji: "🔬", description: "Researching in depth..." },
+  governance_agent: {
+    label: "Reviewing action",
+    emoji: "🛡️",
+    description: "Checking before changes...",
+  },
+  operations_agent: { label: "Saving changes", emoji: "💾", description: "Applying updates..." },
+  request_hitl: {
+    label: "Requesting approval",
+    emoji: "👤",
+    description: "Waiting for your input...",
+  },
+  // Faculty / shortlist
+  faculty_discovery_agent: {
+    label: "Finding faculty",
+    emoji: "🎓",
+    description: "Searching for professors...",
+  },
+  faculty_profile_deep_dive_agent: {
+    label: "Reading faculty profile",
+    emoji: "📄",
+    description: "Analyzing a professor's work...",
+  },
+  funding_requirement_flag_detection_agent: {
+    label: "Checking funding",
+    emoji: "💰",
+    description: "Assessing funding requirements...",
+  },
+  // Tracker / applications
+  application_agent: {
+    label: "Updating tracker",
+    emoji: "🗂️",
+    description: "Managing applications...",
+  },
+  application_tracker_agent: {
+    label: "Updating tracker",
+    emoji: "🗂️",
+    description: "Managing applications...",
+  },
+  internal_app_agent: {
+    label: "Updating tracker",
+    emoji: "🗂️",
+    description: "Managing applications...",
+  },
+  account_agent: {
+    label: "Updating profile",
+    emoji: "👤",
+    description: "Reading or editing settings...",
+  },
+  // Outreach drafting
+  outreach_crm_draft: {
+    label: "Drafting outreach",
+    emoji: "✉️",
+    description: "Writing outreach...",
+  },
+  outreach_talking_points: {
+    label: "Drafting outreach",
+    emoji: "✉️",
+    description: "Preparing talking points...",
+  },
+  outreach_paper_summary: {
+    label: "Summarizing papers",
+    emoji: "📚",
+    description: "Summarizing recent work...",
+  },
+  // SOP drafting
+  sop_translation_intake: {
+    label: "Drafting SOP",
+    emoji: "📝",
+    description: "Gathering SOP details...",
+  },
+  sop_translation_strategy: {
+    label: "Drafting SOP",
+    emoji: "📝",
+    description: "Shaping SOP strategy...",
+  },
+  sop_translation_draft: { label: "Drafting SOP", emoji: "📝", description: "Writing the SOP..." },
+  // Research narrative
+  research_evidence_synthesis: {
+    label: "Shaping research narrative",
+    emoji: "🧠",
+    description: "Synthesizing evidence...",
+  },
+  research_framing_recommendation: {
+    label: "Shaping research narrative",
+    emoji: "🧠",
+    description: "Framing your research...",
+  },
+  research_narrative_angles: {
+    label: "Shaping research narrative",
+    emoji: "🧠",
+    description: "Exploring angles...",
+  },
 };
 
 function getToolDescription(toolName: string): { label: string; emoji: string } {
@@ -55,25 +156,46 @@ function getToolDescription(toolName: string): { label: string; emoji: string } 
 
 type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
-  | { type: "agent"; id: string; content: string; timestamp: Date }
   | {
-    type: "step";
-    id: string;
-    label: string;
-    status: StepStatus;
-    detail?: string;
-    tool?: string;
-    children?: { label: string; status: StepStatus; detail?: string }[];
-  }
+      type: "agent";
+      id: string;
+      content: string;
+      timestamp: Date;
+      run?: string;
+      thinking?: boolean;
+    }
+  | {
+      type: "step";
+      id: string;
+      label: string;
+      status: StepStatus;
+      detail?: string;
+      tool?: string;
+      children?: { label: string; status: StepStatus; detail?: string }[];
+    }
   | { type: "phase"; id: string; label: string; status: StepStatus }
   | {
-    type: "approval";
-    id: string;
-    title: string;
-    description: string;
-    items?: string[];
-    resolved?: "approved" | "rejected";
-  };
+      type: "approval";
+      id: string; // hitlId
+      kind: "approval" | "choice" | "input";
+      title: string;
+      description: string;
+      items?: string[];
+      options?: { id: string; label: string }[];
+      schema?: Record<string, unknown> | null;
+      reviewContent?: string; // editable draft/body to review before saving
+      navTarget?: { route: string; label: string }; // where to open the result
+      expiresAt?: string | null;
+      resolved?: "approved" | "rejected";
+    }
+  | {
+      type: "result";
+      id: string;
+      title: string;
+      subtitle: string;
+      route: string;
+      label: string;
+    };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
@@ -82,7 +204,7 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
   for (const e of events) {
     const type = e.type as string;
     if (type === "RUN_STARTED") {
-      items.push({ type: "phase", id: `run-${messageId}`, label: "Processing", status: "done" });
+      items.push({ type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" });
     } else if (type === "STEP_STARTED") {
       const name = e.stepName as string;
       items.push({ type: "phase", id: `step-${name}-${messageId}`, label: name, status: "done" });
@@ -140,23 +262,27 @@ function StreamingText({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="text-xs font-dm">{children}</li>,
+          p: ({ children }) => <p className="mb-3.5 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc pl-5 mb-3.5 space-y-1.5">{children}</ul>,
+          ol: ({ children }) => (
+            <ol className="list-decimal pl-5 mb-3.5 space-y-1.5">{children}</ol>
+          ),
+          li: ({ children }) => <li className="text-[15px] font-dm leading-7">{children}</li>,
           strong: ({ children }) => (
             <strong className="font-bold" style={{ color: "#0D0D0D" }}>
               {children}
             </strong>
           ),
           h1: ({ children }) => (
-            <h1 className="font-bold font-space text-base mb-2 mt-3 first:mt-0">{children}</h1>
+            <h1 className="font-bold font-space text-lg mb-2.5 mt-4 first:mt-0">{children}</h1>
           ),
           h2: ({ children }) => (
-            <h2 className="font-bold font-space text-sm mb-2 mt-3 first:mt-0">{children}</h2>
+            <h2 className="font-bold font-space text-base mb-2 mt-4 first:mt-0">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="font-semibold font-space text-sm mb-1 mt-2 first:mt-0">{children}</h3>
+            <h3 className="font-semibold font-space text-[15px] mb-1.5 mt-3 first:mt-0">
+              {children}
+            </h3>
           ),
           code: ({ children }) => (
             <code
@@ -281,11 +407,23 @@ type PhaseGroup = {
   steps: Extract<ChatItem, { type: "step" }>[];
 };
 
+// Map a HITL payload `entity` hint to where the saved result lives.
+function entityNav(entity?: string): { route: string; label: string } | undefined {
+  if (!entity) return undefined;
+  const e = entity.toLowerCase();
+  if (["draft", "sop", "outreach", "outreach-prep", "research-narrative", "narrative"].includes(e))
+    return { route: "/drafts", label: "Drafts" };
+  if (["tracker", "application", "app"].includes(e)) return { route: "/tracker", label: "Tracker" };
+  if (["shortlist", "faculty"].includes(e)) return { route: "/shortlist", label: "Shortlist" };
+  return undefined;
+}
+
 function groupStream(stream: ChatItem[]) {
   const out: Array<
     | { kind: "standalone"; item: Exclude<ChatItem, { type: "phase" | "step" }> }
     | { kind: "group"; group: PhaseGroup }
     | { kind: "orphan"; item: Extract<ChatItem, { type: "step" }> }
+    | { kind: "thinking"; items: Extract<ChatItem, { type: "agent" }>[] }
   > = [];
   for (const item of stream) {
     if (item.type === "phase") {
@@ -294,11 +432,58 @@ function groupStream(stream: ChatItem[]) {
       const last = out[out.length - 1];
       if (last?.kind === "group") last.group.steps.push(item);
       else out.push({ kind: "orphan", item });
+    } else if (item.type === "agent" && item.thinking) {
+      const last = out[out.length - 1];
+      if (last?.kind === "thinking") last.items.push(item);
+      else out.push({ kind: "thinking", items: [item] });
     } else {
       out.push({ kind: "standalone", item: item as Exclude<ChatItem, { type: "phase" | "step" }> });
     }
   }
   return out;
+}
+
+// Collapsible "Thinking" disclosure — holds a run's intermediate agent messages
+// so the chat stays tidy (the visible answer is the result card / final reply).
+function ThinkingBlock({ items }: { items: Extract<ChatItem, { type: "agent" }>[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="py-1 msg-enter flex gap-3">
+      <div
+        className="w-7 h-7 shrink-0 flex items-center justify-center mt-0.5"
+        style={{ background: "#EDE6D3", border: "2px solid #0D0D0D", borderRadius: "50%" }}
+      >
+        <span className="text-xs leading-none">🎓</span>
+      </div>
+      <div className="flex flex-col gap-2 min-w-0 flex-1">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 w-fit bouncy"
+          title={open ? "Hide thinking" : "Show thinking"}
+        >
+          <Icon icon="solar:lightbulb-bolt-bold" width={13} style={{ color: "#E8472A" }} />
+          <span className="text-xs font-semibold font-space" style={{ color: "#9CA3AF" }}>
+            Thinking
+          </span>
+          <Icon
+            icon="solar:alt-arrow-down-bold"
+            width={11}
+            className={clsx("transition-transform duration-150", !open && "-rotate-90")}
+            style={{ color: "#B0A898" }}
+          />
+        </button>
+        {open && (
+          <div className="pl-3 flex flex-col gap-3" style={{ borderLeft: "2px solid #EDE6D3" }}>
+            {items.map((it) => (
+              <div key={it.id} className="text-xs" style={{ opacity: 0.7 }}>
+                <StreamingText content={it.content} messageId={it.id} isStreaming={false} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function AgentWorkCard({
@@ -445,43 +630,48 @@ function AgentWorkCard({
 
 function ApprovalGate({
   item,
+  expired,
   onResolve,
+  onAlwaysAllow,
 }: {
   item: Extract<ChatItem, { type: "approval" }>;
-  onResolve: (id: string, d: "approved" | "rejected") => void;
+  expired: boolean;
+  onResolve: (id: string, d: "approved" | "rejected", response?: Record<string, unknown>) => void;
+  onAlwaysAllow: (id: string) => void;
 }) {
+  const resolvedView = item.resolved || expired;
   return (
-    <div className="flex gap-3 msg-enter">
+    <div className="msg-enter w-full max-w-xl">
       <div
-        className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
+        className="overflow-hidden"
         style={{
-          background: "#EDE6D3",
-          color: "#5A5A5A",
+          background: "#FFFFFF",
           border: "2px solid #0D0D0D",
-          borderRadius: "50%",
+          boxShadow: "3px 3px 0 #0D0D0D",
+          borderRadius: "8px",
         }}
       >
-        <span className="text-xs leading-none">🎓</span>
-      </div>
-      <div className="flex flex-col gap-3 max-w-[75%]">
-        <div
-          className="px-4 py-3 text-sm font-dm leading-relaxed"
-          style={{
-            background: "#FFFFFF",
-            color: "#0D0D0D",
-            border: "2px solid #0D0D0D",
-            boxShadow: "3px 3px 0 #0D0D0D",
-            borderRadius: "8px",
-          }}
-        >
-          <p className="font-semibold font-space mb-1" style={{ color: "#0D0D0D" }}>
+        {/* Permission header */}
+        <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#0D0D0D" }}>
+          <Icon icon="solar:shield-keyhole-bold" width={14} style={{ color: "#E8472A" }} />
+          <span
+            className="text-[10px] font-bold uppercase tracking-widest font-space"
+            style={{ color: "#FFFFFF" }}
+          >
+            Permission required
+          </span>
+        </div>
+
+        {/* Body */}
+        <div className="px-4 py-3">
+          <p className="font-bold font-space text-sm mb-1" style={{ color: "#0D0D0D" }}>
             {item.title}
           </p>
-          <p className="text-xs font-dm mb-3" style={{ color: "#5A5A5A" }}>
+          <p className="text-xs font-dm leading-relaxed" style={{ color: "#5A5A5A" }}>
             {item.description}
           </p>
-          {item.items && (
-            <ul className="space-y-1 mb-1">
+          {item.items && item.items.length > 0 && (
+            <ul className="space-y-1 mt-2">
               {item.items.map((it, i) => (
                 <li
                   key={i}
@@ -496,48 +686,373 @@ function ApprovalGate({
               ))}
             </ul>
           )}
+
+          {/* Options */}
+          <div className="mt-3">
+            {resolvedView ? (
+              <div
+                className="flex items-center gap-2 text-xs font-semibold font-space"
+                style={{ color: item.resolved === "approved" ? "#4ECDC4" : "#9CA3AF" }}
+              >
+                <Icon
+                  icon={
+                    item.resolved === "approved"
+                      ? "solar:check-circle-bold"
+                      : expired
+                        ? "solar:clock-circle-bold"
+                        : "solar:close-circle-bold"
+                  }
+                  width={13}
+                />
+                {item.resolved === "approved"
+                  ? "Approved"
+                  : item.resolved === "rejected"
+                    ? "Rejected"
+                    : "Expired — no longer awaiting input"}
+              </div>
+            ) : typeof item.reviewContent === "string" ? (
+              <ReviewGate
+                initial={item.reviewContent}
+                onApprove={(content) => onResolve(item.id, "approved", { content })}
+                onReject={() => onResolve(item.id, "rejected")}
+              />
+            ) : item.kind === "choice" && item.options?.length ? (
+              <div className="flex flex-col gap-1.5">
+                {item.options.map((o) => (
+                  <PermissionOption
+                    key={o.id}
+                    icon="solar:check-circle-bold"
+                    label={o.label}
+                    onClick={() =>
+                      onResolve(item.id, "approved", { optionId: o.id, label: o.label })
+                    }
+                  />
+                ))}
+                <PermissionOption
+                  icon="solar:close-circle-bold"
+                  label="Cancel"
+                  muted
+                  onClick={() => onResolve(item.id, "rejected")}
+                />
+              </div>
+            ) : item.kind === "input" ? (
+              <HITLInput item={item} onResolve={onResolve} />
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <PermissionOption
+                  icon="solar:check-circle-bold"
+                  label="Yes, allow"
+                  description="Approve this action"
+                  primary
+                  onClick={() => onResolve(item.id, "approved")}
+                />
+                <PermissionOption
+                  icon="solar:shield-check-bold"
+                  label="Yes, and don't ask again"
+                  description="Auto-approve future actions"
+                  onClick={() => onAlwaysAllow(item.id)}
+                />
+                <PermissionOption
+                  icon="solar:close-circle-bold"
+                  label="No, reject"
+                  description="Don't make this change"
+                  muted
+                  onClick={() => onResolve(item.id, "rejected")}
+                />
+              </div>
+            )}
+          </div>
         </div>
-        {item.resolved ? (
-          <div
-            className="flex items-center gap-2 text-xs font-semibold font-space"
-            style={{ color: item.resolved === "approved" ? "#4ECDC4" : "#9CA3AF" }}
-          >
-            <Icon
-              icon={
-                item.resolved === "approved" ? "solar:check-circle-bold" : "solar:close-circle-bold"
-              }
-              width={13}
-            />
-            {item.resolved === "approved" ? "Approved" : "Rejected"}
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={() => onResolve(item.id, "approved")}
-              className="btn-teal btn-sm gap-1.5 text-xs"
-            >
-              <Icon icon="solar:check-circle-bold" width={12} />
-              Yes, save
-            </button>
-            <button
-              onClick={() => onResolve(item.id, "rejected")}
-              className="btn-white btn-sm gap-1.5 text-xs"
-            >
-              <Icon icon="solar:close-circle-bold" width={12} />
-              No, discard
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-// Stable per-id offset so bubbles bob out of sync instead of in lockstep.
-function floatDelay(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return `-${(h % 45) / 10}s`;
+// A single selectable permission option (numbered, full-width) — mirrors the
+// Claude-style permission prompt.
+function PermissionOption({
+  icon,
+  label,
+  description,
+  onClick,
+  primary,
+  muted,
+}: {
+  icon: string;
+  label: string;
+  description?: string;
+  onClick: () => void;
+  primary?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-3 px-3 py-2.5 text-left bouncy w-full"
+      style={{
+        background: primary ? "#4ECDC4" : "#FFFFFF",
+        border: `1.5px solid ${primary ? "#0D0D0D" : "#C8C0AF"}`,
+        borderRadius: "8px",
+      }}
+      onMouseEnter={(e) => {
+        if (!primary) e.currentTarget.style.background = "#F7F0E3";
+      }}
+      onMouseLeave={(e) => {
+        if (!primary) e.currentTarget.style.background = "#FFFFFF";
+      }}
+    >
+      <Icon
+        icon={icon}
+        width={16}
+        className="shrink-0"
+        style={{ color: muted ? "#9CA3AF" : primary ? "#0D0D0D" : "#E8472A" }}
+      />
+      <span className="flex flex-col min-w-0">
+        <span
+          className="text-sm font-semibold font-space leading-tight"
+          style={{ color: muted ? "#9CA3AF" : "#0D0D0D" }}
+        >
+          {label}
+        </span>
+        {description && (
+          <span
+            className="text-[11px] font-dm leading-tight mt-0.5"
+            style={{ color: primary ? "rgba(13,13,13,0.65)" : "#9CA3AF" }}
+          >
+            {description}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// Result card shown after a write is approved — links to the saved item.
+function ResultCard({
+  item,
+  onOpen,
+}: {
+  item: Extract<ChatItem, { type: "result" }>;
+  onOpen: () => void;
+}) {
+  const icon =
+    item.route === "/tracker"
+      ? "solar:calendar-bold"
+      : item.route === "/shortlist"
+        ? "solar:star-bold"
+        : "solar:document-text-bold";
+  return (
+    <div className="flex gap-3 msg-enter">
+      <div
+        className="w-7 h-7 shrink-0 flex items-center justify-center mt-0.5"
+        style={{ background: "#EDE6D3", border: "2px solid #0D0D0D", borderRadius: "50%" }}
+      >
+        <span className="text-xs leading-none">🎓</span>
+      </div>
+      <div
+        className="flex items-center gap-3 px-3 py-2.5 max-w-[88%] w-full"
+        style={{
+          background: "#FFFFFF",
+          border: "2px solid #0D0D0D",
+          boxShadow: "3px 3px 0 #0D0D0D",
+          borderRadius: "8px",
+        }}
+      >
+        <div
+          className="w-9 h-9 shrink-0 flex items-center justify-center"
+          style={{ background: "#F7F0E3", border: "1.5px solid #0D0D0D", borderRadius: "6px" }}
+        >
+          <Icon icon={icon} width={17} style={{ color: "#E8472A" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold font-space truncate" style={{ color: "#0D0D0D" }}>
+            {item.title}
+          </div>
+          <div className="text-[11px] font-dm" style={{ color: "#9CA3AF" }}>
+            {item.subtitle} · {item.label}
+          </div>
+        </div>
+        <button onClick={onOpen} className="btn-black btn-sm text-xs shrink-0">
+          Open in {item.label}
+          <Icon icon="solar:arrow-right-up-bold" width={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Review-and-edit gate: the proposed draft/body is shown in an editable area;
+// the user approves as-is or edits then approves. The (possibly edited) content
+// is sent back so the backend saves exactly what was reviewed.
+function ReviewGate({
+  initial,
+  onApprove,
+  onReject,
+}: {
+  initial: string;
+  onApprove: (content: string) => void;
+  onReject: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  const edited = text !== initial;
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={10}
+        className="input-brutal w-full text-xs font-dm resize-y"
+        style={{ minHeight: 160 }}
+      />
+      <div className="flex flex-col gap-1.5">
+        <PermissionOption
+          icon="solar:check-circle-bold"
+          label={edited ? "Update & approve" : "Approve"}
+          description={edited ? "Save your edited version" : "Save as drafted"}
+          primary
+          onClick={() => onApprove(text)}
+        />
+        <PermissionOption
+          icon="solar:close-circle-bold"
+          label="Reject"
+          description="Don't save"
+          muted
+          onClick={onReject}
+        />
+      </div>
+    </div>
+  );
+}
+
+// HITL "input" kind: a schema-driven form when `schema.properties` is present,
+// otherwise a freeform textarea. Submits the collected response object.
+function HITLInput({
+  item,
+  onResolve,
+}: {
+  item: Extract<ChatItem, { type: "approval" }>;
+  onResolve: (id: string, d: "approved" | "rejected", response?: Record<string, unknown>) => void;
+}) {
+  const schema = (item.schema ?? null) as {
+    properties?: Record<
+      string,
+      { title?: string; type?: string; enum?: string[]; format?: string }
+    >;
+    required?: string[];
+  } | null;
+  const props =
+    schema?.properties && typeof schema.properties === "object" ? schema.properties : null;
+  const required = Array.isArray(schema?.required) ? schema!.required! : [];
+
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [text, setText] = useState("");
+
+  const setField = (k: string, v: string) => setFields((f) => ({ ...f, [k]: v }));
+
+  if (props) {
+    const keys = Object.keys(props);
+    const missing = required.some((k) => !(fields[k] ?? "").trim());
+    const submit = () => {
+      const out: Record<string, string> = {};
+      for (const k of keys) if ((fields[k] ?? "").trim()) out[k] = fields[k].trim();
+      onResolve(item.id, "approved", out);
+    };
+    return (
+      <div className="flex flex-col gap-2">
+        {keys.map((k) => {
+          const spec = props[k] ?? {};
+          const label = spec.title || k.replace(/_/g, " ");
+          const isReq = required.includes(k);
+          return (
+            <div key={k}>
+              <label
+                className="block text-[10px] font-bold font-space uppercase tracking-wider mb-1"
+                style={{ color: "#5A5A5A" }}
+              >
+                {label}
+                {isReq && <span style={{ color: "#E8472A" }}> *</span>}
+              </label>
+              {spec.enum?.length ? (
+                <select
+                  value={fields[k] ?? ""}
+                  onChange={(e) => setField(k, e.target.value)}
+                  className="input-brutal w-full text-xs"
+                >
+                  <option value="">Select…</option>
+                  {spec.enum.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : spec.format === "textarea" ? (
+                <textarea
+                  value={fields[k] ?? ""}
+                  onChange={(e) => setField(k, e.target.value)}
+                  rows={2}
+                  className="input-brutal w-full text-xs resize-none"
+                />
+              ) : (
+                <input
+                  value={fields[k] ?? ""}
+                  onChange={(e) => setField(k, e.target.value)}
+                  className="input-brutal w-full text-xs"
+                />
+              )}
+            </div>
+          );
+        })}
+        <div className="flex gap-2 pt-0.5">
+          <button
+            onClick={submit}
+            disabled={missing}
+            className="btn-teal btn-sm gap-1.5 text-xs"
+            style={missing ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+          >
+            <Icon icon="solar:check-circle-bold" width={12} />
+            Submit
+          </button>
+          <button
+            onClick={() => onResolve(item.id, "rejected")}
+            className="btn-white btn-sm gap-1.5 text-xs"
+          >
+            <Icon icon="solar:close-circle-bold" width={12} />
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={2}
+        placeholder="Type your response…"
+        className="input-brutal w-full text-xs resize-none"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={() => onResolve(item.id, "approved", { input: text.trim() })}
+          disabled={!text.trim()}
+          className="btn-teal btn-sm gap-1.5 text-xs"
+          style={!text.trim() ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+        >
+          <Icon icon="solar:check-circle-bold" width={12} />
+          Submit
+        </button>
+        <button
+          onClick={() => onResolve(item.id, "rejected")}
+          className="btn-white btn-sm gap-1.5 text-xs"
+        >
+          <Icon icon="solar:close-circle-bold" width={12} />
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 type GlassBubble = {
@@ -665,26 +1180,24 @@ function MessageBubble({
           document.body
         )}
       <div className={clsx("flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
-        <div
-          className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
-          style={{
-            background: isUser ? "#0D0D0D" : "#EDE6D3",
-            color: isUser ? "#fff" : "#5A5A5A",
-            border: "2px solid #0D0D0D",
-            borderRadius: "50%",
-          }}
-        >
-          {isUser ? (
-            <Icon icon="solar:user-bold" width={13} />
-          ) : (
+        {!isUser && (
+          <div
+            className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
+            style={{
+              background: "#EDE6D3",
+              color: "#5A5A5A",
+              border: "2px solid #0D0D0D",
+              borderRadius: "50%",
+            }}
+          >
             <span className="text-xs leading-none">🎓</span>
-          )}
-        </div>
+          </div>
+        )}
         <div className={clsx("flex flex-col gap-1 max-w-[88%]", isUser && "items-end")}>
           <div
             ref={boxRef}
             onPointerDown={spawnRipple}
-            className="float-water relative overflow-hidden px-4 py-2.5 text-xs font-dm leading-relaxed"
+            className="relative overflow-hidden px-5 py-3 text-[15px] font-dm leading-7"
             style={{
               background: isUser ? "#0D0D0D" : "#FFFFFF",
               color: isUser ? "#fff" : "#0D0D0D",
@@ -692,7 +1205,6 @@ function MessageBubble({
               boxShadow: "3px 3px 0 #0D0D0D",
               borderRadius: "8px",
               minHeight: isStreaming ? "100px" : "auto",
-              animationDelay: floatDelay(item.id),
             }}
           >
             {ripples.map((r) => (
@@ -741,6 +1253,8 @@ export default function ChatPage() {
   const [urlInput, setUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showEvents, setShowEvents] = useState(true);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [now, setNow] = useState(0);
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
@@ -762,6 +1276,7 @@ export default function ChatPage() {
   const justCreatedSession = useRef(false);
 
   const { setRunning } = useAgent();
+  const router = useRouter();
 
   const isAgentRunning = running;
   const runningStep = stream.find(
@@ -771,13 +1286,41 @@ export default function ChatPage() {
     ? `${getToolDescription(runningStep.tool).label}...`
     : "Working...";
   const pendingApproval = stream.some(
-    (i) => i.type === "approval" && !("resolved" in i && i.resolved)
+    (i) => i.type === "approval" && !i.resolved && !(i.expiresAt && Date.parse(i.expiresAt) < now)
   );
   const inputBlocked = isAgentRunning || pendingApproval;
 
   useEffect(() => {
     setRunning(isAgentRunning);
   }, [isAgentRunning, setRunning]);
+  // Load the auto-approve preference once.
+  useEffect(() => {
+    import("../../lib/api")
+      .then(({ usersApi }) => usersApi.getPreferences())
+      .then((res) => setAutoApprove(!!res.data.auto_approve))
+      .catch(() => {});
+  }, []);
+
+  // Clock for HITL expiry checks (set in callbacks, not the effect body).
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const initial = setTimeout(tick, 0);
+    const interval = setInterval(tick, 15000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function toggleAutoApprove(value: boolean) {
+    setAutoApprove(value);
+    try {
+      const { preferencesApi } = await import("../../lib/api");
+      await preferencesApi.setAutoApprove(value);
+    } catch {
+      setAutoApprove(!value);
+    }
+  }
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [stream]);
@@ -798,6 +1341,8 @@ export default function ChatPage() {
         { type: "user", id: first.id, content: first.content, timestamp: new Date() },
       ]);
       setQueue(rest);
+      // sendToBackend is a hoisted function declaration; safe to call here.
+      // eslint-disable-next-line react-hooks/immutability
       sendToBackend(first.content, first.id);
     }
   }, [isAgentRunning]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -855,9 +1400,13 @@ export default function ChatPage() {
           // Restored runs are already finished → collapse their activity cards.
           setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
           agMessages.current = restored;
+          // Re-surface a pending HITL gate if this session paused awaiting input.
+          // eslint-disable-next-line react-hooks/immutability
+          checkHITL();
         })
         .catch((err) => console.error("[chat] load session messages error", err))
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
   function togglePhase(id: string) {
@@ -872,10 +1421,34 @@ export default function ChatPage() {
   function handleEvent(event: BaseEvent, phaseId: string) {
     const type = event.type as string;
 
-    if (type === "RUN_STARTED") {
+    if (type === "HITL_REQUIRED") {
+      // Instant gate (mid-stream) — the poll on `complete` is the fallback.
+      const e = event as unknown as {
+        hitlId?: string;
+        kind?: "approval" | "choice" | "input";
+        title?: string;
+        description?: string;
+        payload?: Record<string, unknown>;
+        options?: { id: string; label: string }[];
+        schema?: Record<string, unknown>;
+        expiresAt?: string;
+      };
+      if (e.hitlId) {
+        addApproval({
+          id: e.hitlId,
+          kind: e.kind,
+          title: e.title,
+          description: e.description,
+          payload: e.payload,
+          options: e.options,
+          schema: e.schema,
+          expiresAt: e.expiresAt,
+        });
+      }
+    } else if (type === "RUN_STARTED") {
       setStream((p) => [
         ...p,
-        { type: "phase", id: phaseId, label: "Processing", status: "running" },
+        { type: "phase", id: phaseId, label: "Thinking", status: "running" },
       ]);
       // Expanded while running; collapsed automatically on finish (see RUN_FINISHED).
     } else if (type === "TEXT_MESSAGE_START") {
@@ -884,7 +1457,7 @@ export default function ChatPage() {
       agMsgContent.current.set(e.messageId, "");
       setStream((p) => [
         ...p,
-        { type: "agent", id: e.messageId, content: "", timestamp: new Date() },
+        { type: "agent", id: e.messageId, content: "", timestamp: new Date(), run: phaseId },
       ]);
     } else if (type === "TEXT_MESSAGE_CONTENT") {
       const e = event as unknown as { messageId: string; delta: string };
@@ -907,18 +1480,29 @@ export default function ChatPage() {
       ];
     } else if (type === "TOOL_CALL_START") {
       const e = event as unknown as { toolCallId: string; toolCallName: string };
+      // transfer_to_agent is internal routing — skip it so the activity card
+      // isn't full of consecutive duplicate "Thinking" steps.
+      if (e.toolCallName === "transfer_to_agent") return;
       flushSync(() => {
-        setStream((p) => [
-          ...p,
-          {
-            type: "step",
-            id: e.toolCallId,
-            label: e.toolCallName.replace(/_/g, " "),
-            status: "running",
-            tool: e.toolCallName,
-            detail: e.toolCallName,
-          },
-        ]);
+        setStream((p) => {
+          // Collapse consecutive duplicate tool calls (e.g. the agent listing
+          // drafts repeatedly) into a single step.
+          const lastStep = [...p].reverse().find((it) => it.type === "step");
+          if (lastStep && lastStep.type === "step" && lastStep.tool === e.toolCallName) {
+            return p;
+          }
+          return [
+            ...p,
+            {
+              type: "step",
+              id: e.toolCallId,
+              label: e.toolCallName.replace(/_/g, " "),
+              status: "running",
+              tool: e.toolCallName,
+              detail: e.toolCallName,
+            },
+          ];
+        });
       });
     } else if (type === "TOOL_CALL_END") {
       const e = event as unknown as { toolCallId: string };
@@ -954,13 +1538,29 @@ export default function ChatPage() {
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
       const phaseIds: string[] = [];
+      // A multi-message run is a reasoning chain: collapse every agent message
+      // EXCEPT the last into a "Thinking" dropdown; the last stays as the visible
+      // answer (plus any result card). A single-message run stays fully visible.
+      const runAgentIdxs = stream
+        .map((item, i) => (item.type === "agent" && item.run === phaseId ? i : -1))
+        .filter((i) => i >= 0);
+      const lastAgentIdx = runAgentIdxs[runAgentIdxs.length - 1] ?? -1;
+      const collapseThinking = runAgentIdxs.length >= 2;
       setStream((p) =>
-        p.map((item) => {
+        p.map((item, i) => {
           if (item.type === "phase") {
             phaseIds.push(item.id);
             if (item.id === phaseId && item.status === "running") return { ...item, status };
           }
           if (item.type === "step" && item.status === "running") return { ...item, status: "done" };
+          if (
+            collapseThinking &&
+            item.type === "agent" &&
+            item.run === phaseId &&
+            i !== lastAgentIdx
+          ) {
+            return { ...item, thinking: true };
+          }
           return item;
         })
       );
@@ -973,40 +1573,154 @@ export default function ChatPage() {
     }
   }
 
+  // Poll for a pending HITL gate (after a run finishes / interrupts, and on
+  // session restore). The backend creates the record before ending the run, so
+  // a pending result here means the run paused for human input.
+  // Push a HITL gate into the stream (deduped by id). Shared by the live
+  // HITL_REQUIRED event and the getPending poll/restore path.
+  function addApproval(a: {
+    id: string;
+    kind?: "approval" | "choice" | "input";
+    title?: string;
+    description?: string;
+    payload?: Record<string, unknown> | null;
+    options?: { id: string; label: string }[] | null;
+    schema?: Record<string, unknown> | null;
+    expiresAt?: string | null;
+  }) {
+    if (!a.id) return;
+    const payload = (a.payload && typeof a.payload === "object" ? a.payload : {}) as Record<
+      string,
+      unknown
+    >;
+    // A draft/body to review-and-edit before saving.
+    const reviewContent =
+      typeof payload.content === "string"
+        ? payload.content
+        : typeof payload.body === "string"
+          ? payload.body
+          : undefined;
+    // Where the saved result lives, for the result-card link.
+    const entity = typeof payload.entity === "string" ? payload.entity : undefined;
+    const navTarget = entityNav(entity);
+    // Build the readable summary list, hiding the bulky review content.
+    const items = Object.entries(payload)
+      .filter(([k]) => k !== "content" && k !== "body" && k !== "entity")
+      .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
+    setStream((p) =>
+      p.some((i) => i.type === "approval" && i.id === a.id)
+        ? p
+        : [
+            ...p,
+            {
+              type: "approval",
+              id: a.id,
+              kind: a.kind ?? "approval",
+              title: a.title || "Approval required",
+              description: a.description || "Review the proposed action below.",
+              items: items.length ? items : undefined,
+              options: a.options ?? undefined,
+              schema: a.schema ?? undefined,
+              reviewContent,
+              navTarget,
+              expiresAt: a.expiresAt ?? undefined,
+            },
+          ]
+    );
+  }
+
   async function checkHITL() {
     try {
       const { hitlApi } = await import("../../lib/api");
       const res = await hitlApi.getPending(threadId.current);
-      if (!res.data) return;
       const hitl = res.data;
-      const items = hitl.payload
-        ? Object.entries(hitl.payload).map(
-          ([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
-        )
-        : undefined;
-      setStream((p) => [
-        ...p,
-        {
-          type: "approval",
-          id: hitl.id,
-          title: hitl.type.replace(/_/g, " "),
-          description: "Review the proposed action below.",
-          items,
-        },
-      ]);
-    } catch { }
+      if (!hitl || (hitl.status && hitl.status !== "pending")) return;
+      addApproval({
+        id: hitl.id,
+        kind: hitl.kind,
+        title: hitl.title,
+        description: hitl.description,
+        payload: hitl.payload,
+        options: hitl.options,
+        schema: hitl.schema,
+        expiresAt: hitl.expires_at,
+      });
+    } catch {}
   }
 
-  async function resolveApproval(id: string, decision: "approved" | "rejected") {
-    setStream((prev) =>
-      prev.map((item) =>
-        item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
-      )
-    );
+  async function resolveApproval(
+    id: string,
+    decision: "approved" | "rejected",
+    response?: Record<string, unknown>
+  ) {
     try {
       const { hitlApi } = await import("../../lib/api");
-      await hitlApi.resolve(id, decision === "approved");
-    } catch { }
+      await hitlApi.resolve(id, decision, response);
+      // Flip the gate, and on approval drop a result card linking to the saved item.
+      setStream((prev) => {
+        const gate = prev.find((i) => i.id === id && i.type === "approval");
+        const next = prev.map((item) =>
+          item.id === id && item.type === "approval" ? { ...item, resolved: decision } : item
+        );
+        if (decision === "approved" && gate && gate.type === "approval" && gate.navTarget) {
+          next.push({
+            type: "result",
+            id: `result-${id}`,
+            title: gate.title,
+            subtitle: "Saved",
+            route: gate.navTarget.route,
+            label: gate.navTarget.label,
+          });
+        }
+        return next;
+      });
+      // Continue the same turn: resume the run with the human decision.
+      resumeRun(id, decision, response);
+    } catch (err) {
+      console.error("[chat] resolve HITL error", err);
+    }
+  }
+
+  // Resume a suspended turn after a HITL is resolved (same thread, new run,
+  // resume marker in forwardedProps). Streams the continuation.
+  function resumeRun(
+    hitlId: string,
+    decision: "approved" | "rejected",
+    response?: Record<string, unknown>
+  ) {
+    subscription.current?.unsubscribe();
+    setLocalRunning(true);
+    const phaseId = `phase-${crypto.randomUUID()}`;
+    import("../../lib/ag-ui")
+      .then(async ({ createChatAgent }) => {
+        const agent = await createChatAgent(agMessages.current, threadId.current);
+        subscription.current = agent
+          .run({
+            messages: agMessages.current,
+            threadId: threadId.current,
+            runId: crypto.randomUUID(),
+            tools: [],
+            context: [],
+            state: {},
+            forwardedProps: { resume: { hitlId, decision, response } },
+          })
+          .subscribe({
+            next: (event: BaseEvent) => handleEvent(event, phaseId),
+            error: (err: unknown) => {
+              console.error("[chat] resume error", err);
+              setLocalRunning(false);
+              checkHITL();
+            },
+            complete: () => {
+              setLocalRunning(false);
+              checkHITL();
+            },
+          });
+      })
+      .catch((err) => {
+        console.error("[chat] resume setup error", err);
+        setLocalRunning(false);
+      });
   }
 
   async function sendToBackend(content: string, msgId: string) {
@@ -1016,12 +1730,17 @@ export default function ChatPage() {
     const userMsg = { id: msgId, role: "user", content } as Message;
     agMessages.current = [...agMessages.current, userMsg];
 
-    const phaseId = `phase-${Date.now()}`;
+    const phaseId = `phase-${crypto.randomUUID()}`;
 
     const pushError = (msg: string) => {
       setStream((p) => [
         ...p,
-        { type: "agent", id: `err-${Date.now()}`, content: `Error: ${msg}`, timestamp: new Date() },
+        {
+          type: "agent",
+          id: `err-${crypto.randomUUID()}`,
+          content: `Error: ${msg}`,
+          timestamp: new Date(),
+        },
       ]);
       setLocalRunning(false);
     };
@@ -1038,7 +1757,7 @@ export default function ChatPage() {
         // If this chat was started from inside a group, assign it.
         if (pendingGroupId) {
           created.group_id = pendingGroupId;
-          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => { });
+          sessionsApi.setGroup(created.id, pendingGroupId).catch(() => {});
           setPendingGroupId(null);
         }
         setActiveSessionId(created.id);
@@ -1049,7 +1768,7 @@ export default function ChatPage() {
     } else {
       // Subsequent messages: save user msg now, before agent runs
       import("../../lib/api").then(({ sessionsApi }) =>
-        sessionsApi.createMessage(threadId.current, "user", content).catch(() => { })
+        sessionsApi.createMessage(threadId.current, "user", content).catch(() => {})
       );
     }
 
@@ -1071,6 +1790,9 @@ export default function ChatPage() {
           next: (event: BaseEvent) => handleEvent(event, phaseId),
           error: (err: unknown) => {
             console.error("[chat] agent error", err);
+            // A custom HITL_REQUIRED event can trip the AG-UI parser; the gate
+            // may still have been created server-side, so poll before erroring.
+            checkHITL();
             pushError(err instanceof Error ? err.message : String(err));
           },
           complete: () => {
@@ -1097,7 +1819,7 @@ export default function ChatPage() {
     const text = input.trim();
     if (!text && urls.length === 0) return;
     const content = text + (urls.length > 0 ? "\n" + urls.map((u) => `• ${u}`).join("\n") : "");
-    const id = `u${Date.now()}`;
+    const id = `u${crypto.randomUUID()}`;
     if (inputBlocked) {
       setQueue((p) => [...p, { id, content }]);
     } else {
@@ -1276,10 +1998,26 @@ export default function ChatPage() {
               if (item.type === "approval")
                 return (
                   <div key={item.id} className="py-2">
-                    <ApprovalGate item={item} onResolve={resolveApproval} />
+                    <ApprovalGate
+                      item={item}
+                      expired={!!item.expiresAt && Date.parse(item.expiresAt) < now}
+                      onResolve={resolveApproval}
+                      onAlwaysAllow={(id) => {
+                        toggleAutoApprove(true);
+                        resolveApproval(id, "approved");
+                      }}
+                    />
+                  </div>
+                );
+              if (item.type === "result")
+                return (
+                  <div key={item.id} className="py-1">
+                    <ResultCard item={item} onOpen={() => router.push(item.route)} />
                   </div>
                 );
             }
+            if (entry.kind === "thinking")
+              return <ThinkingBlock key={entry.items[0].id} items={entry.items} />;
             if (!showEvents) return null;
             if (entry.kind === "group")
               return (
@@ -1413,7 +2151,7 @@ export default function ChatPage() {
           style={{
             border: "2px solid #0D0D0D",
             boxShadow: "4px 4px 0 #0D0D0D",
-            borderRadius: "4px",
+            borderRadius: "18px",
           }}
         >
           <textarea
@@ -1460,6 +2198,27 @@ export default function ChatPage() {
                 title={showEvents ? "Hide agent events" : "Show agent events"}
               >
                 <Icon icon={showEvents ? "solar:eye-bold" : "solar:eye-closed-bold"} width={14} />
+              </button>
+              <button
+                onClick={() => toggleAutoApprove(!autoApprove)}
+                className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold font-space bouncy"
+                style={{
+                  border: "1.5px solid #0D0D0D",
+                  background: autoApprove ? "#4ECDC4" : "#F7F0E3",
+                  color: autoApprove ? "#0D0D0D" : "#5A5A5A",
+                  borderRadius: "4px",
+                }}
+                title={
+                  autoApprove
+                    ? "Agent acts without asking — click to require approval"
+                    : "Agent asks before changes — click to always allow"
+                }
+              >
+                <Icon
+                  icon={autoApprove ? "solar:shield-check-bold" : "solar:shield-keyhole-bold"}
+                  width={14}
+                />
+                {autoApprove ? "Always allow" : "Ask before changes"}
               </button>
             </div>
             <button

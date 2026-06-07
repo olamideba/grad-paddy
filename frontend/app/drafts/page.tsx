@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import type { Draft as ApiDraft, DraftStats } from "../../lib/api";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type DraftType = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
@@ -14,6 +15,7 @@ type Draft = {
   title: string;
   status: DraftStatus;
   wordCount: number;
+  content: string;
   excerpt: string;
   lastEdited: Date;
   sourceTags: string[];
@@ -43,6 +45,7 @@ function mapDraft(a: ApiDraft): Draft {
     title: a.title,
     status: normalizeDraftStatus(a.status),
     wordCount: a.word_count,
+    content: a.content,
     excerpt: excerpt || a.title,
     lastEdited: new Date(a.updated_at),
     sourceTags: a.source_tags,
@@ -100,7 +103,7 @@ function EditDraftModal({
   onClose: () => void;
   onSaved: (updated: Draft) => void;
 }) {
-  const [content, setContent] = useState(draft.excerpt);
+  const [content, setContent] = useState(draft.content);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -108,6 +111,17 @@ function EditDraftModal({
   useEffect(() => {
     textRef.current?.focus();
   }, []);
+
+  // Fetch the full draft so the editor always shows the latest stored content
+  // (the list payload can be stale or trimmed).
+  useEffect(() => {
+    import("../../lib/api")
+      .then(({ draftsApi }) => draftsApi.get(draft.id))
+      .then((res) => {
+        if (typeof res.data.content === "string") setContent(res.data.content);
+      })
+      .catch(() => {});
+  }, [draft.id]);
 
   const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
 
@@ -284,10 +298,12 @@ function DraftCard({
   draft,
   onEdit,
   onApprove,
+  onDelete,
 }: {
   draft: Draft;
   onEdit: () => void;
   onApprove: () => void;
+  onDelete: () => void;
 }) {
   const type = TYPE_META[draft.type];
   const status = STATUS_META[draft.status];
@@ -394,18 +410,24 @@ function DraftCard({
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          {draft.status !== "approved" && (
-            <button onClick={onEdit} className="btn-black btn-sm gap-1 text-xs">
-              <Icon icon="solar:pen-bold" width={10} />
-              Edit
-            </button>
-          )}
+          <button onClick={onEdit} className="btn-black btn-sm gap-1 text-xs">
+            <Icon icon="solar:pen-bold" width={10} />
+            Edit
+          </button>
           {draft.status === "draft" && (
             <button onClick={onApprove} className="btn-teal btn-sm gap-1 text-xs">
               <Icon icon="solar:check-circle-bold" width={10} />
               Approve
             </button>
           )}
+          <button
+            onClick={onDelete}
+            title="Delete draft"
+            className="btn-white btn-sm gap-1 text-xs"
+            style={{ color: "#E8472A", borderColor: "#E8472A" }}
+          >
+            <Icon icon="solar:trash-bin-trash-bold" width={11} />
+          </button>
         </div>
       </div>
     </div>
@@ -654,6 +676,7 @@ export default function DraftsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [approvingDraft, setApprovingDraft] = useState<Draft | null>(null);
+  const [confirmDeleteDraft, setConfirmDeleteDraft] = useState<Draft | null>(null);
 
   function updateDraft(updated: Draft) {
     setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
@@ -662,6 +685,15 @@ export default function DraftsPage() {
     setDrafts((prev) =>
       prev.map((d) => (d.id === id ? { ...d, status: "approved" as DraftStatus } : d))
     );
+  }
+  async function deleteDraft(draft: Draft) {
+    setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    try {
+      const { draftsApi } = await import("../../lib/api");
+      await draftsApi.delete(draft.id);
+    } catch {
+      // best-effort; list already updated optimistically
+    }
   }
 
   useEffect(() => {
@@ -853,6 +885,7 @@ export default function DraftsPage() {
                 draft={draft}
                 onEdit={() => setEditingDraft(draft)}
                 onApprove={() => setApprovingDraft(draft)}
+                onDelete={() => setConfirmDeleteDraft(draft)}
               />
             ))}
           </div>
@@ -882,6 +915,17 @@ export default function DraftsPage() {
           onConfirmed={() => {
             approveDraft(approvingDraft.id);
             setApprovingDraft(null);
+          }}
+        />
+      )}
+      {confirmDeleteDraft && (
+        <ConfirmModal
+          title="Delete draft"
+          message={`Delete “${confirmDeleteDraft.title}”? This cannot be undone.`}
+          onClose={() => setConfirmDeleteDraft(null)}
+          onConfirm={() => {
+            deleteDraft(confirmDeleteDraft);
+            setConfirmDeleteDraft(null);
           }}
         />
       )}

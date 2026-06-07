@@ -1,5 +1,7 @@
 from google.adk.agents import LlmAgent, SequentialAgent
 
+from src.agents.tools import create_draft, GOVERNANCE_TOOLS
+
 
 def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
     return LlmAgent(
@@ -11,8 +13,41 @@ def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
     )
 
 
+def _review_and_save_stage(
+    name: str, draft_type: str, state_key: str, title_hint: str
+) -> LlmAgent:
+    """Final stage: show the draft for human review/edit, then save on approval.
+
+    The drafted text lives in session state under `state_key`. We pass it to
+    request_hitl as payload.content (entity tags where it will be saved) so the
+    UI renders an editable review card. On approval the (possibly edited)
+    content is persisted via create_draft."""
+    return LlmAgent(
+        name=name,
+        model="gemini-3.1-pro-preview",
+        description=name.replace("_", " "),
+        instruction=(
+            "The completed draft is shown below. Before saving, ask the user to review it:\n"
+            "Call request_hitl exactly once with kind='approval', "
+            'options_json=\'[{"id":"approve","label":"Approve"},{"id":"reject","label":"Reject"}]\', '
+            f"title='Review {draft_type} draft', a one-line description, and payload_json set to a JSON "
+            f'object: {{"entity":"{draft_type}","content":<the FULL draft text below as a JSON string>}}.\n'
+            "Then WAIT for the human decision. If approved (their response may include an edited "
+            '"content"), call create_draft with '
+            f"type='{draft_type}', a concise title ({title_hint}), and content set to the approved content "
+            "(use the response content if provided, otherwise the draft below). If rejected, do not save. "
+            "Keep any text to the user to a single short sentence.\n\n"
+            f"DRAFT TEXT:\n{{{state_key}}}"
+        ),
+        tools=[create_draft, *GOVERNANCE_TOOLS],
+    )
+
+
 def build_sop_translation_chain() -> SequentialAgent:
-    """Prompt chain for SOP translation and drafting."""
+    """SOP translation: intake → strategy → draft → review & save.
+
+    The first three stages are the reasoning trail (the UI collapses them into a
+    'Thinking' disclosure); the final stage gates on human review before saving."""
     return SequentialAgent(
         name="sop_translation_chain",
         sub_agents=[
@@ -37,16 +72,23 @@ def build_sop_translation_chain() -> SequentialAgent:
                 name="sop_translation_draft",
                 output_key="sop_draft",
                 instruction=(
-                    "Using {sop_strategy}, write a draft SOP or a precise drafting scaffold. "
-                    "Preserve user voice, avoid fabrication, and include placeholders for missing facts."
+                    "Using {sop_strategy}, write the SOP draft. Preserve user voice, avoid "
+                    "fabrication, and use clearly marked [placeholders] for missing facts. "
+                    "Output only the draft text."
                 ),
+            ),
+            _review_and_save_stage(
+                name="sop_translation_persist",
+                draft_type="sop",
+                state_key="sop_draft",
+                title_hint="e.g. 'SOP for <program> at <university>'",
             ),
         ],
     )
 
 
 def build_outreach_prep_chain() -> SequentialAgent:
-    """Prompt chain for outreach preparation."""
+    """Outreach preparation: summary → talking points → draft → review & save."""
     return SequentialAgent(
         name="outreach_prep_chain",
         sub_agents=[
@@ -70,16 +112,22 @@ def build_outreach_prep_chain() -> SequentialAgent:
                 name="outreach_crm_draft",
                 output_key="outreach_crm_draft",
                 instruction=(
-                    "Prepare a CRM log draft using {outreach_talking_points}. "
-                    "Do not claim anything was written to the CRM. Mark the result as pending user confirmation."
+                    "Using {outreach_talking_points}, write the outreach draft (subject line, talking points, "
+                    "and a first-contact message). Output only the draft text; use [placeholders] for unknowns."
                 ),
+            ),
+            _review_and_save_stage(
+                name="outreach_persist",
+                draft_type="outreach-prep",
+                state_key="outreach_crm_draft",
+                title_hint="e.g. 'Outreach to <professor>'",
             ),
         ],
     )
 
 
 def build_research_narrative_framing_chain() -> SequentialAgent:
-    """Prompt chain for framing research narrative and fit."""
+    """Research narrative framing: synthesis → angles → recommendation → review & save."""
     return SequentialAgent(
         name="research_narrative_framing_chain",
         sub_agents=[
@@ -103,10 +151,15 @@ def build_research_narrative_framing_chain() -> SequentialAgent:
                 name="research_framing_recommendation",
                 output_key="research_frame",
                 instruction=(
-                    "Using {narrative_angles}, recommend the strongest framing for the user's outreach, SOP, or profile. "
-                    "State the final recommended angle and why it is strongest."
+                    "Using {narrative_angles}, write the recommended research narrative framing and a brief reason "
+                    "it is strongest. Output only the framing text."
                 ),
+            ),
+            _review_and_save_stage(
+                name="research_narrative_persist",
+                draft_type="research-narrative",
+                state_key="research_frame",
+                title_hint="e.g. 'Research narrative — <theme>'",
             ),
         ],
     )
-
