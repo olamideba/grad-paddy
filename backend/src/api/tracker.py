@@ -9,6 +9,7 @@ from src.api.schemas.requests import (
     CVStatusUpdateRequest,
     FundedUpdateRequest,
     RecommenderAddRequest,
+    AttachmentAddRequest,
 )
 from src.api.schemas.responses import (
     StandardResponse,
@@ -128,6 +129,30 @@ async def update_recommender_status(
     try:
         await TrackerService.update_recommender_status(user_id, application_id, name, body.status)
         return {"success": True, "data": {"status": "success"}, "message": "Recommender status updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{application_id}/attachments", response_model=StandardResponse[ApplicationResponse])
+async def add_attachment(request: Request, application_id: str, body: AttachmentAddRequest) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await TrackerService.add_attachment(
+            user_id, application_id, body.kind, body.ref_id, body.title
+        )
+        return {"success": True, "data": app, "message": "Attachment linked successfully"}
+    except ValueError as e:
+        msg = str(e)
+        code = 404 if "not found" in msg.lower() else 400
+        raise HTTPException(status_code=code, detail=msg)
+
+
+@router.delete("/{application_id}/attachments/{ref_id}", response_model=StandardResponse[ApplicationResponse])
+async def remove_attachment(request: Request, application_id: str, ref_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await TrackerService.remove_attachment(user_id, application_id, ref_id)
+        return {"success": True, "data": app, "message": "Attachment removed successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

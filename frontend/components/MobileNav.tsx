@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/shortlist", label: "Shortlist", icon: "solar:star-bold" },
   { href: "/tracker", label: "App Tracker", icon: "solar:calendar-bold" },
   { href: "/drafts", label: "Drafts", icon: "solar:document-text-bold" },
+  { href: "/documents", label: "Documents", icon: "solar:folder-with-files-bold" },
   { href: "/settings", label: "Settings", icon: "solar:settings-bold" },
 ];
 
