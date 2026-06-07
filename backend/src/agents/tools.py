@@ -24,9 +24,7 @@ from src.agents.schemas import (
     ShortlistListToolRequest,
 )
 from src.services.drafts_service import DraftsService
-from src.services.groups_service import GroupService
 from src.services.hitl_service import HITLService
-from src.services.sessions_service import SessionService
 from src.services.shortlist_service import ShortlistService
 from src.services.tracker_service import TrackerService
 from src.services.users_service import UserService
@@ -118,94 +116,6 @@ async def remove_target_university(university: str, tool_context: ToolContext) -
     user_id = require_user_id(tool_context)
     preferences = await UserService.remove_target_university(user_id, university)
     return _response(preferences, "Target university removed successfully")
-
-
-# ── Sessions and groups ──────────────────────────────────────────────────────
-
-
-async def create_session(first_message: str, tool_context: ToolContext) -> dict[str, object]:
-    """Create a chat session from the first user message."""
-    user_id = require_user_id(tool_context)
-    session = await SessionService.create_session(user_id, first_message)
-    return _response(session, "Session created successfully")
-
-
-async def list_sessions(tool_context: ToolContext) -> dict[str, object]:
-    """List the current user's sessions."""
-    user_id = require_user_id(tool_context)
-    sessions = await SessionService.list_sessions(user_id)
-    return _response(sessions)
-
-
-async def get_session(session_id: str, tool_context: ToolContext) -> dict[str, object]:
-    """Fetch a single session by id."""
-    user_id = require_user_id(tool_context)
-    session = await SessionService.get_session(user_id, session_id)
-    return _response(session)
-
-
-async def delete_session(session_id: str, tool_context: ToolContext) -> dict[str, object]:
-    """Delete a session and its messages."""
-    user_id = require_user_id(tool_context)
-    await SessionService.delete_session(user_id, session_id)
-    return _response({"status": "success"}, "Session deleted successfully")
-
-
-async def rename_session(session_id: str, title: str, tool_context: ToolContext) -> dict[str, object]:
-    """Rename a session."""
-    user_id = require_user_id(tool_context)
-    session = await SessionService.rename_session(user_id, session_id, title)
-    return _response(session, "Session renamed")
-
-
-async def toggle_session_star(session_id: str, tool_context: ToolContext) -> dict[str, object]:
-    """Toggle the starred flag for a session."""
-    user_id = require_user_id(tool_context)
-    session = await SessionService.toggle_star(user_id, session_id)
-    return _response(session, "Session star toggled")
-
-
-async def set_session_group(session_id: str, group_id: str | None, tool_context: ToolContext) -> dict[str, object]:
-    """Assign a session to a group or clear the group assignment."""
-    user_id = require_user_id(tool_context)
-    session = await SessionService.set_group(user_id, session_id, group_id)
-    return _response(session, "Session group updated")
-
-
-async def list_session_messages(session_id: str, tool_context: ToolContext) -> dict[str, object]:
-    """List the messages in a session."""
-    user_id = require_user_id(tool_context)
-    messages = await SessionService.list_messages(user_id, session_id)
-    return _response(messages)
-
-
-async def create_session_message(session_id: str, role: str, content: str, tool_context: ToolContext) -> dict[str, object]:
-    """Append a message to an existing session."""
-    user_id = require_user_id(tool_context)
-    message = await SessionService.create_message(user_id, session_id, role, content)
-    return _response(message, "Message created successfully")
-
-
-async def create_group(name: str, tool_context: ToolContext) -> dict[str, object]:
-    """Create a new group."""
-    user_id = require_user_id(tool_context)
-    group = await GroupService.create_group(user_id, name)
-    return _response(group, "Group created")
-
-
-async def list_groups(tool_context: ToolContext) -> dict[str, object]:
-    """List the current user's groups."""
-    user_id = require_user_id(tool_context)
-    groups = await GroupService.list_groups(user_id)
-    return _response(groups)
-
-
-async def delete_group(group_id: str, delete_sessions: bool, tool_context: ToolContext) -> dict[str, object]:
-    """Delete a group and optionally delete the sessions inside it."""
-    user_id = require_user_id(tool_context)
-    await GroupService.delete_group(user_id, group_id, delete_sessions)
-    return _response({"status": "success"}, "Group deleted")
-
 
 # ── Shortlist ────────────────────────────────────────────────────────────────
 
@@ -582,20 +492,6 @@ ACCOUNT_TOOLS = [
     remove_target_university,
 ]
 
-SESSION_TOOLS = [
-    create_session,
-    list_sessions,
-    get_session,
-    delete_session,
-    rename_session,
-    toggle_session_star,
-    set_session_group,
-    list_session_messages,
-    create_session_message,
-]
-
-GROUP_TOOLS = [create_group, list_groups, delete_group]
-
 SHORTLIST_TOOLS = [
     add_shortlist_faculty,
     list_shortlist,
@@ -634,4 +530,4 @@ DRAFT_TOOLS = [
 GOVERNANCE_TOOLS = [get_pending_hitl, REQUEST_HITL_TOOL]
 
 APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS
-OPERATIONS_TOOLS = ACCOUNT_TOOLS + SESSION_TOOLS + GROUP_TOOLS + APPLICATION_TOOLS + GOVERNANCE_TOOLS
+OPERATIONS_TOOLS = ACCOUNT_TOOLS + APPLICATION_TOOLS + GOVERNANCE_TOOLS

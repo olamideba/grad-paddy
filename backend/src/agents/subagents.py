@@ -6,9 +6,7 @@ from src.agents.tools import (
     ACCOUNT_TOOLS,
     APPLICATION_TOOLS,
     GOVERNANCE_TOOLS,
-    GROUP_TOOLS,
     OPERATIONS_TOOLS,
-    SESSION_TOOLS,
 )
 
 NO_LEAK_RULE = (
@@ -107,7 +105,7 @@ def build_account_agent() -> LlmAgent:
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
-        tools=ACCOUNT_TOOLS + SESSION_TOOLS + GROUP_TOOLS + GOVERNANCE_TOOLS,
+        tools=ACCOUNT_TOOLS + GOVERNANCE_TOOLS,
     )
 
 
