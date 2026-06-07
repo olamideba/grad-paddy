@@ -27,16 +27,18 @@ def _review_and_save_stage(
         model="gemini-3.1-pro-preview",
         description=name.replace("_", " "),
         instruction=(
-            "The completed draft is shown below. Before saving, ask the user to review it:\n"
-            "Call request_hitl exactly once with kind='approval', "
+            "The completed draft is shown below. Do NOT repeat the draft text in your reply — "
+            "it is shown to the user in the review card.\n"
+            "FIRST, say exactly one short sentence telling the user the draft is ready for review "
+            "(e.g. 'I've prepared the draft — review and approve it below.').\n"
+            "THEN call request_hitl exactly once with kind='approval', "
             'options_json=\'[{"id":"approve","label":"Approve"},{"id":"reject","label":"Reject"}]\', '
             f"title='Review {draft_type} draft', a one-line description, and payload_json set to a JSON "
             f'object: {{"entity":"{draft_type}","content":<the FULL draft text below as a JSON string>}}.\n'
             "Then WAIT for the human decision. If approved (their response may include an edited "
             '"content"), call create_draft with '
             f"type='{draft_type}', a concise title ({title_hint}), and content set to the approved content "
-            "(use the response content if provided, otherwise the draft below). If rejected, do not save. "
-            "Keep any text to the user to a single short sentence.\n\n"
+            "(use the response content if provided, otherwise the draft below). If rejected, do not save.\n\n"
             f"DRAFT TEXT:\n{{{state_key}}}"
         ),
         tools=[create_draft, *GOVERNANCE_TOOLS],
