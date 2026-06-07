@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
-import type { Application as ApiApp, TrackerStats } from "../../lib/api";
+import type { Application as ApiApp, TrackerStats, Attachment } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
 
 type DocStatus = "not-started" | "in-progress" | "ready";
@@ -27,8 +27,15 @@ type Application = {
   cv: DocStatus;
   writingSample: DocStatus;
   recommenders: Array<{ name: string; status: RecommenderStatus }>;
+  attachments: Attachment[];
   funded: boolean | "unknown";
   notes?: string;
+};
+
+const ATTACH_META: Record<Attachment["kind"], { label: string; icon: string; color: string }> = {
+  sop: { label: "SOP", icon: "solar:document-text-bold", color: "#E8472A" },
+  narrative: { label: "Narrative", icon: "solar:book-bold", color: "#0D0D0D" },
+  cv: { label: "CV", icon: "solar:file-text-bold", color: "#4ECDC4" },
 };
 
 function normalizeDocStatus(s: string): DocStatus {
@@ -59,6 +66,7 @@ function mapApp(a: ApiApp): Application {
       name: r.name,
       status: normalizeRecStatus(r.status),
     })),
+    attachments: a.attachments ?? [],
     funded: a.funded === "yes" ? true : a.funded === "no" ? false : "unknown",
     notes: a.notes ?? undefined,
   };
@@ -601,11 +609,73 @@ function EditApplicationModal({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>(app.attachments);
+  const [linkOptions, setLinkOptions] = useState<Attachment[]>([]);
+  const [linkBusy, setLinkBusy] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     firstRef.current?.focus();
   }, []);
+
+  // Load approved SOP/narrative drafts + approved CVs that can be attached.
+  useEffect(() => {
+    import("../../lib/api").then(async ({ draftsApi, cvsApi }) => {
+      try {
+        const [draftsRes, cvsRes] = await Promise.all([
+          draftsApi.list({ status: "approved" }),
+          cvsApi.list(),
+        ]);
+        const draftOpts: Attachment[] = draftsRes.data
+          .map((d): Attachment | null => {
+            const t = d.type;
+            if (t === "sop") return { kind: "sop", ref_id: d.id, title: d.title };
+            if (t === "narrative" || t === "research_narrative" || t === "research-narrative")
+              return { kind: "narrative", ref_id: d.id, title: d.title };
+            return null;
+          })
+          .filter((x): x is Attachment => x !== null);
+        const cvOpts: Attachment[] = cvsRes.data
+          .filter((c) => c.status === "approved")
+          .map((c) => ({ kind: "cv", ref_id: c.id, title: c.title }));
+        setLinkOptions([...draftOpts, ...cvOpts]);
+      } catch {
+        // non-fatal; the picker just stays empty
+      }
+    });
+  }, []);
+
+  async function linkAttachment(opt: Attachment) {
+    setLinkBusy(true);
+    setError(null);
+    try {
+      const { trackerApi } = await import("../../lib/api");
+      const res = await trackerApi.addAttachment(app.id, {
+        kind: opt.kind,
+        ref_id: opt.ref_id,
+        title: opt.title,
+      });
+      const next = res.data.attachments ?? [...attachments, opt];
+      setAttachments(next);
+      onSaved({ ...app, attachments: next });
+    } catch {
+      setError("Couldn't link that document.");
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
+  async function unlinkAttachment(ref_id: string) {
+    const next = attachments.filter((a) => a.ref_id !== ref_id);
+    setAttachments(next);
+    onSaved({ ...app, attachments: next });
+    try {
+      const { trackerApi } = await import("../../lib/api");
+      await trackerApi.removeAttachment(app.id, ref_id);
+    } catch {
+      // optimistic removal stays
+    }
+  }
 
   function set<K extends keyof AddAppForm>(key: K, value: AddAppForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -628,7 +698,7 @@ function EditApplicationModal({
     setError(null);
     try {
       const { trackerApi } = await import("../../lib/api");
-      const res = await trackerApi.update(app.id, {
+      await trackerApi.update(app.id, {
         university: form.university.trim(),
         program: form.program.trim(),
         department: form.department.trim(),
@@ -638,7 +708,20 @@ function EditApplicationModal({
         notes: form.notes.trim(),
         recommenders: recs.map((r) => ({ name: r.name, status: r.status.replace(/-/g, "_") })),
       });
-      onSaved(mapApp(res.data));
+      // Build the updated row from known values rather than the response body,
+      // so the table reflects the edit immediately regardless of response shape.
+      onSaved({
+        ...app,
+        university: form.university.trim(),
+        program: form.program.trim(),
+        department: form.department.trim(),
+        deadline: form.deadline ? new Date(form.deadline) : app.deadline,
+        status: form.status,
+        funded: form.funded === "yes" ? true : form.funded === "no" ? false : "unknown",
+        notes: form.notes.trim() || undefined,
+        recommenders: recs,
+        attachments,
+      });
       onClose();
     } catch {
       setError("Failed to save changes. Try again.");
@@ -891,6 +974,84 @@ function EditApplicationModal({
               rows={2}
               placeholder="Any additional notes..."
             />
+          </div>
+
+          <div>
+            <label
+              className="block text-[11px] font-bold font-space uppercase tracking-wider mb-1"
+              style={{ color: "#5A5A5A" }}
+            >
+              Attachments
+            </label>
+            {(() => {
+              const attachedIds = new Set(attachments.map((a) => a.ref_id));
+              const available = linkOptions.filter((o) => !attachedIds.has(o.ref_id));
+              return (
+                <>
+                  <select
+                    value=""
+                    disabled={linkBusy || available.length === 0}
+                    onChange={(e) => {
+                      const opt = available.find((o) => o.ref_id === e.target.value);
+                      if (opt) linkAttachment(opt);
+                    }}
+                    className="input-brutal w-full text-sm"
+                  >
+                    <option value="">
+                      {available.length === 0
+                        ? "No approved documents to link"
+                        : "Link an approved SOP / narrative / CV…"}
+                    </option>
+                    {available.map((o) => (
+                      <option key={o.ref_id} value={o.ref_id}>
+                        {ATTACH_META[o.kind].label}: {o.title}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] font-dm mt-1" style={{ color: "#9CA3AF" }}>
+                    Only approved documents appear here. Approve them in Drafts or Documents.
+                  </p>
+                  {attachments.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      {attachments.map((a) => (
+                        <div
+                          key={a.ref_id}
+                          className="flex items-center gap-2 px-2 py-1.5 text-[11px] font-dm"
+                          style={{
+                            background: "#EDE6D3",
+                            border: "1.5px solid #C8C0AF",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          <Icon
+                            icon={ATTACH_META[a.kind].icon}
+                            width={13}
+                            className="shrink-0"
+                            style={{ color: ATTACH_META[a.kind].color }}
+                          />
+                          <span
+                            className="shrink-0 font-semibold font-space"
+                            style={{ color: "#9CA3AF" }}
+                          >
+                            {ATTACH_META[a.kind].label}
+                          </span>
+                          <span className="flex-1 min-w-0 truncate">{a.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => unlinkAttachment(a.ref_id)}
+                            className="shrink-0"
+                            style={{ color: "#9CA3AF" }}
+                            title="Unlink"
+                          >
+                            <Icon icon="solar:close-circle-bold" width={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {error && (
@@ -1229,6 +1390,30 @@ export default function TrackerPage() {
                         {app.notes && (
                           <div className="text-xs font-dm mt-1 italic" style={{ color: "#5A5A5A" }}>
                             {app.notes}
+                          </div>
+                        )}
+                        {app.attachments.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {app.attachments.map((a) => (
+                              <span
+                                key={a.ref_id}
+                                title={a.title}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold font-space"
+                                style={{
+                                  background: "#EDE6D3",
+                                  border: "1.5px solid #0D0D0D",
+                                  borderRadius: "4px",
+                                  color: "#0D0D0D",
+                                }}
+                              >
+                                <Icon
+                                  icon={ATTACH_META[a.kind].icon}
+                                  width={10}
+                                  style={{ color: ATTACH_META[a.kind].color }}
+                                />
+                                {ATTACH_META[a.kind].label}
+                              </span>
+                            ))}
                           </div>
                         )}
                       </td>

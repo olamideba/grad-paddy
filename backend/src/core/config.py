@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     GOOGLE_GENAI_USE_VERTEXAI: bool = Field(default=True)
     GOOGLE_APPLICATION_CREDENTIALS: Path | None = Field(default=None)
 
+    # Firebase Storage bucket (e.g. "<project>.appspot.com"). Required for CV uploads.
+    STORAGE_BUCKET: str = Field(default="")
+
     AG_UI_APP_NAME: str = Field(default="grad_paddy")
     AG_UI_USER_ID: str = Field(default="demo_user")
     AG_UI_SESSION_TIMEOUT_SECONDS: int = Field(default=3600)
@@ -34,6 +37,7 @@ class Settings(BaseSettings):
     COLLECTION_TRACKER: str = Field(default="tracker")
     COLLECTION_DRAFTS: str = Field(default="drafts")
     COLLECTION_GROUPS: str = Field(default="groups")
+    COLLECTION_CVS: str = Field(default="cvs")
 
     # Named document keys (single documents, not collections)
     DOC_PROFILE: str = Field(default="profile")

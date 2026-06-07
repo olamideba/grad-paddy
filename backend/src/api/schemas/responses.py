@@ -116,6 +116,7 @@ class ApplicationResponse(BaseModel):
     sop_status: str = "not_started"
     cv_status: str = "not_started"
     recommenders: list[dict] = Field(default_factory=list)
+    attachments: list[dict] = Field(default_factory=list)
     funded: str = "unknown"
     notes: Optional[str] = None
     created_at: datetime
@@ -149,3 +150,15 @@ class DraftStatsResponse(BaseModel):
     total: int
     approved: int
     need_review: int
+
+
+# CV / resume responses
+class CVResponse(BaseModel):
+    id: str
+    title: str
+    filename: str
+    content_type: str
+    size: int
+    status: str = "draft"
+    created_at: datetime
+    updated_at: datetime

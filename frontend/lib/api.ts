@@ -135,6 +135,12 @@ export const shortlistApi = {
 
 // ── Tracker ───────────────────────────────────────────────────────────────────
 
+export interface Attachment {
+  kind: "sop" | "narrative" | "cv";
+  ref_id: string;
+  title: string;
+}
+
 export interface Application {
   id: string;
   university: string;
@@ -145,6 +151,7 @@ export interface Application {
   sop_status: string;
   cv_status: string;
   recommenders: { name: string; status: string }[];
+  attachments?: Attachment[];
   funded: string;
   notes: string | null;
   created_at: string;
@@ -212,6 +219,13 @@ export const trackerApi = {
         body: JSON.stringify({ status }),
       }
     ),
+  addAttachment: (id: string, data: { kind: string; ref_id: string; title?: string }) =>
+    request<Std<Application>>(`/api/tracker/${id}/attachments`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  removeAttachment: (id: string, ref_id: string) =>
+    request<Std<Application>>(`/api/tracker/${id}/attachments/${ref_id}`, { method: "DELETE" }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}`, { method: "DELETE" }),
 };
@@ -270,6 +284,53 @@ export const draftsApi = {
     }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/drafts/${id}`, { method: "DELETE" }),
+};
+
+// ── CVs / resumes ───────────────────────────────────────────────────────────────
+
+export interface CV {
+  id: string;
+  title: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const cvsApi = {
+  list: () => request<Std<CV[]>>("/api/cvs/"),
+  upload: async (file: File, title?: string) => {
+    const token = await getToken();
+    const form = new FormData();
+    form.append("file", file);
+    if (title) form.append("title", title);
+    // No Content-Type header — the browser sets the multipart boundary.
+    const res = await fetch(`${BASE}/api/cvs/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json() as Promise<Std<CV>>;
+  },
+  // Fetches the file with auth and returns a blob object URL for viewing/downloading.
+  fetchBlobUrl: async (id: string) => {
+    const token = await getToken();
+    const res = await fetch(`${BASE}/api/cvs/${id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+  update: (id: string, data: { title?: string; status?: string }) =>
+    request<Std<CV>>(`/api/cvs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: string) => request<Std<{ status: string }>>(`/api/cvs/${id}`, { method: "DELETE" }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

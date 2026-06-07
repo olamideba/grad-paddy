@@ -35,6 +35,12 @@ const NAV_ITEMS = [
     desc: "SOPs & outreach prep",
   },
   {
+    href: "/documents",
+    label: "Documents",
+    icon: "solar:folder-with-files-bold",
+    desc: "Resumes & CVs",
+  },
+  {
     href: "/settings",
     label: "Settings",
     icon: "solar:settings-bold",

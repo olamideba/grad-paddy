@@ -11,6 +11,7 @@ services:
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI}
       - ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL=${ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL}
       - ADK_LOG_PROMPT_CONTENT=${ADK_LOG_PROMPT_CONTENT}
+      - STORAGE_BUCKET=${STORAGE_BUCKET}
       # This points to the path INSIDE the container
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/service-account.json
     volumes:
