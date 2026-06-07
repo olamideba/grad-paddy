@@ -10,6 +10,7 @@ from src.agents.schemas import (
     DraftCreateToolRequest,
     DraftListToolRequest,
     DraftStatusToolRequest,
+    EmailCreateToolRequest,
     FacultyCreateToolRequest,
     FacultyUpdateToolRequest,
     OutreachStatusToolRequest,
@@ -20,6 +21,7 @@ from src.agents.schemas import (
     ShortlistListToolRequest,
 )
 from src.services.drafts_service import DraftsService
+from src.services.emails_service import EmailsService
 from src.services.hitl_service import HITLService
 from src.services.shortlist_service import ShortlistService
 from src.services.tracker_service import TrackerService
@@ -742,7 +744,7 @@ async def add_application_recommender(
             }
     """
     user_id = require_user_id(tool_context)
-    recommender = {"name": payload.name, "status": payload.status}
+    recommender = {"name": payload.name, "status": payload.status, "email": payload.email or ""}
     await TrackerService.add_recommender(user_id, application_id, recommender)
     return _response({"status": "success"}, "Recommender added successfully")
 
@@ -1285,6 +1287,74 @@ async def request_hitl(
 REQUEST_HITL_TOOL = LongRunningFunctionTool(request_hitl)
 
 
+# ── Emails (Gmail) ──────────────────────────────────────────────────────────────
+
+
+async def create_email(payload: EmailCreateToolRequest, tool_context: ToolContext) -> dict[str, object]:
+    """Draft an email (faculty outreach or recommender request) for the user to review.
+
+    Creates the email in 'draft' status — it is NOT sent. Always gate sending
+    behind human approval: draft here, request_hitl to let the human review and
+    edit the body in the canvas, then call send_email only after approval.
+
+    Args:
+        payload:
+            'to': str — recipient email address.
+            'subject': str — subject line.
+            'body_markdown': str — body in markdown (the human edits this).
+            'kind': str — 'faculty' (cold outreach) or 'recommender' (LoR request).
+            'ref_id': str | None — faculty id, or recommender name for kind='recommender'.
+            'linked_application_id': str | None — application this relates to.
+
+    Returns:
+        {'success': True, 'data': <email incl. 'id'>, 'message': 'Email draft created'}
+    """
+    user_id = require_user_id(tool_context)
+    email = await EmailsService.create_email(user_id, payload.model_dump())
+    return _response(email, "Email draft created")
+
+
+create_email = FunctionTool(create_email)
+
+
+async def list_emails(tool_context: ToolContext) -> dict[str, object]:
+    """List the user's email drafts and sent emails (newest first).
+
+    Returns:
+        {'success': True, 'data': [<email>...], 'message': ''}
+    """
+    user_id = require_user_id(tool_context)
+    emails = await EmailsService.list_emails(user_id)
+    return _response(emails)
+
+
+list_emails = FunctionTool(list_emails)
+
+
+async def send_email(email_id: str, tool_context: ToolContext) -> dict[str, object]:
+    """Send a previously-drafted email via the user's connected Gmail.
+
+    Only call this AFTER the human has approved the draft via request_hitl.
+    Marks the email 'sent' and bumps the linked recommender/faculty status.
+
+    Args:
+        email_id: str — the id returned by create_email.
+
+    Returns:
+        {'success': True, 'data': <sent email>, 'message': 'Email sent'}
+
+    Raises:
+        ValueError: if the email is missing, has no recipient, or the user has
+            not connected their Google account.
+    """
+    user_id = require_user_id(tool_context)
+    email = await EmailsService.send_email(user_id, email_id)
+    return _response(email, "Email sent")
+
+
+send_email = FunctionTool(send_email)
+
+
 # ── Tool groups ───────────────────────────────────────────────────────────────
 
 ACCOUNT_TOOLS = [
@@ -1325,7 +1395,13 @@ DRAFT_TOOLS = [
     get_draft_stats,
 ]
 
+EMAIL_TOOLS = [
+    create_email,
+    list_emails,
+    send_email,
+]
+
 GOVERNANCE_TOOLS = [get_pending_hitl, REQUEST_HITL_TOOL]
 
-APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS
+APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS + EMAIL_TOOLS
 OPERATIONS_TOOLS = ACCOUNT_TOOLS + APPLICATION_TOOLS + GOVERNANCE_TOOLS

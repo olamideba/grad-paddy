@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, Body, HTTPException
 from src.core.firebase import verify_firebase_auth
 from src.services.tracker_service import TrackerService
+from src.services.calendar_service import CalendarService
 from src.api.schemas.requests import (
     ApplicationCreateRequest,
     ApplicationUpdateRequest,
@@ -115,7 +116,8 @@ async def add_recommender(request: Request, application_id: str, body: Recommend
     user_id = request.state.user_id
     recommender = {
         "name": body.name,
-        "status": body.status
+        "status": body.status,
+        "email": body.email,
     }
     await TrackerService.add_recommender(user_id, application_id, recommender)
     return {"success": True, "data": {"status": "success"}, "message": "Recommender added successfully"}
@@ -155,6 +157,30 @@ async def remove_attachment(request: Request, application_id: str, ref_id: str) 
         return {"success": True, "data": app, "message": "Attachment removed successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{application_id}/calendar", response_model=StandardResponse[ApplicationResponse])
+async def add_to_calendar(request: Request, application_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await CalendarService.add_deadline_event(user_id, application_id)
+        return {"success": True, "data": app, "message": "Added deadline to Google Calendar"}
+    except ValueError as e:
+        msg = str(e)
+        code = 404 if "not found" in msg.lower() else 400
+        raise HTTPException(status_code=code, detail=msg)
+
+
+@router.delete("/{application_id}/calendar", response_model=StandardResponse[ApplicationResponse])
+async def remove_from_calendar(request: Request, application_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await CalendarService.remove_deadline_event(user_id, application_id)
+        return {"success": True, "data": app, "message": "Removed deadline from Google Calendar"}
+    except ValueError as e:
+        msg = str(e)
+        code = 404 if "not found" in msg.lower() else 400
+        raise HTTPException(status_code=code, detail=msg)
 
 
 @router.delete("/{application_id}", response_model=StandardResponse[SuccessStatusResponse])

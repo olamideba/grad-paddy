@@ -24,6 +24,9 @@ class PreferencesUpdateRequest(BaseModel):
     # When true, the agent may create/update/delete without asking for approval.
     # Default false = always ask (HITL gate).
     auto_approve: bool = False
+    # Days before a deadline to fire Google Calendar reminders. Capped at 28
+    # (Google's max reminder lead time is 4 weeks / 40320 minutes).
+    reminder_offsets_days: list[int] = Field(default_factory=lambda: [7, 1])
 
 
 class ValueRequest(BaseModel):
@@ -93,6 +96,7 @@ class OutreachStatusUpdateRequest(BaseModel):
 class RecommenderAddRequest(BaseModel):
     name: str
     status: str = "not_asked"
+    email: str = ""
 
 
 class ApplicationCreateRequest(BaseModel):
@@ -166,3 +170,19 @@ class AttachmentAddRequest(BaseModel):
     kind: str  # 'sop' | 'narrative' | 'cv'
     ref_id: str
     title: Optional[str] = None
+
+
+# Emails (agent-drafted faculty outreach / recommender requests)
+class EmailCreateRequest(BaseModel):
+    to: str = ""
+    subject: str = ""
+    body_markdown: str = ""
+    kind: str = "faculty"  # 'faculty' | 'recommender'
+    ref_id: Optional[str] = None
+    linked_application_id: Optional[str] = None
+
+
+class EmailUpdateRequest(BaseModel):
+    to: Optional[str] = None
+    subject: Optional[str] = None
+    body_markdown: Optional[str] = None

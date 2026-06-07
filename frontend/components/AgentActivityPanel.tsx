@@ -55,6 +55,46 @@ const ACTIVITY_CONFIG: Record<string, { label: string; icon: string; description
     icon: "📚",
     description: "Querying research databases...",
   },
+  "platform.core.index_explorer": {
+    label: "Inspecting Elastic indices",
+    icon: "🔎",
+    description: "Finding relevant Elasticsearch indices...",
+  },
+  "platform.core.list_indices": {
+    label: "Listing Elastic indices",
+    icon: "🗂️",
+    description: "Checking accessible Elasticsearch data...",
+  },
+  "platform.core.get_index_mapping": {
+    label: "Reading Elastic mappings",
+    icon: "🧭",
+    description: "Inspecting field structure...",
+  },
+  "platform.core.search": {
+    label: "Elastic hybrid search",
+    icon: "⚡",
+    description: "Searching indexed admissions evidence...",
+  },
+  "platform.core.generate_esql": {
+    label: "Generating ES|QL",
+    icon: "🧠",
+    description: "Translating the question into an ES|QL query...",
+  },
+  "platform.core.execute_esql": {
+    label: "Running ES|QL scan",
+    icon: "📊",
+    description: "Analyzing admissions data in Elasticsearch...",
+  },
+  "platform.core.get_document_by_id": {
+    label: "Opening Elastic evidence",
+    icon: "📄",
+    description: "Retrieving a source document...",
+  },
+  "platform.core.create_visualization": {
+    label: "Creating Elastic visualization",
+    icon: "📈",
+    description: "Preparing a Kibana-ready view...",
+  },
   hitl_approval: {
     label: "Requesting approval",
     icon: "👤",
@@ -63,31 +103,55 @@ const ACTIVITY_CONFIG: Record<string, { label: string; icon: string; description
   default: { label: "Thinking", icon: "✨", description: "Processing..." },
 };
 
-function getActivityConfig(toolName?: string): { label: string; icon: string; description: string } {
+function getActivityConfig(toolName?: string): {
+  label: string;
+  icon: string;
+  description: string;
+} {
   if (!toolName) return ACTIVITY_CONFIG.default;
   if (toolName in ACTIVITY_CONFIG) return ACTIVITY_CONFIG[toolName];
 
   const normalized = toolName.toLowerCase();
   if (normalized.includes("profile") || normalized.includes("preference")) {
-    return { label: "Updating profile", icon: "👤", description: "Reading or editing user settings..." };
+    return {
+      label: "Updating profile",
+      icon: "👤",
+      description: "Reading or editing user settings...",
+    };
   }
   if (normalized.includes("session")) {
-    return { label: "Managing sessions", icon: "💬", description: "Loading or updating chat sessions..." };
+    return {
+      label: "Managing sessions",
+      icon: "💬",
+      description: "Loading or updating chat sessions...",
+    };
   }
   if (normalized.includes("group")) {
     return { label: "Managing groups", icon: "🗂️", description: "Organizing chat groups..." };
   }
   if (normalized.includes("shortlist")) {
-    return { label: "Updating shortlist", icon: "📌", description: "Managing faculty shortlist entries..." };
+    return {
+      label: "Updating shortlist",
+      icon: "📌",
+      description: "Managing faculty shortlist entries...",
+    };
   }
   if (normalized.includes("tracker") || normalized.includes("application")) {
-    return { label: "Updating tracker", icon: "🧭", description: "Managing application tracking records..." };
+    return {
+      label: "Updating tracker",
+      icon: "🧭",
+      description: "Managing application tracking records...",
+    };
   }
   if (normalized.includes("draft")) {
     return { label: "Editing drafts", icon: "📝", description: "Managing draft content..." };
   }
   if (normalized.includes("hitl") || normalized.includes("approval")) {
-    return { label: "Requesting approval", icon: "👤", description: "Waiting for a user decision..." };
+    return {
+      label: "Requesting approval",
+      icon: "👤",
+      description: "Waiting for a user decision...",
+    };
   }
 
   return {
