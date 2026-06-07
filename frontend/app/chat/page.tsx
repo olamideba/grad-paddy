@@ -1347,10 +1347,6 @@ export default function ChatPage() {
     }
   }, [isAgentRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startNewChat() {
-    setActiveSessionId(null);
-  }
-
   // React to session selection from sidebar
   useEffect(() => {
     // Skip reset when sendToBackend just created this session — stream is live
@@ -1835,29 +1831,6 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: "#F7F0E3" }}>
-      {/* Mobile chat controls (sidebar is hidden on phones) */}
-      <div
-        className="md:hidden shrink-0 flex items-center gap-2 px-3 py-2"
-        style={{ borderBottom: "2px solid #0D0D0D", background: "#F7F0E3" }}
-      >
-        <select
-          value={activeSessionId ?? ""}
-          onChange={(e) => setActiveSessionId(e.target.value || null)}
-          className="input-brutal flex-1 min-w-0 text-xs py-1.5"
-        >
-          <option value="">New chat</option>
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-        <button onClick={startNewChat} className="btn-coral btn-sm text-xs shrink-0">
-          <Icon icon="solar:add-circle-bold" width={13} />
-          New
-        </button>
-      </div>
-
       {/* Session title bar */}
       {activeSession && (
         <div

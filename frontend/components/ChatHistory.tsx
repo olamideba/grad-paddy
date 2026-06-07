@@ -42,7 +42,13 @@ const byUpdated = (a: Session, b: Session) =>
 
 type MenuState = { session: Session; x: number; y: number };
 
-export default function ChatHistory() {
+export default function ChatHistory({
+  fill = false,
+  onNavigate,
+}: {
+  fill?: boolean;
+  onNavigate?: () => void;
+}) {
   const router = useRouter();
   const {
     sessions,
@@ -105,6 +111,7 @@ export default function ChatHistory() {
     setPendingGroupId(null);
     setActiveSessionId(id);
     router.push("/chat");
+    onNavigate?.();
   }
 
   function newChat(groupId: string | null) {
@@ -117,6 +124,7 @@ export default function ChatHistory() {
         return next;
       });
     router.push("/chat");
+    onNavigate?.();
   }
 
   function openMenu(e: React.MouseEvent, session: Session) {
@@ -256,14 +264,14 @@ export default function ChatHistory() {
 
   return (
     <div
-      className="flex-shrink-0 flex flex-col"
+      className={clsx("flex flex-col", fill ? "flex-1 min-h-0" : "flex-shrink-0")}
       style={{
         borderTop: "2px solid #0D0D0D",
-        height: panelOpen ? height : undefined,
+        height: !fill && panelOpen ? height : undefined,
       }}
     >
-      {/* Resize handle (drag to adjust height) */}
-      {panelOpen && (
+      {/* Resize handle (drag to adjust height) — desktop only */}
+      {panelOpen && !fill && (
         <div
           onMouseDown={startResize}
           title="Drag to resize"

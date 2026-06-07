@@ -628,7 +628,7 @@ function EditApplicationModal({
     setError(null);
     try {
       const { trackerApi } = await import("../../lib/api");
-      const res = await trackerApi.update(app.id, {
+      await trackerApi.update(app.id, {
         university: form.university.trim(),
         program: form.program.trim(),
         department: form.department.trim(),
@@ -638,7 +638,19 @@ function EditApplicationModal({
         notes: form.notes.trim(),
         recommenders: recs.map((r) => ({ name: r.name, status: r.status.replace(/-/g, "_") })),
       });
-      onSaved(mapApp(res.data));
+      // Build the updated row from known values rather than the response body,
+      // so the table reflects the edit immediately regardless of response shape.
+      onSaved({
+        ...app,
+        university: form.university.trim(),
+        program: form.program.trim(),
+        department: form.department.trim(),
+        deadline: form.deadline ? new Date(form.deadline) : app.deadline,
+        status: form.status,
+        funded: form.funded === "yes" ? true : form.funded === "no" ? false : "unknown",
+        notes: form.notes.trim() || undefined,
+        recommenders: recs,
+      });
       onClose();
     } catch {
       setError("Failed to save changes. Try again.");
