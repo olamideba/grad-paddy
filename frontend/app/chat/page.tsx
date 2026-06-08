@@ -1880,6 +1880,33 @@ export default function ChatPage() {
     }
   }
 
+  async function stopRun() {
+    try {
+      const { auth } = await import("../../lib/firebase");
+      const token = await auth.currentUser?.getIdToken();
+      const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+      await fetch(`${BASE}/api/chat/stop`, { // use Next.js proxy or full URL
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { "Authorization": `Bearer ${token}` }),
+        },
+        body: JSON.stringify({ thread_id: threadId.current }),
+      });
+    } catch { /* ignore */ }
+    subscription.current?.unsubscribe();
+    setLocalRunning(false);
+    setStream((p) => [
+      ...p,
+      {
+        type: "agent",
+        id: `stop-${crypto.randomUUID()}`,
+        content: "You stopped this response.",
+        timestamp: new Date(),
+      },
+    ]);
+  }
+
   function addUrl() {
     const t = urlInput.trim();
     if (t && !urls.includes(t)) setUrls((p) => [...p, t]);
@@ -2270,31 +2297,38 @@ export default function ChatPage() {
                 {autoApprove ? "Always allow" : "Ask before changes"}
               </button>
             </div>
-            <button
-              onClick={send}
-              disabled={!input.trim() && urls.length === 0}
-              className={clsx(
-                "flex items-center gap-1.5 btn-sm font-space font-semibold text-xs bouncy",
-                input.trim() || urls.length > 0 ? "btn-coral" : "btn-cream"
-              )}
-              style={
-                !(input.trim() || urls.length > 0)
-                  ? { color: "#B0A898", cursor: "not-allowed" }
-                  : undefined
-              }
-            >
-              {inputBlocked ? (
-                <>
-                  <Icon icon="solar:spinner-bold" width={13} className="animate-spin" />
-                  Queue
-                </>
-              ) : (
-                <>
-                  <Icon icon="solar:arrow-right-up-bold" width={13} />
-                  Send
-                </>
-              )}
-            </button>
+            {isAgentRunning ? (
+              <button onClick={stopRun} className="btn-coral btn-sm gap-1.5 text-xs">
+                <Icon icon="solar:stop-bold" width={13} />
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={send}
+                disabled={!input.trim() && urls.length === 0}
+                className={clsx(
+                  "flex items-center gap-1.5 btn-sm font-space font-semibold text-xs bouncy",
+                  input.trim() || urls.length > 0 ? "btn-coral" : "btn-cream"
+                )}
+                style={
+                  !(input.trim() || urls.length > 0)
+                    ? { color: "#B0A898", cursor: "not-allowed" }
+                    : undefined
+                }
+              >
+                {pendingApproval ? (
+                  <>
+                    <Icon icon="solar:spinner-bold" width={13} className="animate-spin" />
+                    Queue
+                  </>
+                ) : (
+                  <>
+                    <Icon icon="solar:arrow-right-up-bold" width={13} />
+                    Send
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

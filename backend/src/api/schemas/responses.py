@@ -59,7 +59,9 @@ class MessageResponse(BaseModel):
     content: str
     ag_ui_events: list[dict] = Field(default_factory=list)
     created_at: datetime
-
+    
+class StopChatResponse(BaseModel):
+    cancelled: bool
 
 # HITL responses
 class HITLOptionResponse(BaseModel):

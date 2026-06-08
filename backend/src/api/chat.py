@@ -1,20 +1,22 @@
 import json
 import logging
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 from uuid6 import uuid7
 
 from ag_ui.core import EventType, RunAgentInput, ToolMessage
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
-from ag_ui.core import BaseEvent
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
 from src.services.firestore_adk_session import FirestoreSessionService
 from google.genai import types
 
 from src.agents.root import root_agent
+from src.agents import run_registry
 from src.api.hitl_events import RunFinishedWithStatusEvent
+from src.api.schemas.responses import StopChatResponse, StandardResponse
 from src.core.config import get_settings
 from src.core.firebase import verify_firebase_auth
 from src.repositories.sessions_repo import SessionRepository
@@ -156,6 +158,21 @@ class PersistentChatAgent(ADKAgent):
                 status="completed",
             )
             return
+        
+        _SENTINEL = object()
+        queue: asyncio.Queue = asyncio.Queue()
+        
+        async def _drain():
+            try:
+                async for event in super(PersistentChatAgent, self).run(prepared):
+                    await queue.put(event)
+            except asyncio.CancelledError:
+                pass
+            finally:
+                await queue.put(_SENTINEL)
+                
+        task = asyncio.get_running_loop().create_task(_drain())
+        run_registry.register(session_id, task)
 
         pending_events: list[dict[str, Any]] = []
         current_message_id: str | None = None
@@ -174,148 +191,166 @@ class PersistentChatAgent(ADKAgent):
         run_has_hitl = False
         buffered_msg_events: list[Any] = []   # in-progress message's event objects
         final_msg_events: list[Any] = []      # last completed message (release if no gate)
-        async for event in super().run(prepared):
-            try:
-                event_payload = event.model_dump(by_alias=True, exclude_none=True)
-            except Exception:
-                event_payload = {"type": str(getattr(event, "type", ""))}
-
-            event_type = getattr(event, "type", None)
-
-            if event_type == EventType.RUN_FINISHED:
-                pending = await HITLService.get_pending_hitl(user_id, session_id)
-                status = "interrupted" if pending else "completed"
-
-                # NOTE: do NOT emit a custom HITL_REQUIRED event — the AG-UI client
-                # rejects unknown event types (invalid_union_discriminator) and
-                # aborts the stream. The frontend surfaces the gate by polling
-                # GET /api/hitl/.../pending once the run finishes/interrupts.
-
-                if status == "completed" and current_message_id and current_message_complete:
-                    content = "".join(current_text_parts).strip()
+        
+        try:
+            while True:
+                event = await queue.get()
+                if event is _SENTINEL:
+                    break
+        
+                async for event in super().run(prepared):
                     try:
-                        await SessionRepository.upsert_message(
-                            user_id=user_id,
-                            session_id=session_id,
-                            message_id=current_message_id,
-                            data={
-                                "role": "assistant",
-                                "content": content,
-                                "ag_ui_events": current_message_events,
-                            },
+                        event_payload = event.model_dump(by_alias=True, exclude_none=True)
+                    except Exception:
+                        event_payload = {"type": str(getattr(event, "type", ""))}
+
+                    event_type = getattr(event, "type", None)
+
+                    if event_type == EventType.RUN_FINISHED:
+                        pending = await HITLService.get_pending_hitl(user_id, session_id)
+                        status = "interrupted" if pending else "completed"
+
+                        # NOTE: do NOT emit a custom HITL_REQUIRED event — the AG-UI client
+                        # rejects unknown event types (invalid_union_discriminator) and
+                        # aborts the stream. The frontend surfaces the gate by polling
+                        # GET /api/hitl/.../pending once the run finishes/interrupts.
+
+                        if status == "completed" and current_message_id and current_message_complete:
+                            content = "".join(current_text_parts).strip()
+                            try:
+                                await SessionRepository.upsert_message(
+                                    user_id=user_id,
+                                    session_id=session_id,
+                                    message_id=current_message_id,
+                                    data={
+                                        "role": "assistant",
+                                        "content": content,
+                                        "ag_ui_events": current_message_events,
+                                    },
+                                )
+                            except Exception as exc:
+                                logger.error(
+                                    "Failed to persist AG-UI events for session %s, message %s: %s",
+                                    session_id,
+                                    current_message_id,
+                                    exc,
+                                    exc_info=True,
+                                )
+
+                        # Release the final assistant message now (buffered, never streamed
+                        # live). Suppress entirely if the run opened a gate — the draft is
+                        # in the review card, not the chat.
+                        if not run_has_hitl:
+                            for buffered in final_msg_events:
+                                yield buffered
+
+                        yield RunFinishedWithStatusEvent(
+                            thread_id=str(getattr(event, "thread_id", None) or session_id),
+                            run_id=str(getattr(event, "run_id", None) or input.run_id),
+                            status=status,
+                            result=getattr(event, "result", None),
                         )
-                    except Exception as exc:
-                        logger.error(
-                            "Failed to persist AG-UI events for session %s, message %s: %s",
-                            session_id,
-                            current_message_id,
-                            exc,
-                            exc_info=True,
+
+                        current_message_id = None
+                        current_text_parts = []
+                        current_message_events = []
+                        current_message_complete = False
+                        pending_events = []
+                        run_has_hitl = False
+                        buffered_msg_events = []
+                        final_msg_events = []
+                        continue
+
+                    if event_type == EventType.RUN_ERROR:
+                        yield event
+                        current_message_id = None
+                        current_text_parts = []
+                        current_message_events = []
+                        current_message_complete = False
+                        pending_events = []
+                        run_has_hitl = False
+                        buffered_msg_events = []
+                        final_msg_events = []
+                        continue
+
+                    # Reconstruct the HITL record from the request_hitl tool-call stream.
+                    if event_type == EventType.TOOL_CALL_START and (
+                        getattr(event, "tool_call_name", None) == REQUEST_HITL_TOOL_NAME
+                    ):
+                        # This run opened an approval/review gate → suppress all of its
+                        # assistant prose (the draft lives in the review card).
+                        run_has_hitl = True
+                        hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))] = []
+                    elif event_type == EventType.TOOL_CALL_ARGS and (
+                        str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
+                    ):
+                        hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))].append(
+                            getattr(event, "delta", "") or ""
                         )
+                    elif event_type == EventType.TOOL_CALL_END and (
+                        str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
+                    ):
+                        tcid = str(getattr(event, "tool_call_id", ""))
+                        raw = "".join(hitl_arg_buffers.pop(tcid, []))
+                        try:
+                            await self._create_hitl_from_args(user_id, session_id, input.run_id, tcid, raw)
+                        except Exception as exc:
+                            logger.error("Failed to create HITL from tool args: %s", exc, exc_info=True)
 
-                # Release the final assistant message now (buffered, never streamed
-                # live). Suppress entirely if the run opened a gate — the draft is
-                # in the review card, not the chat.
-                if not run_has_hitl:
-                    for buffered in final_msg_events:
-                        yield buffered
+                    pending_events.append(event_payload)
 
-                yield RunFinishedWithStatusEvent(
-                    thread_id=str(getattr(event, "thread_id", None) or session_id),
-                    run_id=str(getattr(event, "run_id", None) or input.run_id),
-                    status=status,
-                    result=getattr(event, "result", None),
-                )
+                    if event_type == EventType.TEXT_MESSAGE_START:
+                        current_message_id = getattr(event, "message_id", None)
+                        current_text_parts = []
+                        current_message_events = list(pending_events)
+                        current_message_complete = False
+                        buffered_msg_events = [event]
+                    elif current_message_id is not None:
+                        current_message_events.append(event_payload)
 
-                current_message_id = None
-                current_text_parts = []
-                current_message_events = []
-                current_message_complete = False
-                pending_events = []
-                run_has_hitl = False
-                buffered_msg_events = []
-                final_msg_events = []
-                continue
+                    if (
+                        event_type == EventType.TEXT_MESSAGE_CONTENT
+                        and current_message_id
+                        and getattr(event, "message_id", None) == current_message_id
+                    ):
+                        delta = getattr(event, "delta", "")
+                        if delta:
+                            current_text_parts.append(delta)
+                        buffered_msg_events.append(event)
 
-            if event_type == EventType.RUN_ERROR:
-                yield event
-                current_message_id = None
-                current_text_parts = []
-                current_message_events = []
-                current_message_complete = False
-                pending_events = []
-                run_has_hitl = False
-                buffered_msg_events = []
-                final_msg_events = []
-                continue
+                    if (
+                        event_type == EventType.TEXT_MESSAGE_END
+                        and current_message_id
+                        and getattr(event, "message_id", None) == current_message_id
+                    ):
+                        current_message_complete = True
+                        buffered_msg_events.append(event)
+                        # Keep only the latest complete message; earlier ones in the run
+                        # were intermediate reasoning and are dropped.
+                        final_msg_events = buffered_msg_events
+                        buffered_msg_events = []
 
-            # Reconstruct the HITL record from the request_hitl tool-call stream.
-            if event_type == EventType.TOOL_CALL_START and (
-                getattr(event, "tool_call_name", None) == REQUEST_HITL_TOOL_NAME
-            ):
-                # This run opened an approval/review gate → suppress all of its
-                # assistant prose (the draft lives in the review card).
-                run_has_hitl = True
-                hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))] = []
-            elif event_type == EventType.TOOL_CALL_ARGS and (
-                str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
-            ):
-                hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))].append(
-                    getattr(event, "delta", "") or ""
-                )
-            elif event_type == EventType.TOOL_CALL_END and (
-                str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
-            ):
-                tcid = str(getattr(event, "tool_call_id", ""))
-                raw = "".join(hitl_arg_buffers.pop(tcid, []))
-                try:
-                    await self._create_hitl_from_args(user_id, session_id, input.run_id, tcid, raw)
-                except Exception as exc:
-                    logger.error("Failed to create HITL from tool args: %s", exc, exc_info=True)
+                    # Never stream assistant text live — it's released (or suppressed) at
+                    # RUN_FINISHED. Everything else (tools, steps) streams normally.
+                    if event_type in (
+                        EventType.TEXT_MESSAGE_START,
+                        EventType.TEXT_MESSAGE_CONTENT,
+                        EventType.TEXT_MESSAGE_END,
+                    ):
+                        continue
 
-            pending_events.append(event_payload)
-
-            if event_type == EventType.TEXT_MESSAGE_START:
-                current_message_id = getattr(event, "message_id", None)
-                current_text_parts = []
-                current_message_events = list(pending_events)
-                current_message_complete = False
-                buffered_msg_events = [event]
-            elif current_message_id is not None:
-                current_message_events.append(event_payload)
-
-            if (
-                event_type == EventType.TEXT_MESSAGE_CONTENT
-                and current_message_id
-                and getattr(event, "message_id", None) == current_message_id
-            ):
-                delta = getattr(event, "delta", "")
-                if delta:
-                    current_text_parts.append(delta)
-                buffered_msg_events.append(event)
-
-            if (
-                event_type == EventType.TEXT_MESSAGE_END
-                and current_message_id
-                and getattr(event, "message_id", None) == current_message_id
-            ):
-                current_message_complete = True
-                buffered_msg_events.append(event)
-                # Keep only the latest complete message; earlier ones in the run
-                # were intermediate reasoning and are dropped.
-                final_msg_events = buffered_msg_events
-                buffered_msg_events = []
-
-            # Never stream assistant text live — it's released (or suppressed) at
-            # RUN_FINISHED. Everything else (tools, steps) streams normally.
-            if event_type in (
-                EventType.TEXT_MESSAGE_START,
-                EventType.TEXT_MESSAGE_CONTENT,
-                EventType.TEXT_MESSAGE_END,
-            ):
-                continue
-
-            yield event
+                    yield event
+                    
+        except asyncio.CancelledError:
+            pass
+        finally:
+            task.cancel()
+            run_registry.deregister(session_id)
+            yield RunFinishedWithStatusEvent(
+                thread_id=session_id,
+                run_id=input.run_id,
+                status="cancelled",
+            )
 
 
 async def _extract_chat_state(request: Request, input_data: Any) -> dict[str, Any]:
@@ -377,6 +412,18 @@ def _extract_text(content: types.Content | None) -> str:
         if getattr(part, "text", None):
             fragments.append(part.text)
     return "\n".join(fragment for fragment in fragments if fragment).strip()
+
+
+@router.post("/stop", summary="Stop a running agent turn", response_model=StandardResponse[StopChatResponse])
+async def stop_run(request: Request) -> dict:
+    # user_id = getattr(request.state, "user_id", None)
+    # thread_id comes from the request body
+    body = await request.json()
+    thread_id = body.get("thread_id", "")
+    if not thread_id:
+        raise HTTPException(status_code=400, detail="thread_id required")
+    cancelled = run_registry.cancel(thread_id)
+    return {"success": True, "data": {"cancelled": cancelled}, "message": "Agent run cancelled."}
 
 
 @router.post(
