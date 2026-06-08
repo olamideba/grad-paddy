@@ -67,9 +67,9 @@ class FacultyElasticsearchPipeline:
         from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         es_url  = settings.ES_URL
-        api_key = settings.ES_API_KEY
+        api_key = settings.ELASTIC_API_KEY
         if not es_url or not api_key:
-            raise RuntimeError("ES_URL and ES_API_KEY required in .env")
+            raise RuntimeError("ES_URL and ELASTIC_API_KEY required in .env")
 
         self.es = Elasticsearch(es_url, api_key=api_key)
         self.splitter = _get_splitter()

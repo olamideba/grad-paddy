@@ -8,9 +8,9 @@ settings = get_settings()
 def get_es():
     from elasticsearch import Elasticsearch
     es_url  = settings.ES_URL
-    api_key = settings.ES_API_KEY
+    api_key = settings.ELASTIC_API_KEY
     if not es_url or not api_key:
-        raise RuntimeError("Set ES_URL and ES_API_KEY in .env")
+        raise RuntimeError("Set ES_URL and ELASTIC_API_KEY in .env")
     return Elasticsearch(es_url, api_key=api_key)
 
 

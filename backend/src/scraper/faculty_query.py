@@ -8,7 +8,7 @@ def get_es():
     from elasticsearch import Elasticsearch
     return Elasticsearch(
         settings.ES_URL,
-        api_key=settings.ES_API_KEY
+        api_key=settings.ELASTIC_API_KEY
     )
 
 

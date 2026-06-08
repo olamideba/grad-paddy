@@ -117,15 +117,18 @@ class ElasticsearchPipeline:
         return cls()
 
     def open_spider(self, spider):
-        from elasticsearch import Elasticsearch
         print("DEBUG: open_spider start")
+        print("DEBUG: importing elasticsearch")
+        from elasticsearch import Elasticsearch
+        print("DEBUG: getting env vars")
 
         es_url   = settings.ES_URL    
-        api_key  = settings.ES_API_KEY
+        api_key  = settings.ELASTIC_API_KEY
+        print(f"DEBUG: es_url={es_url[:30] if es_url else None}")
 
         if not es_url or not api_key:
             raise RuntimeError(
-                "Serverless Elasticsearch requires ES_URL and ES_API_KEY in .env"
+                "Serverless Elasticsearch requires ES_URL and ELASTIC_API_KEY in .env"
             )
         print("DEBUG: creating ES client")
         

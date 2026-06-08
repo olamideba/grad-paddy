@@ -185,8 +185,9 @@ class GradProgramSpider(scrapy.Spider):
                 logger.info(f"Faculty directory at {response.url}")
                 faculty_links = self.find_faculty_links(response)
                 for link_info in faculty_links:
+                    url = link_info["url"] if isinstance(link_info, dict) else link_info
                     yield self._make_request(
-                        link_info["url"],
+                        url,
                         callback=self.parse_faculty_page,
                         meta_extra={"parent_item": {
                             "university":             self._infer_university(response.url),
@@ -197,7 +198,6 @@ class GradProgramSpider(scrapy.Spider):
                         }}
                     )
                 return 
-
 
             program_links = self._detect_program_links(response)
 
@@ -352,7 +352,7 @@ class GradProgramSpider(scrapy.Spider):
                 item.get("requirements"),
             ])
 
-            if critical_empty and settings.GEMINI_ENABLED.lower() == "true":
+            if critical_empty and string(settings.GEMINI_ENABLED).lower() == "true":
                 logger.info(f"Heuristics incomplete — calling Gemini for {response.url}")
                 gemini_data = await self._gemini_extract(response)
                 for field, value in gemini_data.items():

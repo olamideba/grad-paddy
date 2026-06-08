@@ -6,5 +6,5 @@ settings: Settings = get_settings()
 def get_es():
     return AsyncElasticsearch(
         hosts=[settings.ES_URL],
-        api_key=settings.ES_API_KEY,
+        api_key=settings.ELASTIC_API_KEY,
     )

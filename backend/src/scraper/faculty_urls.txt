@@ -1,5 +1,10 @@
 # Faculty directory pages
 # Spider scrapes each faculty card and follows profile links
 
-# MIT EECS
-https://www.eecs.mit.edu/role/faculty/
+#Stanford
+https://ed.stanford.edu/faculty/profiles
+
+#ICL
+https://www.imperial.ac.uk/business-school/faculty-research/faculty/people/
+
+#NUS
