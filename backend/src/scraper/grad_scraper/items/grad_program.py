@@ -2,6 +2,7 @@ import scrapy
 
 
 class GradProgramItem(scrapy.Item):
+    raw_html   = scrapy.Field()
     university       = scrapy.Field()   # e.g. "MIT"
     program          = scrapy.Field()   # e.g. "PhD in Computer Science"
     department       = scrapy.Field()   # e.g. "EECS"
@@ -13,7 +14,6 @@ class GradProgramItem(scrapy.Item):
     application_fee  = scrapy.Field()
     stipend_amount   = scrapy.Field()   # parsed dollar amount if found
     funding_years    = scrapy.Field()   # e.g. "5 years"
-    # faculty          = scrapy.Field()   # list of {name, title, research_areas, bio_url}
     research_focus   = scrapy.Field()   # free text: research areas / themes
     research_groups  = scrapy.Field()   # list of named groups/labs
     program_description = scrapy.Field()  # overview paragraph(s)

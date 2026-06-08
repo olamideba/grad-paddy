@@ -65,43 +65,42 @@ def _build_mapping(dims: int) -> dict:
                     "similarity": "cosine",
                 },
                 "text":          {"type": "text", "analyzer": "english"},
-                "source_field":  {"type": "keyword"},
                 "chunk_index":   {"type": "integer"},
                 "university":    {"type": "keyword"},
                 "program":       {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                "department":    {"type": "keyword"},
-                "source_rl":     {"type": "keyword"},
+                "source_url":     {"type": "keyword"},
                 "semesters":       {"type": "keyword"},
                 "application_fee": {"type": "keyword"},
-                "requirements_url":{"type": "keyword"},
                 "deadline":      {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                 "deadline_type": {"type": "keyword"},
-                "funding":       {"type": "text"},
-                "stipend_amount":{"type": "keyword"},
-                "funding_years": {"type": "keyword"},
-                "research_groups":{"type": "keyword"},
-                "degree_length": {"type": "keyword"},
-                "faculty": {
-                    "type": "nested",
-                    "properties": {
-                        "name":           {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                        "title":          {"type": "keyword"},
-                        "research_areas": {"type": "text"},
-                        "bio_url":        {"type": "keyword"},
-                    },
-                },
                 "scraped_at": {"type": "date"},
             }
         }
     }
 
 
-CHUNKABLE_FIELDS = [
-    "program_description",
-    "research_focus",
-    "funding",
-    "requirements",
-]
+def _clean_html(raw_html: str) -> str:
+    """
+    Strip HTML tags and clean whitespace from raw page HTML.
+    Returns plain readable text suitable for chunking.
+    """
+    from parsel import Selector
+    import re
+
+    sel   = Selector(text=raw_html)
+
+    for tag in ["script", "style", "nav", "footer", "header", "noscript"]:
+        sel.css(tag).drop()
+
+    texts = sel.css("main *::text, article *::text, .content *::text, body *::text").getall()
+
+    if not texts:
+        texts = sel.css("*::text").getall()
+
+    # Join and clean whitespace
+    text = " ".join(t.strip() for t in texts if t.strip())
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 class ElasticsearchPipeline:
@@ -166,53 +165,44 @@ class ElasticsearchPipeline:
             self.embed_fn, self.dims = _get_embedding_fn()
             self._ensure_index()
 
-        base_doc = {
+        metadata = {
             "university":     adapter.get("university", ""),
             "program":        adapter.get("program", ""),
-            "department":     adapter.get("department", ""),
             "source_url":     adapter.get("source_url", ""),
             "deadline":       adapter.get("deadline", ""),
             "deadline_type":  adapter.get("deadline_type", ""),
-            "stipend_amount": adapter.get("stipend_amount", ""),
-            "funding_years":  adapter.get("funding_years", ""),
-            "research_groups":adapter.get("research_groups", []),
-            "degree_length":  adapter.get("degree_length", ""),
-            "faculty":        adapter.get("faculty", []),
+            "semesters":      adapter.get("semesters", ""),
+            "application_fee":  adapter.get("application_fee", ""),
             "scraped_at":     adapter.get("scraped_at", datetime.now(timezone.utc).isoformat()),
         }
 
-        docs_to_index = []
+        raw_html = adapter.get("raw_html", "")
+        clean_text = _clean_html(raw_html) if raw_html else ""
 
-        for field in CHUNKABLE_FIELDS:
-            text = adapter.get(field, "")
-            if not text:
-                continue
-            chunks     = self.splitter.split_text(text)
-            embeddings = self.embed_fn(chunks)
-            # logger.debug(f"  {field}: {len(chunks)} chunks")
-            logger.debug(f"  {field}: {len(chunks)} chunks, embedding[0] length: {len(embeddings[0])}")  # ← add this
-            for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
-                docs_to_index.append({
-                    **base_doc,
-                    "text":         chunk,
-                    "source_field": field,
-                    "chunk_index":  i,
-                    "embedding":    emb,
-                })
+        if not clean_text:
+            clean_text = " ".join(filter(None, [
+            adapter.get("program_description", ""),
+            adapter.get("research_focus", ""),
+            adapter.get("funding", ""),
+            adapter.get("requirements", ""),
+        ]))
 
-        if not docs_to_index:
-            summary = f"{base_doc['program']} at {base_doc['university']}"
-            emb = self.embed_fn([summary])[0]
-            docs_to_index.append({
-                **base_doc,
-                "text":         summary,
-                "source_field": "summary",
-                "chunk_index":  0,
-                "embedding":    emb,
-            })
+        if not clean_text:
+            logger.warning(f"No content to chunk for {metadata['source_url']}")
+            return item
+        
+        chunks     = self.splitter.split_text(clean_text)
+        logger.debug(f"{metadata['program']}: {len(chunks)} chunks from cleaned HTML")
+        embeddings = self.embed_fn(chunks)
 
         operations = []
-        for doc in docs_to_index:
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            doc = {
+                **metadata,
+                "text": chunk,
+                "chunk_index": i,
+                "embedding": embedding,
+            }
             operations.append({"index": {"_index": self.index}})
             operations.append(doc)
 
@@ -227,8 +217,8 @@ class ElasticsearchPipeline:
                         break
             else:
                 logger.info(
-                    f"Indexed {len(docs_to_index)} chunks for "
-                    f"{base_doc['university']} — {base_doc['program']}"
+                    f"Indexed {len(chunks)} chunks for "
+                    f"{metadata['university']} — {metadata['program']}"
                 )
 
         return item

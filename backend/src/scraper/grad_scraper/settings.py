@@ -1,13 +1,13 @@
 from src.core.config import get_settings
 
-setting = get_settings()
+settings = get_settings()
 
 BOT_NAME = "grad_scraper"
 SPIDER_MODULES = ["grad_scraper.spiders"]
 NEWSPIDER_MODULE = "grad_scraper.spiders"
 
-PROGRAM_URLS_FILE = settings.PROGRAM_URLS_FILE
-FACULTY_URLS_FILE = settings.FACULTY_URLS_FILE
+# PROGRAM_URLS_FILE = settings.PROGRAM_URLS_FILE
+# FACULTY_URLS_FILE = settings.FACULTY_URLS_FILE
 
 
 DOWNLOAD_HANDLERS = {

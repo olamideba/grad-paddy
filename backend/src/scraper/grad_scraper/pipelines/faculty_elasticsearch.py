@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from itemadapter import ItemAdapter
 from src.core.config import get_settings
 from grad_scraper.items.faculty_profile import FacultyProfileItem
+from grad_scraper.pipelines.elasticsearch import _get_splitter, _get_embedding_fn
 
 settings=get_settings()
 logger = logging.getLogger(__name__)
@@ -23,15 +24,14 @@ def _faculty_mapping(dims: int) -> dict:
                     "index":      True,
                     "similarity": "cosine",
                 },
+                "text":        {"type": "text", "analyzer": "english"},
+                "chunk_index": {"type": "integer"},
                 "name":        {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                 "title":       {"type": "keyword"},
                 "university":  {"type": "keyword"},
-                "department":  {"type": "keyword"},
-                "program":     {"type": "keyword"},
                 "email":       {"type": "keyword"},
                 "source_url":  {"type": "keyword"},
                 "research_areas":  {"type": "text"},
-                "bio":             {"type": "text"},
                 "paper_keywords":  {"type": "keyword"},
                 "papers": {
                     "type": "nested",
@@ -44,8 +44,6 @@ def _faculty_mapping(dims: int) -> dict:
                     },
                 },
                 "fit_score":     {"type": "integer"},
-                "fit_reasoning": {"type": "text"},
-                "conversation_angles": {"type": "text"},
                 "scraped_at": {"type": "date"},
             }
         }
@@ -56,6 +54,7 @@ class FacultyElasticsearchPipeline:
     def __init__(self):
         self.es       = None
         self.index    = FACULTY_INDEX
+        self.splitter = None
         self.embed_fn = None
         self.dims     = None
 
@@ -65,6 +64,7 @@ class FacultyElasticsearchPipeline:
 
     def open_spider(self, spider):
         from elasticsearch import Elasticsearch
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         es_url  = settings.ES_URL
         api_key = settings.ES_API_KEY
@@ -72,6 +72,7 @@ class FacultyElasticsearchPipeline:
             raise RuntimeError("ES_URL and ES_API_KEY required in .env")
 
         self.es = Elasticsearch(es_url, api_key=api_key)
+        self.splitter = _get_splitter()
         self.embed_fn = None  
         self.dims     = None  
 
@@ -97,52 +98,71 @@ class FacultyElasticsearchPipeline:
         if not isinstance(item, FacultyProfileItem):
             return item
 
-        adapter = ItemAdapter(item)
         if self.embed_fn is None:
-            from grad_scraper.pipelines.elasticsearch import _get_embedding_fn
             self.embed_fn, self.dims = _get_embedding_fn()
             self._ensure_index()
 
-        embed_text = " ".join(filter(None, [
-            adapter.get("name", ""),
-            adapter.get("research_areas", ""),
-            " ".join(adapter.get("paper_keywords", [])),
-            adapter.get("bio", "")[:500],
-        ]))
 
-        try:
-            embedding = self.embed_fn([embed_text])[0]
-        except Exception as e:
-            logger.warning(f"Embedding failed for {adapter.get('name')}: {e}")
-            embedding = []
+        adapter = ItemAdapter(item)
 
-        doc = {
-            "name":               adapter.get("name", ""),
-            "title":              adapter.get("title", ""),
-            "university":         adapter.get("university", ""),
-            "department":         adapter.get("department", ""),
-            "program":            adapter.get("program", ""),
-            "email":              adapter.get("email", ""),
-            "source_url":         adapter.get("source_url", ""),
-            "research_areas":     adapter.get("research_areas", ""),
-            "bio":                adapter.get("bio", ""),
-            "paper_keywords":     adapter.get("paper_keywords", []),
-            "papers":             adapter.get("papers", []),
-            "fit_score":          adapter.get("fit_score", 0),
-            "fit_reasoning":      adapter.get("fit_reasoning", ""),
-            "conversation_angles":adapter.get("conversation_angles", []),
-            "scraped_at":         adapter.get("scraped_at", datetime.now(timezone.utc).isoformat()),
-            "embedding":          embedding,
+        metadata = {
+            "name":           adapter.get("name", ""),
+            "title":          adapter.get("title", ""),
+            "university":     adapter.get("university", ""),
+            "email":          adapter.get("email", ""),
+            "papers":         adapter.get("papers", []),
+            "research_areas": adapter.get("research_areas", ""),
+            "paper_keywords": adapter.get("paper_keywords", []),
+            "source_url":     adapter.get("source_url", ""),
+            "fit_score":      adapter.get("fit_score", 0),
+            "scraped_at":     adapter.get("scraped_at", ""),
         }
 
-        try:
-            self.es.index(index=self.index, document=doc)
-            logger.info(
-                f"Indexed faculty: {adapter.get('name')} "
-                f"(fit={adapter.get('fit_score', 0)}) "
-                f"@ {adapter.get('university')}"
-            )
-        except Exception as e:
-            logger.error(f"Failed to index faculty {adapter.get('name')}: {e}")
+        bio            = adapter.get("bio", "")
+        research_areas = adapter.get("research_areas", "")
+        papers         = adapter.get("papers", [])
 
+        papers_text = "\n".join([
+            f"{p.get('title', '')} ({p.get('year', '')}): {p.get('abstract', '')}"
+            for p in papers
+            if p.get("title")
+        ])
+
+        full_content = " ".join(filter(None, [
+            f"Professor {metadata['name']} at {metadata['university']}.",
+            f"Research areas: {research_areas}.",
+            bio,
+            papers_text,
+        ]))
+
+        chunks = self.splitter.split_text(full_content)
+        logger.debug(f"  {metadata['name']}: {len(chunks)} chunks")
+
+        embeddings = self.embed_fn(chunks)
+
+        operations = []
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            doc = {
+                **metadata,
+                "text":        chunk,
+                "chunk_index": i,
+                "embedding":   embedding,
+            }
+            operations.append({"index": {"_index": self.index}})
+            operations.append(doc)
+
+        if operations:
+            resp = self.es.bulk(operations=operations)
+            if resp.get("errors"):
+                for item_resp in resp.get("items", []):
+                    op = item_resp.get("index", {})
+                    if op.get("error"):
+                        logger.warning(f"Bulk error: {op['error']}")
+                        break
+            else:
+                logger.info(
+                    f"Indexed {len(chunks)} chunks for "
+                    f"{metadata['name']} @ {metadata['university']} "
+                    f"(fit={metadata['fit_score']})"
+                )
         return item

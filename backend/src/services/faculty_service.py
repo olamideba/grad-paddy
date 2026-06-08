@@ -114,7 +114,13 @@ class FacultyService:
 
             try:
                 resp    = await es.search(index=index, body=body)
-                faculty = [h["_source"] for h in resp["hits"]["hits"]]
+                hits    = resp["hits"]["hits"]
+                seen    = {}
+                for hit in hits:
+                    name = hit["_source"].get("name", "")
+                    if name not in seen:
+                        seen[name] = hit["_source"]
+                faculty = list(seen.values())[:top_k]
             finally:
                 await es.close()
 

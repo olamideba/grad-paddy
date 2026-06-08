@@ -184,7 +184,7 @@ class GradProgramSpider(scrapy.Spider):
             if is_faculty_page:
                 logger.info(f"Faculty directory at {response.url}")
                 faculty_links = self.find_faculty_links(response)
-                for link_info in faculty_links[:50]:
+                for link_info in faculty_links:
                     yield self._make_request(
                         link_info["url"],
                         callback=self.parse_faculty_page,
@@ -312,6 +312,7 @@ class GradProgramSpider(scrapy.Spider):
         page = response.meta.get("playwright_page")
         try:
             item = GradProgramItem()
+            item["raw_html"] = response.text
             item["source_url"] = response.url
             item["university"]    = self._infer_university(response.url)
             item["scraped_at"]    = datetime.now(timezone.utc).isoformat()
