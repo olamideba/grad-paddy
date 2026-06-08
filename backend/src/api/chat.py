@@ -312,6 +312,40 @@ class PersistentChatAgent(ADKAgent):
                             exc,
                             exc_info=True,
                         )
+                elif status == "interrupted":
+                    # An interrupted (HITL gate) run isn't a completed message, but
+                    # its activity (reasoning + steps) should survive a reload so the
+                    # thought-process card returns. Persist only the non-text events;
+                    # the suppressed answer/draft text is never stored.
+                    activity = [
+                        e
+                        for e in pending_events
+                        if e.get("type")
+                        not in (
+                            "TEXT_MESSAGE_START",
+                            "TEXT_MESSAGE_CONTENT",
+                            "TEXT_MESSAGE_END",
+                        )
+                    ]
+                    if activity:
+                        try:
+                            await SessionRepository.upsert_message(
+                                user_id=user_id,
+                                session_id=session_id,
+                                message_id=str(uuid7()),
+                                data={
+                                    "role": "assistant",
+                                    "content": "",
+                                    "ag_ui_events": activity,
+                                },
+                            )
+                        except Exception as exc:
+                            logger.error(
+                                "Failed to persist interrupted-run activity for session %s: %s",
+                                session_id,
+                                exc,
+                                exc_info=True,
+                            )
 
                 # Release the final assistant message now (buffered, never streamed
                 # live). Suppress entirely if the run opened a gate — the draft is

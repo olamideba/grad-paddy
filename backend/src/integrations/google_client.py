@@ -134,9 +134,43 @@ def revoke(token: str) -> None:
 
 # ── Gmail ────────────────────────────────────────────────────────────────────
 
+def _markdown_to_html(body: str) -> str | None:
+    """Render Markdown to HTML. Returns None if no renderer is available."""
+    try:
+        from markdown_it import MarkdownIt
+    except Exception:
+        return None
+    return MarkdownIt("commonmark", {"breaks": True, "linkify": True}).render(body)
+
+
+def _markdown_to_plain(body: str) -> str:
+    """A clean plain-text fallback: drop markdown bold markers and unescape
+    backslash-escaped characters (e.g. '\\[name\\]' -> '[name]')."""
+    import re
+
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", body)
+    text = re.sub(r"\\([\\`*_{}\[\]()#+.!\-])", r"\1", text)
+    return text
+
+
 def gmail_send(access_token: str, *, to: str, subject: str, body: str) -> dict:
-    """Send a plain-text email as the authorized user."""
-    msg = MIMEText(body)
+    """Send an email as the authorized user.
+
+    The body is authored in Markdown. We send multipart/alternative — a rendered
+    HTML part so bold, bullets, and links display cleanly in the recipient's
+    client, plus a plain-text fallback with the markdown markers removed. If no
+    Markdown renderer is available we fall back to a clean plain-text email."""
+    body = body or ""
+    html = _markdown_to_html(body)
+    if html is None:
+        msg: MIMEText = MIMEText(_markdown_to_plain(body), "plain", "utf-8")
+    else:
+        from email.mime.multipart import MIMEMultipart
+
+        multipart = MIMEMultipart("alternative")
+        multipart.attach(MIMEText(_markdown_to_plain(body), "plain", "utf-8"))
+        multipart.attach(MIMEText(html, "html", "utf-8"))
+        msg = multipart  # type: ignore[assignment]
     msg["to"] = to
     msg["subject"] = subject
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
