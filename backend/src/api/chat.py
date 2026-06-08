@@ -32,6 +32,32 @@ from src.services.users_service import UserService
 
 logger = logging.getLogger(__name__)
 
+# Monkey-patch EventTranslator to propagate the author name of the ADK Event
+# to the TextMessageStartEvent. This allows chat.py to identify which sub-agent
+# produced intermediate reasoning so it can render descriptive activity step cards
+# (e.g. "Intake", "Strategy", "Draft") instead of generic "Step 1", "Step 2".
+try:
+    import ag_ui_adk.event_translator
+    original_translate_text_content = ag_ui_adk.event_translator.EventTranslator._translate_text_content
+
+    async def patched_translate_text_content(
+        self: Any, adk_event: Any, thread_id: str, run_id: str
+    ) -> AsyncGenerator[Any, None]:
+        """
+        Patched version of _translate_text_content that propagates the ADK event author to the TextMessageStartEvent.
+        """
+        async for event in original_translate_text_content(self, adk_event, thread_id, run_id):
+            if getattr(event, "type", None) == EventType.TEXT_MESSAGE_START:
+                author = getattr(adk_event, "author", None)
+                if author:
+                    event.name = author
+            yield event
+
+    ag_ui_adk.event_translator.EventTranslator._translate_text_content = patched_translate_text_content  # type: ignore[method-assign]
+except Exception as exc:
+    logger.error("Failed to monkey patch EventTranslator: %s", exc)
+
+
 router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(verify_firebase_auth)])
 
 REQUEST_HITL_TOOL_NAME = "request_hitl"
