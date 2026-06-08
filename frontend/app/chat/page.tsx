@@ -20,6 +20,7 @@ type StepStatus = "pending" | "running" | "done" | "error";
 // Map tool names to human-friendly descriptions
 const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; description: string }> = {
   transfer_to_agent: { label: "Thinking", emoji: "⚡", description: "Connecting to agent..." },
+  thinking: { label: "Thinking", emoji: "⚡", description: "Thinking..." },
   researcher_google_search_agent: {
     label: "Searching the web",
     emoji: "🔍",
@@ -248,7 +249,13 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
       items.push({ type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" });
     } else if (type === "STEP_STARTED") {
       const name = e.stepName as string;
-      items.push({ type: "phase", id: `step-${name}-${messageId}`, label: name, status: "done" });
+      items.push({
+        type: "step",
+        id: `step-${name}-${messageId}`,
+        label: name.replace(/_/g, " "),
+        status: "done",
+        tool: "thinking",
+      });
     } else if (type === "TOOL_CALL_START") {
       const toolName = (e.toolCallName as string) ?? "";
       items.push({
@@ -396,7 +403,12 @@ function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>;
   }[step.status];
 
   // Get human-friendly description for tool
-  const toolDesc = step.tool ? getToolDescription(step.tool) : { label: step.label, emoji: "⚙️" };
+  const toolDesc = step.tool
+    ? {
+        ...getToolDescription(step.tool),
+        label: step.tool === "thinking" ? step.label : getToolDescription(step.tool).label,
+      }
+    : { label: step.label, emoji: "⚙️" };
 
   return (
     <div
@@ -488,9 +500,18 @@ function groupStream(stream: ChatItem[]) {
     if (item.type === "phase") {
       out.push({ kind: "group", group: { phase: item, steps: [] } });
     } else if (item.type === "step") {
-      const last = out[out.length - 1];
-      if (last?.kind === "group") last.group.steps.push(item);
-      else out.push({ kind: "orphan", item });
+      let foundGroup = false;
+      for (let i = out.length - 1; i >= 0; i--) {
+        const entry = out[i];
+        if (entry.kind === "group") {
+          entry.group.steps.push(item);
+          foundGroup = true;
+          break;
+        }
+      }
+      if (!foundGroup) {
+        out.push({ kind: "orphan", item });
+      }
     } else if (item.type === "agent" && (item.thinking || superseded.has(item.id))) {
       const last = out[out.length - 1];
       if (last?.kind === "thinking") last.items.push(item);
@@ -1586,10 +1607,11 @@ export default function ChatPage() {
         setStream((p) => [
           ...p,
           {
-            type: "phase",
+            type: "step",
             id: stepPhaseId,
             label: e.stepName.replace(/_/g, " "),
             status: "running",
+            tool: "thinking",
           },
         ]);
       });
@@ -1598,11 +1620,9 @@ export default function ChatPage() {
       const stepPhaseId = `step-${e.stepName}`;
       setStream((p) =>
         p.map((item) =>
-          item.id === stepPhaseId && item.type === "phase" ? { ...item, status: "done" } : item
+          item.id === stepPhaseId && item.type === "step" ? { ...item, status: "done" } : item
         )
       );
-      // Collapse the step's detail once it finishes.
-      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
       const phaseIds: string[] = [];
