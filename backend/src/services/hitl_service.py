@@ -59,6 +59,14 @@ class HITLService:
         return await HITLRepository.get_pending_hitl_for_session(user_id, session_id)
 
     @staticmethod
+    async def list_hitl(user_id: str, session_id: str) -> list[dict]:
+        """All HITL records for a session (pending + resolved), oldest first.
+
+        Used to rebuild approval gates and their result cards when a session is
+        reloaded, so a gated turn isn't lost on refresh."""
+        return await HITLRepository.list_hitl_for_session(user_id, session_id)
+
+    @staticmethod
     async def resolve_hitl(
         user_id: str,
         hitl_id: str,
@@ -130,7 +138,10 @@ class HITLService:
                     "title": str(payload.get("title") or default_title),
                     "content": content,
                     "ai_generated": True,
-                    "status": "draft",
+                    # Approved through the chat HITL gate → already approved; no
+                    # need to re-approve it in the Drafts section, and it's
+                    # immediately attachable to an application.
+                    "status": "approved",
                     "linked_application_id": payload.get("linked_application_id"),
                     "linked_faculty_id": payload.get("linked_faculty_id"),
                 },

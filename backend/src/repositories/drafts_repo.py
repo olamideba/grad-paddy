@@ -18,15 +18,21 @@ class DraftsRepository:
         
         content = data.get("content", "")
         word_count = len(content.split())
-        
+
+        ai_generated = data.get("ai_generated", False)
+        # Self-created (non-AI) drafts are the user's own work — no approval step.
+        # AI-generated drafts default to "draft" until approved (the chat HITL
+        # gate passes status="approved" explicitly).
+        default_status = "draft" if ai_generated else "approved"
+
         draft = {
             "id": draft_id,
             "type": data.get("type", "sop"),
             "title": data.get("title", ""),
             "content": content,
             "word_count": word_count,
-            "status": data.get("status", "draft"),
-            "ai_generated": data.get("ai_generated", False),
+            "status": data.get("status", default_status),
+            "ai_generated": ai_generated,
             "source_tags": data.get("source_tags") or [],
             "linked_faculty_id": data.get("linked_faculty_id"),
             "linked_application_id": data.get("linked_application_id"),
