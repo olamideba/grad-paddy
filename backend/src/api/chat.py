@@ -7,6 +7,15 @@ from uuid6 import uuid7
 from ag_ui.core import EventType, RunAgentInput, ToolMessage
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 from ag_ui.core import BaseEvent
+
+# Step events let us surface each suppressed reasoning stage as an activity card
+# without leaking its prose. Imported defensively so an unexpected class name in
+# this ag_ui version degrades to "no step cards" instead of crashing the app.
+try:  # pragma: no cover - depends on installed ag_ui version
+    from ag_ui.core import StepStartedEvent, StepFinishedEvent
+except Exception:  # noqa: BLE001
+    StepStartedEvent = None  # type: ignore[assignment]
+    StepFinishedEvent = None  # type: ignore[assignment]
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
@@ -174,6 +183,29 @@ class PersistentChatAgent(ADKAgent):
         run_has_hitl = False
         buffered_msg_events: list[Any] = []   # in-progress message's event objects
         final_msg_events: list[Any] = []      # last completed message (release if no gate)
+        current_message_name: str | None = None  # sub-agent author of in-progress message
+        final_msg_name: str | None = None         # author of last completed message
+        stage_idx = 0
+
+        _DROP_WORDS = {
+            "sop", "outreach", "research", "translation", "narrative", "framing",
+            "agent", "chain", "prep", "persist",
+        }
+
+        def _stage_label(name: str | None) -> str | None:
+            """Turn a sub-agent name like 'sop_translation_intake' into 'Intake'."""
+            if not name:
+                return None
+            words = [w for w in str(name).replace("-", "_").split("_") if w]
+            kept = [w for w in words if w.lower() not in _DROP_WORDS] or words
+            return " ".join(w.capitalize() for w in kept[-2:])
+
+        def _step_events(label: str) -> list[Any]:
+            """Activity-card markers for a suppressed reasoning stage (no prose)."""
+            if StepStartedEvent is None or StepFinishedEvent is None:
+                return []
+            return [StepStartedEvent(step_name=label), StepFinishedEvent(step_name=label)]
+
         async for event in super().run(prepared):
             try:
                 event_payload = event.model_dump(by_alias=True, exclude_none=True)
@@ -235,6 +267,9 @@ class PersistentChatAgent(ADKAgent):
                 run_has_hitl = False
                 buffered_msg_events = []
                 final_msg_events = []
+                current_message_name = None
+                final_msg_name = None
+                stage_idx = 0
                 continue
 
             if event_type == EventType.RUN_ERROR:
@@ -247,6 +282,9 @@ class PersistentChatAgent(ADKAgent):
                 run_has_hitl = False
                 buffered_msg_events = []
                 final_msg_events = []
+                current_message_name = None
+                final_msg_name = None
+                stage_idx = 0
                 continue
 
             # Reconstruct the HITL record from the request_hitl tool-call stream.
@@ -256,6 +294,15 @@ class PersistentChatAgent(ADKAgent):
                 # This run opened an approval/review gate → suppress all of its
                 # assistant prose (the draft lives in the review card).
                 run_has_hitl = True
+                # The last completed message before the gate was a reasoning stage
+                # (e.g. the draft) → surface it as a step, not prose.
+                if final_msg_events:
+                    stage_idx += 1
+                    label = _stage_label(final_msg_name) or f"Step {stage_idx}"
+                    for step_ev in _step_events(label):
+                        yield step_ev
+                    final_msg_events = []
+                    final_msg_name = None
                 hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))] = []
             elif event_type == EventType.TOOL_CALL_ARGS and (
                 str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
@@ -276,7 +323,17 @@ class PersistentChatAgent(ADKAgent):
             pending_events.append(event_payload)
 
             if event_type == EventType.TEXT_MESSAGE_START:
+                # A new message means the previous completed one was an intermediate
+                # reasoning stage: surface it as an activity step (no prose).
+                if final_msg_events:
+                    stage_idx += 1
+                    label = _stage_label(final_msg_name) or f"Step {stage_idx}"
+                    for step_ev in _step_events(label):
+                        yield step_ev
+                    final_msg_events = []
+                    final_msg_name = None
                 current_message_id = getattr(event, "message_id", None)
+                current_message_name = getattr(event, "name", None)
                 current_text_parts = []
                 current_message_events = list(pending_events)
                 current_message_complete = False
@@ -302,8 +359,9 @@ class PersistentChatAgent(ADKAgent):
                 current_message_complete = True
                 buffered_msg_events.append(event)
                 # Keep only the latest complete message; earlier ones in the run
-                # were intermediate reasoning and are dropped.
+                # were intermediate reasoning and are turned into step cards.
                 final_msg_events = buffered_msg_events
+                final_msg_name = current_message_name
                 buffered_msg_events = []
 
             # Never stream assistant text live — it's released (or suppressed) at
