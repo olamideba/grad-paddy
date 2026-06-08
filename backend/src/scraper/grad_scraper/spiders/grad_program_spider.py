@@ -352,7 +352,7 @@ class GradProgramSpider(scrapy.Spider):
                 item.get("requirements"),
             ])
 
-            if critical_empty and string(settings.GEMINI_ENABLED).lower() == "true":
+            if critical_empty and str(settings.GEMINI_ENABLED).lower() == "true":
                 logger.info(f"Heuristics incomplete — calling Gemini for {response.url}")
                 gemini_data = await self._gemini_extract(response)
                 for field, value in gemini_data.items():

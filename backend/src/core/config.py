@@ -3,9 +3,12 @@ from pydantic import Field
 from functools import lru_cache
 from pathlib import Path
 
+# _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+# print("Looking for .env at:", _ENV_FILE, "| exists:", _ENV_FILE.exists())
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=_ENV_FILE,
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
