@@ -12,6 +12,7 @@ import { useAgent } from "@/components/AgentProvider";
 import type { Message, BaseEvent } from "../../lib/ag-ui";
 import { useChatSessions } from "@/context/ChatSessionsContext";
 import MarkdownCanvas from "@/components/MarkdownCanvas";
+import EmailCanvas from "@/components/EmailCanvas";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -229,6 +230,15 @@ type ChatItem =
       navTarget?: { route: string; label: string }; // where to open the result
       expiresAt?: string | null;
       resolved?: "approved" | "rejected";
+      // Present for email gates → render the EmailCanvas (Send via Gmail) instead
+      // of the generic review/approve UI.
+      email?: {
+        to: string;
+        subject: string;
+        refId?: string | null;
+        kind?: "faculty" | "recommender";
+        linkedApplicationId?: string | null;
+      };
     }
   | {
       type: "result";
@@ -243,10 +253,13 @@ type ChatItem =
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
 function replayEventsToItems(events: Record<string, unknown>[], messageId: string): ChatItem[] {
   const items: ChatItem[] = [];
+  let phaseItem: Extract<ChatItem, { type: "phase" }> | null = null;
+  let reasoning = "";
   for (const e of events) {
     const type = e.type as string;
     if (type === "RUN_STARTED") {
-      items.push({ type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" });
+      phaseItem = { type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" };
+      items.push(phaseItem);
     } else if (type === "STEP_STARTED") {
       const name = e.stepName as string;
       items.push({
@@ -258,6 +271,9 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
       });
     } else if (type === "TOOL_CALL_START") {
       const toolName = (e.toolCallName as string) ?? "";
+      // Internal routing/gate calls aren't user-facing steps (live path skips
+      // transfer_to_agent; request_hitl becomes the approval card, not a step).
+      if (toolName === "transfer_to_agent" || toolName === "request_hitl") continue;
       items.push({
         type: "step",
         id: (e.toolCallId as string) ?? `tc-${messageId}-${items.length}`,
@@ -266,7 +282,19 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
         tool: toolName,
         detail: toolName,
       });
+    } else if (type === "REASONING_MESSAGE_CONTENT") {
+      reasoning += (e.delta as string) ?? "";
+    } else if (type === "REASONING_MESSAGE_END") {
+      reasoning = reasoning.replace(/\n*$/, "") + "\n\n";
     }
+  }
+  // Restore the persisted thought process onto the run's phase card.
+  if (reasoning.trim()) {
+    if (!phaseItem) {
+      phaseItem = { type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" };
+      items.unshift(phaseItem);
+    }
+    phaseItem.reasoning = reasoning.trim();
   }
   return items;
 }
@@ -472,6 +500,107 @@ function entityNav(entity?: string): { route: string; label: string } | undefine
   return undefined;
 }
 
+// Keys carried in an email gate payload that are surfaced in the EmailCanvas,
+// so they should not also appear in the generic summary list.
+const EMAIL_PAYLOAD_KEYS = [
+  "content",
+  "body",
+  "entity",
+  "to",
+  "subject",
+  "ref_id",
+  "kind",
+  "linked_application_id",
+  "action",
+];
+
+// Extract email-canvas metadata from a HITL payload (only for entity="email").
+function emailMetaFromPayload(
+  payload: Record<string, unknown>
+):
+  | {
+      to: string;
+      subject: string;
+      refId?: string | null;
+      kind?: "faculty" | "recommender";
+      linkedApplicationId?: string | null;
+    }
+  | undefined {
+  if (payload.entity !== "email") return undefined;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  return {
+    to: str(payload.to),
+    subject: str(payload.subject),
+    refId: typeof payload.ref_id === "string" ? payload.ref_id : null,
+    kind: payload.kind === "faculty" ? "faculty" : "recommender",
+    linkedApplicationId:
+      typeof payload.linked_application_id === "string" ? payload.linked_application_id : null,
+  };
+}
+
+// Rebuild an approval gate (and, if approved, its result card) from a persisted
+// HITL record — mirrors the live addApproval/resolveApproval logic so a gated
+// turn looks the same after a page reload.
+function hitlToItems(h: {
+  id: string;
+  kind?: "approval" | "choice" | "input";
+  title?: string;
+  description?: string;
+  payload?: Record<string, unknown> | null;
+  options?: { id: string; label: string }[] | null;
+  schema?: Record<string, unknown> | null;
+  status?: string;
+  expires_at?: string | null;
+}): ChatItem[] {
+  const payload = (h.payload && typeof h.payload === "object" ? h.payload : {}) as Record<
+    string,
+    unknown
+  >;
+  const reviewContent =
+    typeof payload.content === "string"
+      ? payload.content
+      : typeof payload.body === "string"
+        ? payload.body
+        : undefined;
+  const entity = typeof payload.entity === "string" ? payload.entity : undefined;
+  const navTarget = entityNav(entity);
+  const email = emailMetaFromPayload(payload);
+  const skip = email ? EMAIL_PAYLOAD_KEYS : ["content", "body", "entity"];
+  const items = Object.entries(payload)
+    .filter(([k]) => !skip.includes(k))
+    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
+  const resolved: "approved" | "rejected" | undefined =
+    h.status === "approved" ? "approved" : h.status === "rejected" ? "rejected" : undefined;
+  const out: ChatItem[] = [
+    {
+      type: "approval",
+      id: h.id,
+      kind: h.kind ?? "approval",
+      title: h.title || "Approval required",
+      description: h.description || "Review the proposed action below.",
+      items: items.length ? items : undefined,
+      options: h.options ?? undefined,
+      schema: h.schema ?? undefined,
+      reviewContent,
+      navTarget,
+      expiresAt: h.expires_at ?? undefined,
+      resolved,
+      email: email ? { ...email, subject: email.subject || h.title || "" } : undefined,
+    },
+  ];
+  if (resolved === "approved" && navTarget) {
+    out.push({
+      type: "result",
+      id: `result-${h.id}`,
+      title: h.title || "Saved",
+      subtitle: "Saved",
+      route: navTarget.route,
+      label: navTarget.label,
+    });
+  }
+  return out;
+}
+
 function groupStream(stream: ChatItem[]) {
   // Decide which agent messages are intermediate "thoughts" purely from position:
   // an agent message is superseded (collapse it) when a LATER agent message exists
@@ -566,6 +695,29 @@ function ThinkingBlock({ items }: { items: Extract<ChatItem, { type: "agent" }>[
   );
 }
 
+// Turn raw thought-summary text into clean plain prose: strip markdown syntax
+// (so no **bold**/#headers/`code` leak into the feed) and drop duplicate blocks
+// — the model/ADK sometimes emits the same thought summary twice.
+function cleanReasoning(raw: string): string {
+  const stripped = raw
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // headers
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // bold
+    .replace(/`([^`]+)`/g, "$1") // inline code
+    .replace(/^\s*[-*+]\s+/gm, "• "); // bullets
+  const seen = new Set<string>();
+  return stripped
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .filter((b) => {
+      const key = b.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join("\n\n");
+}
+
 // Live reasoning feed — an auto-scrolling, edge-faded mini view of what the
 // agent is doing right now. Collapsed: short and center-focused, with the text
 // fading out toward the top/bottom edges (crisp in the ~30–80% band). Expanded:
@@ -616,7 +768,7 @@ function ReasoningFeed({
             className="text-[13px] font-dm leading-relaxed whitespace-pre-wrap"
             style={{ color: "#6B6457" }}
           >
-            {reasoning}
+            {cleanReasoning(reasoning as string)}
             {running && <span className="typewriter-caret" />}
           </div>
         ) : (
@@ -891,7 +1043,7 @@ function ApprovalGate({
           <p className="text-xs font-dm leading-relaxed" style={{ color: "#5A5A5A" }}>
             {item.description}
           </p>
-          {item.items && item.items.length > 0 && (
+          {item.items && item.items.length > 0 && !item.email && (
             <ul className="space-y-1 mt-2">
               {item.items.map((it, i) => (
                 <li
@@ -926,11 +1078,24 @@ function ApprovalGate({
                   width={13}
                 />
                 {item.resolved === "approved"
-                  ? "Approved"
+                  ? item.email
+                    ? "Sent"
+                    : "Approved"
                   : item.resolved === "rejected"
                     ? "Rejected"
                     : "Expired — no longer awaiting input"}
               </div>
+            ) : item.email ? (
+              <EmailCanvas
+                initialTo={item.email.to}
+                initialSubject={item.email.subject}
+                initialBody={item.reviewContent ?? ""}
+                emailId={item.email.refId}
+                kind={item.email.kind}
+                linkedApplicationId={item.email.linkedApplicationId}
+                onSent={() => onResolve(item.id, "approved", { sent: true })}
+                onCancel={() => onResolve(item.id, "rejected")}
+              />
             ) : typeof item.reviewContent === "string" ? (
               <ReviewGate
                 initial={item.reviewContent}
@@ -1595,29 +1760,50 @@ export default function ChatPage() {
     }
 
     threadId.current = activeSessionId;
-    import("../../lib/api").then(({ sessionsApi }) =>
+    import("../../lib/api").then(({ sessionsApi, hitlApi }) =>
       sessionsApi
         .listMessages(activeSessionId)
-        .then((res) => {
-          const items: ChatItem[] = [];
+        .then(async (res) => {
+          // Build timeline blocks (one per message, plus one per resolved HITL
+          // gate) and merge them by timestamp so a gated turn's approval + result
+          // land back in the right place after reload.
+          const blocks: { ts: number; items: ChatItem[] }[] = [];
           const restored: Message[] = [];
           for (const m of res.data) {
             if (m.role !== "user" && m.role !== "assistant") continue;
             const ts = new Date(m.created_at);
+            const blk: ChatItem[] = [];
             if (m.role === "assistant" && m.ag_ui_events?.length) {
-              items.push(...replayEventsToItems(m.ag_ui_events, m.id));
+              blk.push(...replayEventsToItems(m.ag_ui_events, m.id));
             }
-            items.push(
-              m.role === "user"
-                ? { type: "user", id: m.id, content: m.content, timestamp: ts }
-                : { type: "agent", id: m.id, content: m.content, timestamp: ts }
-            );
+            const hasContent = typeof m.content === "string" && m.content.trim().length > 0;
+            if (m.role === "user") {
+              blk.push({ type: "user", id: m.id, content: m.content, timestamp: ts });
+            } else if (hasContent) {
+              // Skip empty assistant carriers (interrupted-run activity records) —
+              // their phase/steps are already in blk via replayEventsToItems.
+              blk.push({ type: "agent", id: m.id, content: m.content, timestamp: ts });
+            }
+            blocks.push({ ts: ts.getTime(), items: blk });
             restored.push({
               id: m.id,
               role: m.role as "user" | "assistant",
               content: m.content,
             } as Message);
           }
+          // Rebuild resolved approval gates + result cards. The still-open gate
+          // (if any) is surfaced by checkHITL below, so skip pending here.
+          try {
+            const hitlRes = await hitlApi.listForSession(activeSessionId);
+            for (const h of hitlRes.data ?? []) {
+              if (h.status === "pending") continue;
+              blocks.push({ ts: new Date(h.created_at).getTime(), items: hitlToItems(h) });
+            }
+          } catch (e) {
+            console.error("[chat] load session HITL error", e);
+          }
+          blocks.sort((a, b) => a.ts - b.ts);
+          const items = blocks.flatMap((b) => b.items);
           setStream(items);
           // Restored runs are already finished → collapse their activity cards.
           setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
@@ -1858,9 +2044,12 @@ export default function ChatPage() {
     // Where the saved result lives, for the result-card link.
     const entity = typeof payload.entity === "string" ? payload.entity : undefined;
     const navTarget = entityNav(entity);
-    // Build the readable summary list, hiding the bulky review content.
+    const email = emailMetaFromPayload(payload);
+    // Build the readable summary list, hiding the bulky review content (and the
+    // email fields, which the EmailCanvas renders).
+    const skip = email ? EMAIL_PAYLOAD_KEYS : ["content", "body", "entity"];
     const items = Object.entries(payload)
-      .filter(([k]) => k !== "content" && k !== "body" && k !== "entity")
+      .filter(([k]) => !skip.includes(k))
       .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
     setStream((p) =>
       p.some((i) => i.type === "approval" && i.id === a.id)
@@ -1879,6 +2068,7 @@ export default function ChatPage() {
               reviewContent,
               navTarget,
               expiresAt: a.expiresAt ?? undefined,
+              email: email ? { ...email, subject: email.subject || a.title || "" } : undefined,
             },
           ]
     );

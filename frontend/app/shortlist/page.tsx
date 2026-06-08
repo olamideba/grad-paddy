@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import type { Faculty as ApiFaculty, ShortlistStats } from "../../lib/api";
+import { SkeletonCardGrid } from "@/components/Skeleton";
 
 type OutreachStatus = "none" | "drafted" | "sent" | "responded";
 type PositionStatus = boolean | "unknown";
@@ -617,12 +618,10 @@ export default function ShortlistPage() {
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div
-              className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
-              style={{ color: "#E8472A" }}
-            />
-          </div>
+          <SkeletonCardGrid
+            count={8}
+            gridClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+          />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
             <Icon

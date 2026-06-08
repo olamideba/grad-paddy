@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import { useChatSessions } from "@/context/ChatSessionsContext";
+import { SidebarSkeleton } from "@/components/Skeleton";
 import type { Session, Group } from "@/lib/api";
 
 const DAY_MS = 86_400_000;
@@ -337,12 +338,7 @@ export default function ChatHistory({
       {panelOpen && (
         <div className="flex-1 min-h-0 overflow-y-auto">
           {sessionsLoading ? (
-            <div className="flex items-center justify-center py-4">
-              <div
-                className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
-                style={{ borderColor: "#E8472A", borderTopColor: "transparent" }}
-              />
-            </div>
+            <SidebarSkeleton />
           ) : sessions.length === 0 && groups.length === 0 ? (
             <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
               No chats yet
