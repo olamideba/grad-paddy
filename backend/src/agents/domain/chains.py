@@ -1,6 +1,6 @@
 from google.adk.agents import LlmAgent, SequentialAgent
 
-from src.agents.tools import create_draft, GOVERNANCE_TOOLS
+from src.agents.tools import GOVERNANCE_TOOLS
 
 MODEL = "gemini-3.1-pro-preview"
 
@@ -25,7 +25,11 @@ def _review_and_save_stage(
     On approval the (possibly edited) content is persisted via create_draft.
 
     NOTE: the intermediate stage prose never reaches the user — chat.py buffers
-    and suppresses assistant text for any run that opens a request_hitl gate."""
+    and suppresses assistant text for any run that opens a request_hitl gate. The
+    draft is saved deterministically by the backend when the human approves the
+    gate (HITLService persists payload.content), so this agent must NOT save it
+    itself — it only opens the review gate, carrying the full draft + a sensible
+    title in the payload."""
     return LlmAgent(
         name=name,
         model=MODEL,
@@ -34,14 +38,14 @@ def _review_and_save_stage(
             "Call request_hitl exactly once with kind='approval', "
             'options_json=\'[{"id":"approve","label":"Approve"},{"id":"reject","label":"Reject"}]\', '
             f"title='Review {draft_type} draft', a one-line description, and payload_json set to a JSON "
-            f'object: {{"entity":"{draft_type}","content":<the FULL draft text below as a JSON string>}}.\n'
-            "Then WAIT for the human decision. If approved (their response may include an edited "
-            '"content"), call create_draft with '
-            f"type='{draft_type}', a concise title ({title_hint}), and content set to the approved content "
-            "(use the response content if provided, otherwise the draft below). If rejected, do not save.\n\n"
+            f'object: {{"entity":"{draft_type}","title":<a concise title ({title_hint})>,'
+            f'"content":<the FULL draft text below as a JSON string>}}.\n'
+            "The backend saves the draft automatically when the human approves, so do NOT call any "
+            "save tool yourself and do not repeat the draft text. After the human decides, reply with "
+            "at most one short sentence.\n\n"
             f"DRAFT TEXT:\n{{{state_key}}}"
         ),
-        tools=[create_draft, *GOVERNANCE_TOOLS],
+        tools=list(GOVERNANCE_TOOLS),
     )
 
 
