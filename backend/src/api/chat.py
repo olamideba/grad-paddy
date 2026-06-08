@@ -62,6 +62,41 @@ router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(veri
 
 REQUEST_HITL_TOOL_NAME = "request_hitl"
 
+# Human-readable labels for the reasoning stages surfaced as activity cards.
+# Keyed by the ADK sub-agent name. These describe the activity to the user
+# without leaking internal agent/tool names (see NO_LEAK_RULE). Unknown names
+# fall back to the heuristic in _stage_label below.
+STAGE_LABELS: dict[str, str] = {
+    # SOP translation chain
+    "sop_translation_intake": "Reviewing your notes",
+    "sop_translation_strategy": "Planning your statement",
+    "sop_translation_draft": "Drafting your statement of purpose",
+    "sop_translation_persist": "Preparing draft for review",
+    # Outreach prep chain
+    "outreach_paper_summary": "Reading faculty research",
+    "outreach_talking_points": "Building talking points",
+    "outreach_crm_draft": "Drafting your outreach message",
+    "outreach_persist": "Preparing draft for review",
+    # Research narrative framing chain
+    "research_evidence_synthesis": "Synthesizing research evidence",
+    "research_narrative_angles": "Exploring narrative angles",
+    "research_framing_recommendation": "Framing your research story",
+    "research_narrative_persist": "Preparing draft for review",
+    # Application intake + general subagents
+    "planner": "Planning the approach",
+    "researcher": "Researching",
+    "application_agent": "Preparing your application",
+    "account_agent": "Updating your account",
+    "governance_agent": "Checking requirements",
+    "operations_agent": "Coordinating tasks",
+    # Domain subagents
+    "faculty_discovery_agent": "Finding faculty",
+    "faculty_profile_deep_dive_agent": "Reviewing faculty profiles",
+    "application_tracker_agent": "Updating application tracker",
+    "funding_requirement_flag_detection_agent": "Checking funding requirements",
+    "domain_orchestrator_agent": "Organizing the work",
+}
+
 
 class PersistentChatAgent(ADKAgent):
     """ADK agent wrapper that persists AG-UI message streams and HITL interrupts."""
@@ -219,9 +254,16 @@ class PersistentChatAgent(ADKAgent):
         }
 
         def _stage_label(name: str | None) -> str | None:
-            """Turn a sub-agent name like 'sop_translation_intake' into 'Intake'."""
+            """Map a sub-agent name to a descriptive activity label.
+
+            Prefers an explicit STAGE_LABELS entry (e.g. 'sop_translation_intake'
+            -> 'Reviewing your notes'); falls back to a 2-word heuristic for any
+            agent not in the map."""
             if not name:
                 return None
+            mapped = STAGE_LABELS.get(str(name))
+            if mapped:
+                return mapped
             words = [w for w in str(name).replace("-", "_").split("_") if w]
             kept = [w for w in words if w.lower() not in _DROP_WORDS] or words
             return " ".join(w.capitalize() for w in kept[-2:])

@@ -215,7 +215,7 @@ type ChatItem =
       tool?: string;
       children?: { label: string; status: StepStatus; detail?: string }[];
     }
-  | { type: "phase"; id: string; label: string; status: StepStatus }
+  | { type: "phase"; id: string; label: string; status: StepStatus; reasoning?: string }
   | {
       type: "approval";
       id: string; // hitlId
@@ -566,6 +566,129 @@ function ThinkingBlock({ items }: { items: Extract<ChatItem, { type: "agent" }>[
   );
 }
 
+// Live reasoning feed — an auto-scrolling, edge-faded mini view of what the
+// agent is doing right now. Collapsed: short and center-focused, with the text
+// fading out toward the top/bottom edges (crisp in the ~30–80% band). Expanded:
+// a taller, fixed-max-height scrollable view of the entire trace.
+function ReasoningFeed({
+  lines,
+  reasoning,
+  running,
+}: {
+  lines: { id: string; text: string; status: StepStatus }[];
+  reasoning?: string;
+  running: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const hasReasoning = !!reasoning && reasoning.trim().length > 0;
+
+  // Keep the latest content in view as the trace grows (and when toggling height).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [reasoning, lines.length, expanded, running]);
+
+  // Vertical fade: transparent at the edges, opaque across the center band so
+  // lines sharpen as they scroll into the middle and shadow out toward the top.
+  const fadeMask =
+    "linear-gradient(to bottom, transparent 0%, #000 30%, #000 80%, transparent 100%)";
+
+  return (
+    <div style={{ background: "#FFFFFF" }}>
+      <div
+        ref={scrollRef}
+        className="px-4"
+        style={{
+          maxHeight: expanded ? 280 : 108,
+          // Padding keeps the newest line resting inside the crisp band rather
+          // than flush against the faded bottom edge.
+          paddingTop: 14,
+          paddingBottom: expanded ? 14 : 34,
+          overflowY: expanded ? "auto" : "hidden",
+          WebkitMaskImage: expanded ? undefined : fadeMask,
+          maskImage: expanded ? undefined : fadeMask,
+          transition: "max-height 220ms cubic-bezier(0.22,1,0.36,1)",
+        }}
+      >
+        {hasReasoning ? (
+          <div
+            className="text-[13px] font-dm leading-relaxed whitespace-pre-wrap"
+            style={{ color: "#6B6457" }}
+          >
+            {reasoning}
+            {running && <span className="typewriter-caret" />}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {lines.length === 0 && (
+              <div className="text-[13px] font-dm italic" style={{ color: "#9CA3AF" }}>
+                {running ? "Thinking…" : "Getting started…"}
+              </div>
+            )}
+            {lines.map((line, i) => {
+              const isLast = i === lines.length - 1;
+              const active = isLast && running && line.status !== "done";
+              return (
+                <div
+                  key={line.id}
+                  className="msg-enter flex items-center gap-2"
+                  style={{
+                    opacity: active ? 1 : line.status === "done" ? 0.5 : 0.75,
+                    transition: "opacity 220ms ease",
+                  }}
+                >
+                  {line.status === "done" ? (
+                    <span className="shrink-0 text-[11px]" style={{ color: "#4ECDC4" }}>
+                      ✓
+                    </span>
+                  ) : active ? (
+                    <Icon
+                      icon="solar:spinner-bold"
+                      width={12}
+                      className="animate-spin shrink-0"
+                      style={{ color: "#E8472A" }}
+                    />
+                  ) : (
+                    <span className="shrink-0" style={{ color: "#C8C0AF" }}>
+                      •
+                    </span>
+                  )}
+                  <span
+                    className={clsx(
+                      "text-[13px] font-dm leading-snug truncate",
+                      active && "font-medium"
+                    )}
+                    style={{ color: active ? "#0D0D0D" : "#6B6457" }}
+                  >
+                    {line.text}
+                    {active && "…"}
+                  </span>
+                  {active && <span className="typewriter-caret" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {(hasReasoning || lines.length > 2) && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold font-space uppercase tracking-wide"
+          style={{ color: "#9CA3AF", borderTop: "1.5px solid #EDE6D3", background: "#FBF7EF" }}
+        >
+          <Icon
+            icon="solar:alt-arrow-down-bold"
+            width={11}
+            className={clsx("transition-transform duration-150", expanded && "rotate-180")}
+          />
+          {expanded ? "collapse" : "show steps"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AgentWorkCard({
   group,
   collapsed,
@@ -579,6 +702,16 @@ function AgentWorkCard({
   const doneCount = steps.filter((s) => s.status === "done").length;
   const runningStep = steps.find((s) => s.status === "running");
   const lastActiveTool = [...steps].reverse().find((s) => s.tool)?.tool;
+  const running = phase.status === "running";
+
+  // Thought-process feed lines: one per step. Tool steps use their friendly
+  // label; thinking steps use the descriptive stage label from the backend.
+  const lines = steps.map((s) => ({
+    id: s.id,
+    text: s.tool && s.tool !== "thinking" ? getToolDescription(s.tool).label : s.label,
+    status: s.status,
+  }));
+
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (phase.status !== "running") return;
@@ -702,6 +835,14 @@ function AgentWorkCard({
               <StepCard key={step.id} step={step} number={i + 1} />
             ))}
           </div>
+          {/* Thought process — live, edge-faded reasoning feed kept below the steps. */}
+          <div
+            className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest font-space"
+            style={{ background: "#F7F0E3", borderTop: "2px solid #0D0D0D", color: "#9CA3AF" }}
+          >
+            Thought process
+          </div>
+          <ReasoningFeed lines={lines} reasoning={phase.reasoning} running={running} />
         </>
       )}
     </div>
@@ -1621,6 +1762,28 @@ export default function ChatPage() {
       setStream((p) =>
         p.map((item) =>
           item.id === stepPhaseId && item.type === "step" ? { ...item, status: "done" } : item
+        )
+      );
+    } else if (type === "REASONING_MESSAGE_CONTENT") {
+      // Live model thought summary — append the delta to this run's phase so the
+      // thought-process feed shows how the agent reached its result.
+      const e = event as unknown as { delta?: string };
+      if (e.delta) {
+        setStream((p) =>
+          p.map((item) =>
+            item.type === "phase" && item.id === phaseId
+              ? { ...item, reasoning: (item.reasoning ?? "") + e.delta }
+              : item
+          )
+        );
+      }
+    } else if (type === "REASONING_MESSAGE_END") {
+      // Separate consecutive thought blocks (e.g. across chain stages).
+      setStream((p) =>
+        p.map((item) =>
+          item.type === "phase" && item.id === phaseId && item.reasoning
+            ? { ...item, reasoning: item.reasoning.replace(/\n*$/, "") + "\n\n" }
+            : item
         )
       );
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
