@@ -1,6 +1,16 @@
+import logging
+
 from google.api_core.exceptions import NotFound
+from google.genai import Client
+
 from src.repositories.sessions_repo import SessionRepository
 from src.repositories.groups_repo import GroupRepository
+
+logger = logging.getLogger(__name__)
+
+# The cheapest/fastest model — title generation is a tiny task.
+_TITLE_MODEL = "gemini-2.5-flash-lite"
+_genai_client = Client()
 
 MAX_TITLE_LEN = 200
 
@@ -8,20 +18,43 @@ MAX_TITLE_LEN = 200
 class SessionService:
     
     @staticmethod
-    async def create_session(user_id: str, first_message: str) -> dict:
-        """Generates title from first_message (first 60 chars), creates session and appends the first message."""
+    async def _generate_title(first_message: str) -> str:
+        """Use a cheap LLM call to generate a concise session title. Falls back to truncation."""
+        try:
+            prompt = (
+                "Generate a concise chat session title (maximum 6 words, no quotes, no punctuation) "
+                "that captures the main intent of this message. Reply with the title only.\n\n"
+                f"Message: {first_message[:300]}"
+            )
+            response = await _genai_client.aio.models.generate_content(
+                model=_TITLE_MODEL,
+                contents=prompt,
+            )
+            title = (response.text or "").strip().strip('"\'')
+            if title:
+                return title[:MAX_TITLE_LEN]
+        except Exception as exc:
+            logger.warning("Title generation failed, falling back to truncation: %s", exc)
+
+        # Fallback: simple truncation
         title = first_message[:60].strip()
         if len(first_message) > 60:
             title += "..."
-        
+        return title
+
+    @staticmethod
+    async def create_session(user_id: str, first_message: str) -> dict:
+        """Generates an LLM title from first_message, creates session and appends the first message."""
+        title = await SessionService._generate_title(first_message)
+
         session = await SessionRepository.create_session(user_id, title)
-        
+
         # Add the first message
         await SessionRepository.create_message(user_id, session["id"], {
             "role": "user",
             "content": first_message,
         })
-        
+
         return session
 
     @staticmethod

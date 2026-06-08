@@ -46,6 +46,7 @@ export interface Preferences {
   degree_type: string;
   funding_required: boolean;
   auto_approve?: boolean;
+  reminder_offsets_days?: number[];
 }
 
 export const preferencesApi = {
@@ -55,6 +56,46 @@ export const preferencesApi = {
     const cur = await usersApi.getPreferences();
     return usersApi.upsertPreferences({ ...cur.data, auto_approve: value });
   },
+};
+
+// ── Emails (agent-drafted faculty / recommender emails) ─────────────────────────
+
+export interface Email {
+  id: string;
+  to: string;
+  subject: string;
+  body_markdown: string;
+  kind: "faculty" | "recommender";
+  ref_id: string | null;
+  linked_application_id: string | null;
+  status: "draft" | "sent";
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const emailsApi = {
+  list: () => request<Std<Email[]>>("/api/emails/"),
+  get: (id: string) => request<Std<Email>>(`/api/emails/${id}`),
+  update: (id: string, data: { to?: string; subject?: string; body_markdown?: string }) =>
+    request<Std<Email>>(`/api/emails/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  send: (id: string) => request<Std<Email>>(`/api/emails/${id}/send`, { method: "POST" }),
+  delete: (id: string) =>
+    request<Std<{ status: string }>>(`/api/emails/${id}`, { method: "DELETE" }),
+};
+
+// ── Integrations (Google: Gmail + Calendar) ─────────────────────────────────────
+
+export interface GoogleStatus {
+  connected: boolean;
+  email: string | null;
+}
+
+export const integrationsApi = {
+  googleStatus: () => request<Std<GoogleStatus>>("/api/integrations/google/status"),
+  googleAuthUrl: () => request<Std<{ url: string }>>("/api/integrations/google/auth-url"),
+  googleDisconnect: () =>
+    request<Std<{ status: string }>>("/api/integrations/google", { method: "DELETE" }),
 };
 
 export const usersApi = {
@@ -135,6 +176,12 @@ export const shortlistApi = {
 
 // ── Tracker ───────────────────────────────────────────────────────────────────
 
+export interface Attachment {
+  kind: "sop" | "narrative" | "cv";
+  ref_id: string;
+  title: string;
+}
+
 export interface Application {
   id: string;
   university: string;
@@ -144,9 +191,11 @@ export interface Application {
   status: string;
   sop_status: string;
   cv_status: string;
-  recommenders: { name: string; status: string }[];
+  recommenders: { name: string; status: string; email?: string }[];
+  attachments?: Attachment[];
   funded: string;
   notes: string | null;
+  calendar_event_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -212,6 +261,17 @@ export const trackerApi = {
         body: JSON.stringify({ status }),
       }
     ),
+  addAttachment: (id: string, data: { kind: string; ref_id: string; title?: string }) =>
+    request<Std<Application>>(`/api/tracker/${id}/attachments`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  removeAttachment: (id: string, ref_id: string) =>
+    request<Std<Application>>(`/api/tracker/${id}/attachments/${ref_id}`, { method: "DELETE" }),
+  addToCalendar: (id: string) =>
+    request<Std<Application>>(`/api/tracker/${id}/calendar`, { method: "POST" }),
+  removeFromCalendar: (id: string) =>
+    request<Std<Application>>(`/api/tracker/${id}/calendar`, { method: "DELETE" }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/tracker/${id}`, { method: "DELETE" }),
 };
@@ -270,6 +330,53 @@ export const draftsApi = {
     }),
   delete: (id: string) =>
     request<Std<{ status: string }>>(`/api/drafts/${id}`, { method: "DELETE" }),
+};
+
+// ── CVs / resumes ───────────────────────────────────────────────────────────────
+
+export interface CV {
+  id: string;
+  title: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const cvsApi = {
+  list: () => request<Std<CV[]>>("/api/cvs/"),
+  upload: async (file: File, title?: string) => {
+    const token = await getToken();
+    const form = new FormData();
+    form.append("file", file);
+    if (title) form.append("title", title);
+    // No Content-Type header — the browser sets the multipart boundary.
+    const res = await fetch(`${BASE}/api/cvs/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json() as Promise<Std<CV>>;
+  },
+  // Fetches the file with auth and returns a blob object URL for viewing/downloading.
+  fetchBlobUrl: async (id: string) => {
+    const token = await getToken();
+    const res = await fetch(`${BASE}/api/cvs/${id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+  update: (id: string, data: { title?: string; status?: string }) =>
+    request<Std<CV>>(`/api/cvs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: string) => request<Std<{ status: string }>>(`/api/cvs/${id}`, { method: "DELETE" }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

@@ -98,6 +98,8 @@ class UserRepository:
             "target_universities": data.get("target_universities") or [],
             "degree_type": data.get("degree_type", "Either"),
             "funding_required": data.get("funding_required", False),
+            "auto_approve": data.get("auto_approve", False),
+            "reminder_offsets_days": data.get("reminder_offsets_days") or [7, 1],
         }
         await doc_ref.set(preferences)
         return preferences

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, Body, HTTPException
 from src.core.firebase import verify_firebase_auth
 from src.services.tracker_service import TrackerService
+from src.services.calendar_service import CalendarService
 from src.api.schemas.requests import (
     ApplicationCreateRequest,
     ApplicationUpdateRequest,
@@ -9,6 +10,7 @@ from src.api.schemas.requests import (
     CVStatusUpdateRequest,
     FundedUpdateRequest,
     RecommenderAddRequest,
+    AttachmentAddRequest,
 )
 from src.api.schemas.responses import (
     StandardResponse,
@@ -114,7 +116,8 @@ async def add_recommender(request: Request, application_id: str, body: Recommend
     user_id = request.state.user_id
     recommender = {
         "name": body.name,
-        "status": body.status
+        "status": body.status,
+        "email": body.email,
     }
     await TrackerService.add_recommender(user_id, application_id, recommender)
     return {"success": True, "data": {"status": "success"}, "message": "Recommender added successfully"}
@@ -130,6 +133,54 @@ async def update_recommender_status(
         return {"success": True, "data": {"status": "success"}, "message": "Recommender status updated successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{application_id}/attachments", response_model=StandardResponse[ApplicationResponse])
+async def add_attachment(request: Request, application_id: str, body: AttachmentAddRequest) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await TrackerService.add_attachment(
+            user_id, application_id, body.kind, body.ref_id, body.title
+        )
+        return {"success": True, "data": app, "message": "Attachment linked successfully"}
+    except ValueError as e:
+        msg = str(e)
+        code = 404 if "not found" in msg.lower() else 400
+        raise HTTPException(status_code=code, detail=msg)
+
+
+@router.delete("/{application_id}/attachments/{ref_id}", response_model=StandardResponse[ApplicationResponse])
+async def remove_attachment(request: Request, application_id: str, ref_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await TrackerService.remove_attachment(user_id, application_id, ref_id)
+        return {"success": True, "data": app, "message": "Attachment removed successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{application_id}/calendar", response_model=StandardResponse[ApplicationResponse])
+async def add_to_calendar(request: Request, application_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await CalendarService.add_deadline_event(user_id, application_id)
+        return {"success": True, "data": app, "message": "Added deadline to Google Calendar"}
+    except ValueError as e:
+        msg = str(e)
+        code = 404 if "not found" in msg.lower() else 400
+        raise HTTPException(status_code=code, detail=msg)
+
+
+@router.delete("/{application_id}/calendar", response_model=StandardResponse[ApplicationResponse])
+async def remove_from_calendar(request: Request, application_id: str) -> dict:
+    user_id = request.state.user_id
+    try:
+        app = await CalendarService.remove_deadline_event(user_id, application_id)
+        return {"success": True, "data": app, "message": "Removed deadline from Google Calendar"}
+    except ValueError as e:
+        msg = str(e)
+        code = 404 if "not found" in msg.lower() else 400
+        raise HTTPException(status_code=code, detail=msg)
 
 
 @router.delete("/{application_id}", response_model=StandardResponse[SuccessStatusResponse])

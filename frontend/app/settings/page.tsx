@@ -439,6 +439,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(false);
+  const [reminderOffsets, setReminderOffsets] = useState<number[]>([7, 1]);
 
   async function toggleAutoApprove(value: boolean) {
     setAutoApprove(value);
@@ -451,10 +452,65 @@ export default function SettingsPage() {
   }
   const { signOut } = useAuth();
 
+  const [google, setGoogle] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleNotice, setGoogleNotice] = useState<"connected" | "error" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const g = new URLSearchParams(window.location.search).get("google");
+    return g === "connected" || g === "error" ? g : null;
+  });
+
+  async function connectGoogle() {
+    setGoogleBusy(true);
+    try {
+      const { integrationsApi } = await import("../../lib/api");
+      const res = await integrationsApi.googleAuthUrl();
+      window.location.href = res.data.url; // redirect to Google consent
+    } catch {
+      setGoogleBusy(false);
+    }
+  }
+
+  async function disconnectGoogle() {
+    setGoogleBusy(true);
+    try {
+      const { integrationsApi } = await import("../../lib/api");
+      await integrationsApi.googleDisconnect();
+      setGoogle({ connected: false, email: null });
+    } catch {
+      // keep current state
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
+
+  // Fetch Google status on mount and strip the ?google= callback param from the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("google")) {
+      params.delete("google");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
+    import("../../lib/api")
+      .then(({ integrationsApi }) => integrationsApi.googleStatus())
+      .then((res) => setGoogle(res.data))
+      .catch(() => setGoogle({ connected: false, email: null }));
+  }, []);
+
+  // Auto-dismiss the connect/error notice. setState lives in a timeout, not the
+  // effect body, so it doesn't trip set-state-in-effect.
+  useEffect(() => {
+    if (!googleNotice) return;
+    const t = setTimeout(() => setGoogleNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [googleNotice]);
+
   const [savedSnapshot, setSavedSnapshot] = useState({
     interests: [] as string[],
     universities: [] as string[],
     countries: [] as string[],
+    reminderOffsets: [7, 1] as number[],
   });
 
   useEffect(() => {
@@ -467,10 +523,13 @@ export default function SettingsPage() {
           setUniversities(p.target_universities);
           setCountries(p.target_countries);
           setAutoApprove(!!p.auto_approve);
+          const offsets = p.reminder_offsets_days ?? [7, 1];
+          setReminderOffsets(offsets);
           setSavedSnapshot({
             interests: p.research_interests,
             universities: p.target_universities,
             countries: p.target_countries,
+            reminderOffsets: offsets,
           });
         })
         .catch(() => setLoadError("Could not load preferences."))
@@ -480,7 +539,8 @@ export default function SettingsPage() {
   const isDirty =
     JSON.stringify(interests) !== JSON.stringify(savedSnapshot.interests) ||
     JSON.stringify(universities) !== JSON.stringify(savedSnapshot.universities) ||
-    JSON.stringify(countries) !== JSON.stringify(savedSnapshot.countries);
+    JSON.stringify(countries) !== JSON.stringify(savedSnapshot.countries) ||
+    JSON.stringify(reminderOffsets) !== JSON.stringify(savedSnapshot.reminderOffsets);
 
   async function save() {
     setSaving(true);
@@ -493,8 +553,9 @@ export default function SettingsPage() {
         degree_type: "Either",
         funding_required: false,
         auto_approve: autoApprove,
+        reminder_offsets_days: reminderOffsets,
       });
-      setSavedSnapshot({ interests, universities, countries });
+      setSavedSnapshot({ interests, universities, countries, reminderOffsets });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -613,6 +674,133 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Connected accounts */}
+          <div
+            className="p-5"
+            style={{
+              background: "#FFFFFF",
+              border: "2px solid #0D0D0D",
+              boxShadow: "4px 4px 0 #0D0D0D",
+              borderRadius: "4px",
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div
+                className="w-7 h-7 flex items-center justify-center"
+                style={{ background: "#4ECDC4", border: "2px solid #0D0D0D", borderRadius: "4px" }}
+              >
+                <Icon icon="solar:link-circle-bold" width={13} style={{ color: "#0D0D0D" }} />
+              </div>
+              <h2 className="text-sm font-bold font-space" style={{ color: "#0D0D0D" }}>
+                Connected accounts
+              </h2>
+            </div>
+            <p className="text-xs font-dm mb-3" style={{ color: "#9CA3AF" }}>
+              Connect Google to add application deadlines to your Calendar and send recommender /
+              outreach emails from your Gmail. Separate from sign-in — grants Calendar & Gmail
+              permissions.
+            </p>
+
+            {googleNotice === "connected" && (
+              <p
+                className="text-xs font-dm mb-2 flex items-center gap-1.5"
+                style={{ color: "#0D9268" }}
+              >
+                <Icon icon="solar:check-circle-bold" width={13} />
+                Google connected.
+              </p>
+            )}
+            {googleNotice === "error" && (
+              <p
+                className="text-xs font-dm mb-2 flex items-center gap-1.5"
+                style={{ color: "#E8472A" }}
+              >
+                <Icon icon="solar:danger-triangle-bold" width={13} />
+                Couldn&apos;t connect Google. Try again.
+              </p>
+            )}
+
+            <div
+              className="flex items-center justify-between gap-3 p-3"
+              style={{ background: "#F7F0E3", border: "1.5px solid #C8C0AF", borderRadius: "4px" }}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Icon icon="logos:google-icon" width={18} className="shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold font-space" style={{ color: "#0D0D0D" }}>
+                    Google (Calendar & Gmail)
+                  </div>
+                  <div className="text-xs font-dm truncate" style={{ color: "#9CA3AF" }}>
+                    {google === null
+                      ? "Checking…"
+                      : google.connected
+                        ? `Connected${google.email ? ` · ${google.email}` : ""}`
+                        : "Not connected"}
+                  </div>
+                </div>
+              </div>
+              {google?.connected ? (
+                <button
+                  onClick={disconnectGoogle}
+                  disabled={googleBusy}
+                  className="btn-white btn-sm text-xs shrink-0"
+                  style={{ color: "#E8472A", borderColor: "#E8472A" }}
+                >
+                  {googleBusy ? "…" : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  onClick={connectGoogle}
+                  disabled={googleBusy}
+                  className="btn-coral btn-sm text-xs shrink-0"
+                >
+                  {googleBusy ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                  ) : (
+                    <Icon icon="solar:link-circle-bold" width={13} />
+                  )}
+                  Connect
+                </button>
+              )}
+            </div>
+
+            {/* Reminder cadence */}
+            <div className="mt-4 pt-4" style={{ borderTop: "1.5px solid #EDE6D3" }}>
+              <div className="text-xs font-bold font-space mb-1" style={{ color: "#0D0D0D" }}>
+                Deadline reminders
+              </div>
+              <p className="text-xs font-dm mb-2" style={{ color: "#9CA3AF" }}>
+                Days before each deadline to send a Google Calendar reminder. Applied when you add a
+                deadline to your calendar.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[1, 3, 7, 14, 28].map((d) => {
+                  const on = reminderOffsets.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() =>
+                        setReminderOffsets((prev) =>
+                          on ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => b - a)
+                        )
+                      }
+                      className="px-3 py-1 text-xs font-semibold font-space bouncy"
+                      style={{
+                        background: on ? "#0D0D0D" : "#FFFFFF",
+                        color: on ? "#FFFFFF" : "#5A5A5A",
+                        border: "1.5px solid #0D0D0D",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      {d} {d === 1 ? "day" : "days"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           {/* Research Interests */}
           <div
             className="p-5"
@@ -698,6 +886,32 @@ export default function SettingsPage() {
               onAdd={(v) => setCountries((p) => [...p, v])}
               onRemove={(v) => setCountries((p) => p.filter((x) => x !== v))}
             />
+          </div>
+
+          {/* Footer: legal + hackathon */}
+          <div
+            className="pt-2 pb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-dm"
+            style={{ color: "#9CA3AF" }}
+          >
+            <a href="/privacy" className="underline" style={{ color: "#5A5A5A" }}>
+              Privacy Policy
+            </a>
+            <a href="/terms" className="underline" style={{ color: "#5A5A5A" }}>
+              Terms of Service
+            </a>
+            <span>
+              Built for the{" "}
+              <a
+                href="https://rapid-agent.devpost.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+                style={{ color: "#E8472A" }}
+              >
+                RapidAgent Hackathon
+              </a>{" "}
+              by Google
+            </span>
           </div>
         </div>
       </div>

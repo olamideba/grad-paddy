@@ -6,9 +6,7 @@ from src.agents.tools import (
     ACCOUNT_TOOLS,
     APPLICATION_TOOLS,
     GOVERNANCE_TOOLS,
-    GROUP_TOOLS,
     OPERATIONS_TOOLS,
-    SESSION_TOOLS,
 )
 
 NO_LEAK_RULE = (
@@ -20,12 +18,21 @@ APPROVAL_RULE = (
     "APPROVAL POLICY: Before any create, update, or delete action (shortlist, tracker, drafts, "
     "profile, preferences, sessions, groups), you MUST first call request_hitl with kind='approval', "
     "options_json='[{\"id\":\"yes\",\"label\":\"Approve\"},{\"id\":\"no\",\"label\":\"Reject\"}]', and a title/"
-    "description stating exactly what you will change. In payload_json include an \"entity\" key naming the "
-    "target (\"tracker\", \"shortlist\", or \"draft\") and the proposed fields the user should review (use a "
-    "\"content\" string for long text like a draft). Then WAIT for the human's decision. Perform the write only "
-    "after approval, using the (possibly edited) values from the response; if rejected, do not write. "
+    "description stating exactly what you will change. In payload_json always include: an \"entity\" key "
+    "(\"tracker\", \"shortlist\", or \"draft\"), an \"action\" key (\"create\", \"update\", or \"delete\"), and "
+    "the proposed values as a \"fields\" object (for a draft, put the long text in \"content\" instead). For "
+    "update/delete also include \"ref_id\" (the target id). Then WAIT for the human's decision.\n"
+    "CREATING a shortlist faculty, a tracker application, or a draft: do NOT call the create tool yourself. "
+    "When the human approves, the system saves the record from the payload fields (and the user's edits). "
+    "Just open the gate with complete \"fields\"/\"content\". For UPDATE or DELETE, and for any OTHER create "
+    "(profile, preferences, groups), perform the write yourself after approval using the (possibly edited) "
+    "response values; if rejected, do not write.\n"
+    "EMAILS: to email a professor or a recommender, first call create_email (status stays 'draft'), then "
+    "request_hitl with kind='approval', entity=\"email\", and payload \"content\" set to the email body so the "
+    "human reviews and edits it in the canvas; only after approval call send_email with the returned email id, "
+    "using the edited body. Never call send_email without approval. "
     "EXCEPTION: when auto_approve is true (current value: {auto_approve}), skip the gate and perform the "
-    "action directly. Read-only actions never require approval."
+    "action directly yourself (including creates). Read-only actions never require approval."
 )
 
 
@@ -94,20 +101,23 @@ def build_researcher_agent() -> LlmAgent:
 
 
 def build_account_agent() -> LlmAgent:
-    """Agent for user account, sessions, and group management."""
+    """Agent for user account and preferences management."""
     return LlmAgent(
         name="account_agent",
         model="gemini-3.1-pro-preview",
-        description="Manages user profiles, preferences, sessions, and groups.",
+        description="Manages user profiles and preferences.",
         sub_agents=[],
         instruction=(
-            "You handle identity, preferences, session lifecycle, and groups. "
-            "Use the tools to read and update the current user's data. "
-            "Prefer concise, structured updates and preserve existing values unless the user asks to change them. "
+            "You handle identity and preferences. "
+            "Use the tools to read and update the current user's profile and preferences. "
+            "When updating preferences list fields (research interests, countries, universities), "
+            "always call get_preferences first to retrieve the current list, then supply the "
+            "complete desired list to update_preferences — do not pass only the delta. "
+            "Preserve existing values unless the user explicitly asks to change them. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
-        tools=ACCOUNT_TOOLS + SESSION_TOOLS + GROUP_TOOLS + GOVERNANCE_TOOLS,
+        tools=ACCOUNT_TOOLS + GOVERNANCE_TOOLS,
     )
 
 
@@ -154,7 +164,7 @@ def build_operations_agent() -> LlmAgent:
         sub_agents=[],
         instruction=(
             "You are the operational specialist for the Grad Paddy app. "
-            "Use the tools for user data, sessions, groups, shortlist, tracker, drafts, and HITL. "
+            "Use the tools for user profile, preferences, shortlist, tracker, drafts, and HITL. "
             "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"

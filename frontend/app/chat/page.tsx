@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { useAgent } from "@/components/AgentProvider";
 import type { Message, BaseEvent } from "../../lib/ag-ui";
 import { useChatSessions } from "@/context/ChatSessionsContext";
+import MarkdownCanvas from "@/components/MarkdownCanvas";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ type StepStatus = "pending" | "running" | "done" | "error";
 // Map tool names to human-friendly descriptions
 const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; description: string }> = {
   transfer_to_agent: { label: "Thinking", emoji: "⚡", description: "Connecting to agent..." },
+  thinking: { label: "Thinking", emoji: "⚡", description: "Thinking..." },
   researcher_google_search_agent: {
     label: "Searching the web",
     emoji: "🔍",
@@ -33,6 +35,46 @@ const TOOL_DESCRIPTIONS: Record<string, { label: string; emoji: string; descript
     label: "Searching databases",
     emoji: "📚",
     description: "Querying research databases...",
+  },
+  "platform.core.index_explorer": {
+    label: "Inspecting Elastic indices",
+    emoji: "🔎",
+    description: "Finding relevant Elasticsearch indices...",
+  },
+  "platform.core.list_indices": {
+    label: "Listing Elastic indices",
+    emoji: "🗂️",
+    description: "Checking accessible Elasticsearch data...",
+  },
+  "platform.core.get_index_mapping": {
+    label: "Reading Elastic mappings",
+    emoji: "🧭",
+    description: "Inspecting field structure...",
+  },
+  "platform.core.search": {
+    label: "Elastic hybrid search",
+    emoji: "⚡",
+    description: "Searching indexed admissions evidence...",
+  },
+  "platform.core.generate_esql": {
+    label: "Generating ES|QL",
+    emoji: "🧠",
+    description: "Translating the question into an ES|QL query...",
+  },
+  "platform.core.execute_esql": {
+    label: "Running ES|QL scan",
+    emoji: "📊",
+    description: "Analyzing admissions data in Elasticsearch...",
+  },
+  "platform.core.get_document_by_id": {
+    label: "Opening Elastic evidence",
+    emoji: "📄",
+    description: "Retrieving a source document...",
+  },
+  "platform.core.create_visualization": {
+    label: "Creating Elastic visualization",
+    emoji: "📈",
+    description: "Preparing a Kibana-ready view...",
   },
   hitl_approval: {
     label: "Requesting approval",
@@ -207,7 +249,13 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
       items.push({ type: "phase", id: `run-${messageId}`, label: "Thinking", status: "done" });
     } else if (type === "STEP_STARTED") {
       const name = e.stepName as string;
-      items.push({ type: "phase", id: `step-${name}-${messageId}`, label: name, status: "done" });
+      items.push({
+        type: "step",
+        id: `step-${name}-${messageId}`,
+        label: name.replace(/_/g, " "),
+        status: "done",
+        tool: "thinking",
+      });
     } else if (type === "TOOL_CALL_START") {
       const toolName = (e.toolCallName as string) ?? "";
       items.push({
@@ -355,7 +403,12 @@ function StepCard({ step, number }: { step: Extract<ChatItem, { type: "step" }>;
   }[step.status];
 
   // Get human-friendly description for tool
-  const toolDesc = step.tool ? getToolDescription(step.tool) : { label: step.label, emoji: "⚙️" };
+  const toolDesc = step.tool
+    ? {
+        ...getToolDescription(step.tool),
+        label: step.tool === "thinking" ? step.label : getToolDescription(step.tool).label,
+      }
+    : { label: step.label, emoji: "⚙️" };
 
   return (
     <div
@@ -413,12 +466,30 @@ function entityNav(entity?: string): { route: string; label: string } | undefine
   const e = entity.toLowerCase();
   if (["draft", "sop", "outreach", "outreach-prep", "research-narrative", "narrative"].includes(e))
     return { route: "/drafts", label: "Drafts" };
-  if (["tracker", "application", "app"].includes(e)) return { route: "/tracker", label: "Tracker" };
+  if (["tracker", "application", "app", "email", "recommender"].includes(e))
+    return { route: "/tracker", label: "Tracker" };
   if (["shortlist", "faculty"].includes(e)) return { route: "/shortlist", label: "Shortlist" };
   return undefined;
 }
 
 function groupStream(stream: ChatItem[]) {
+  // Decide which agent messages are intermediate "thoughts" purely from position:
+  // an agent message is superseded (collapse it) when a LATER agent message exists
+  // before the next user message. Only the final agent message of each turn stays
+  // visible. Computed here — not from a per-event flag — so it's robust to live
+  // streaming, history restore, and however messages get tagged.
+  const superseded = new Set<string>();
+  let seenAgentAfter = false;
+  for (let i = stream.length - 1; i >= 0; i--) {
+    const it = stream[i];
+    if (it.type === "user") {
+      seenAgentAfter = false;
+    } else if (it.type === "agent") {
+      if (seenAgentAfter) superseded.add(it.id);
+      seenAgentAfter = true;
+    }
+  }
+
   const out: Array<
     | { kind: "standalone"; item: Exclude<ChatItem, { type: "phase" | "step" }> }
     | { kind: "group"; group: PhaseGroup }
@@ -429,10 +500,19 @@ function groupStream(stream: ChatItem[]) {
     if (item.type === "phase") {
       out.push({ kind: "group", group: { phase: item, steps: [] } });
     } else if (item.type === "step") {
-      const last = out[out.length - 1];
-      if (last?.kind === "group") last.group.steps.push(item);
-      else out.push({ kind: "orphan", item });
-    } else if (item.type === "agent" && item.thinking) {
+      let foundGroup = false;
+      for (let i = out.length - 1; i >= 0; i--) {
+        const entry = out[i];
+        if (entry.kind === "group") {
+          entry.group.steps.push(item);
+          foundGroup = true;
+          break;
+        }
+      }
+      if (!foundGroup) {
+        out.push({ kind: "orphan", item });
+      }
+    } else if (item.type === "agent" && (item.thinking || superseded.has(item.id))) {
       const last = out[out.length - 1];
       if (last?.kind === "thinking") last.items.push(item);
       else out.push({ kind: "thinking", items: [item] });
@@ -897,13 +977,18 @@ function ReviewGate({
   const edited = text !== initial;
   return (
     <div className="flex flex-col gap-2">
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={10}
-        className="input-brutal w-full text-xs font-dm resize-y"
-        style={{ minHeight: 160 }}
-      />
+      <div
+        className="flex flex-col overflow-hidden"
+        style={{
+          background: "#FFFFFF",
+          border: "2px solid #0D0D0D",
+          borderRadius: "4px",
+          maxHeight: "50vh",
+          minHeight: 220,
+        }}
+      >
+        <MarkdownCanvas initialMarkdown={initial} onChange={setText} className="flex-1 min-h-0" />
+      </div>
       <div className="flex flex-col gap-1.5">
         <PermissionOption
           icon="solar:check-circle-bold"
@@ -1347,10 +1432,6 @@ export default function ChatPage() {
     }
   }, [isAgentRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startNewChat() {
-    setActiveSessionId(null);
-  }
-
   // React to session selection from sidebar
   useEffect(() => {
     // Skip reset when sendToBackend just created this session — stream is live
@@ -1456,7 +1537,15 @@ export default function ChatPage() {
       setStreamingMessageId(e.messageId);
       agMsgContent.current.set(e.messageId, "");
       setStream((p) => [
-        ...p,
+        // A new agent message means the previous ones in this run were reasoning
+        // steps — fold them into "Thinking" immediately so only the latest bubble
+        // shows, instead of waiting for RUN_FINISHED (delayed by the HITL gate,
+        // which let every chain stage leak into the thread).
+        ...p.map((item) =>
+          item.type === "agent" && item.run === phaseId && !item.thinking
+            ? { ...item, thinking: true }
+            : item
+        ),
         { type: "agent", id: e.messageId, content: "", timestamp: new Date(), run: phaseId },
       ]);
     } else if (type === "TEXT_MESSAGE_CONTENT") {
@@ -1518,10 +1607,11 @@ export default function ChatPage() {
         setStream((p) => [
           ...p,
           {
-            type: "phase",
+            type: "step",
             id: stepPhaseId,
             label: e.stepName.replace(/_/g, " "),
             status: "running",
+            tool: "thinking",
           },
         ]);
       });
@@ -1530,24 +1620,26 @@ export default function ChatPage() {
       const stepPhaseId = `step-${e.stepName}`;
       setStream((p) =>
         p.map((item) =>
-          item.id === stepPhaseId && item.type === "phase" ? { ...item, status: "done" } : item
+          item.id === stepPhaseId && item.type === "step" ? { ...item, status: "done" } : item
         )
       );
-      // Collapse the step's detail once it finishes.
-      setCollapsedPhases((prev) => new Set(prev).add(stepPhaseId));
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
       const phaseIds: string[] = [];
-      // A multi-message run is a reasoning chain: collapse every agent message
-      // EXCEPT the last into a "Thinking" dropdown; the last stays as the visible
-      // answer (plus any result card). A single-message run stays fully visible.
-      const runAgentIdxs = stream
-        .map((item, i) => (item.type === "agent" && item.run === phaseId ? i : -1))
-        .filter((i) => i >= 0);
-      const lastAgentIdx = runAgentIdxs[runAgentIdxs.length - 1] ?? -1;
-      const collapseThinking = runAgentIdxs.length >= 2;
-      setStream((p) =>
-        p.map((item, i) => {
+      setStream((p) => {
+        // Compute the run's agent messages from the LATEST stream (p), not the
+        // closure's `stream` — the event callback captures a stale snapshot, and
+        // using it made collapseThinking false so reasoning leaked into the chat.
+        // A multi-message run is a reasoning chain: collapse every agent message
+        // EXCEPT the last into a "Thinking" dropdown; the last stays as the
+        // visible answer. A single-message run stays fully visible.
+        const runAgentIdxs = p
+          .map((item, i) => (item.type === "agent" && item.run === phaseId ? i : -1))
+          .filter((i) => i >= 0);
+        const lastAgentIdx = runAgentIdxs[runAgentIdxs.length - 1] ?? -1;
+        const collapseThinking = runAgentIdxs.length >= 2;
+        phaseIds.length = 0;
+        return p.map((item, i) => {
           if (item.type === "phase") {
             phaseIds.push(item.id);
             if (item.id === phaseId && item.status === "running") return { ...item, status };
@@ -1562,8 +1654,8 @@ export default function ChatPage() {
             return { ...item, thinking: true };
           }
           return item;
-        })
-      );
+        });
+      });
       // Run finished → collapse every activity card so the thread stays tidy.
       setCollapsedPhases((prev) => {
         const next = new Set(prev);
@@ -1835,29 +1927,6 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: "#F7F0E3" }}>
-      {/* Mobile chat controls (sidebar is hidden on phones) */}
-      <div
-        className="md:hidden shrink-0 flex items-center gap-2 px-3 py-2"
-        style={{ borderBottom: "2px solid #0D0D0D", background: "#F7F0E3" }}
-      >
-        <select
-          value={activeSessionId ?? ""}
-          onChange={(e) => setActiveSessionId(e.target.value || null)}
-          className="input-brutal flex-1 min-w-0 text-xs py-1.5"
-        >
-          <option value="">New chat</option>
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-        <button onClick={startNewChat} className="btn-coral btn-sm text-xs shrink-0">
-          <Icon icon="solar:add-circle-bold" width={13} />
-          New
-        </button>
-      </div>
-
       {/* Session title bar */}
       {activeSession && (
         <div

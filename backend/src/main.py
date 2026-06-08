@@ -14,11 +14,12 @@ def _configure_logging() -> None:
     # logger levels for the app and ADK namespaces.
     for logger_name in ("google.adk", "google_adk", "ag_ui_adk", "src"):
         logging.getLogger(logger_name).setLevel(logging.DEBUG)
+    logging.getLogger("opentelemetry.context").setLevel(logging.CRITICAL)
 
 
 _configure_logging()
 
-from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups
+from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups, cvs, integrations, emails
 
 
 @asynccontextmanager
@@ -52,6 +53,9 @@ app.include_router(shortlist.router)
 app.include_router(tracker.router)
 app.include_router(drafts.router)
 app.include_router(groups.router)
+app.include_router(cvs.router)
+app.include_router(integrations.router)
+app.include_router(emails.router)
 
 
 app.add_middleware(
