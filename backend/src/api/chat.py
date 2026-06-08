@@ -166,6 +166,14 @@ class PersistentChatAgent(ADKAgent):
         # client instead of executing the Python body, so the HITL record is
         # never written. We reconstruct it from the tool-call stream here.
         hitl_arg_buffers: dict[str, list[str]] = {}
+        # Assistant text is buffered, never streamed live: intermediate chain-stage
+        # prose must not leak. We hold each message's events and, at RUN_FINISHED,
+        # release ONLY the final message — and nothing at all if the run opened a
+        # request_hitl gate (a drafting/approval flow whose draft lives in the
+        # review card, not the chat).
+        run_has_hitl = False
+        buffered_msg_events: list[Any] = []   # in-progress message's event objects
+        final_msg_events: list[Any] = []      # last completed message (release if no gate)
         async for event in super().run(prepared):
             try:
                 event_payload = event.model_dump(by_alias=True, exclude_none=True)
@@ -205,6 +213,13 @@ class PersistentChatAgent(ADKAgent):
                             exc_info=True,
                         )
 
+                # Release the final assistant message now (buffered, never streamed
+                # live). Suppress entirely if the run opened a gate — the draft is
+                # in the review card, not the chat.
+                if not run_has_hitl:
+                    for buffered in final_msg_events:
+                        yield buffered
+
                 yield RunFinishedWithStatusEvent(
                     thread_id=str(getattr(event, "thread_id", None) or session_id),
                     run_id=str(getattr(event, "run_id", None) or input.run_id),
@@ -217,6 +232,9 @@ class PersistentChatAgent(ADKAgent):
                 current_message_events = []
                 current_message_complete = False
                 pending_events = []
+                run_has_hitl = False
+                buffered_msg_events = []
+                final_msg_events = []
                 continue
 
             if event_type == EventType.RUN_ERROR:
@@ -226,12 +244,18 @@ class PersistentChatAgent(ADKAgent):
                 current_message_events = []
                 current_message_complete = False
                 pending_events = []
+                run_has_hitl = False
+                buffered_msg_events = []
+                final_msg_events = []
                 continue
 
             # Reconstruct the HITL record from the request_hitl tool-call stream.
             if event_type == EventType.TOOL_CALL_START and (
                 getattr(event, "tool_call_name", None) == REQUEST_HITL_TOOL_NAME
             ):
+                # This run opened an approval/review gate → suppress all of its
+                # assistant prose (the draft lives in the review card).
+                run_has_hitl = True
                 hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))] = []
             elif event_type == EventType.TOOL_CALL_ARGS and (
                 str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
@@ -256,6 +280,7 @@ class PersistentChatAgent(ADKAgent):
                 current_text_parts = []
                 current_message_events = list(pending_events)
                 current_message_complete = False
+                buffered_msg_events = [event]
             elif current_message_id is not None:
                 current_message_events.append(event_payload)
 
@@ -267,6 +292,7 @@ class PersistentChatAgent(ADKAgent):
                 delta = getattr(event, "delta", "")
                 if delta:
                     current_text_parts.append(delta)
+                buffered_msg_events.append(event)
 
             if (
                 event_type == EventType.TEXT_MESSAGE_END
@@ -274,6 +300,20 @@ class PersistentChatAgent(ADKAgent):
                 and getattr(event, "message_id", None) == current_message_id
             ):
                 current_message_complete = True
+                buffered_msg_events.append(event)
+                # Keep only the latest complete message; earlier ones in the run
+                # were intermediate reasoning and are dropped.
+                final_msg_events = buffered_msg_events
+                buffered_msg_events = []
+
+            # Never stream assistant text live — it's released (or suppressed) at
+            # RUN_FINISHED. Everything else (tools, steps) streams normally.
+            if event_type in (
+                EventType.TEXT_MESSAGE_START,
+                EventType.TEXT_MESSAGE_CONTENT,
+                EventType.TEXT_MESSAGE_END,
+            ):
+                continue
 
             yield event
 

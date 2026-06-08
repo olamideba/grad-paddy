@@ -461,6 +461,23 @@ function entityNav(entity?: string): { route: string; label: string } | undefine
 }
 
 function groupStream(stream: ChatItem[]) {
+  // Decide which agent messages are intermediate "thoughts" purely from position:
+  // an agent message is superseded (collapse it) when a LATER agent message exists
+  // before the next user message. Only the final agent message of each turn stays
+  // visible. Computed here — not from a per-event flag — so it's robust to live
+  // streaming, history restore, and however messages get tagged.
+  const superseded = new Set<string>();
+  let seenAgentAfter = false;
+  for (let i = stream.length - 1; i >= 0; i--) {
+    const it = stream[i];
+    if (it.type === "user") {
+      seenAgentAfter = false;
+    } else if (it.type === "agent") {
+      if (seenAgentAfter) superseded.add(it.id);
+      seenAgentAfter = true;
+    }
+  }
+
   const out: Array<
     | { kind: "standalone"; item: Exclude<ChatItem, { type: "phase" | "step" }> }
     | { kind: "group"; group: PhaseGroup }
@@ -474,7 +491,7 @@ function groupStream(stream: ChatItem[]) {
       const last = out[out.length - 1];
       if (last?.kind === "group") last.group.steps.push(item);
       else out.push({ kind: "orphan", item });
-    } else if (item.type === "agent" && item.thinking) {
+    } else if (item.type === "agent" && (item.thinking || superseded.has(item.id))) {
       const last = out[out.length - 1];
       if (last?.kind === "thinking") last.items.push(item);
       else out.push({ kind: "thinking", items: [item] });

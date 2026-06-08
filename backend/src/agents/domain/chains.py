@@ -2,11 +2,13 @@ from google.adk.agents import LlmAgent, SequentialAgent
 
 from src.agents.tools import create_draft, GOVERNANCE_TOOLS
 
+MODEL = "gemini-3.1-pro-preview"
+
 
 def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
     return LlmAgent(
         name=name,
-        model="gemini-3.1-pro-preview",
+        model=MODEL,
         description=name.replace("_", " "),
         instruction=instruction,
         output_key=output_key,
@@ -16,22 +18,20 @@ def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
 def _review_and_save_stage(
     name: str, draft_type: str, state_key: str, title_hint: str
 ) -> LlmAgent:
-    """Final stage: show the draft for human review/edit, then save on approval.
+    """Final stage: gate the draft for human review, then save on approval.
 
     The drafted text lives in session state under `state_key`. We pass it to
-    request_hitl as payload.content (entity tags where it will be saved) so the
-    UI renders an editable review card. On approval the (possibly edited)
-    content is persisted via create_draft."""
+    request_hitl as payload.content so the UI renders an editable review card.
+    On approval the (possibly edited) content is persisted via create_draft.
+
+    NOTE: the intermediate stage prose never reaches the user — chat.py buffers
+    and suppresses assistant text for any run that opens a request_hitl gate."""
     return LlmAgent(
         name=name,
-        model="gemini-3.1-pro-preview",
+        model=MODEL,
         description=name.replace("_", " "),
         instruction=(
-            "The completed draft is shown below. Do NOT repeat the draft text in your reply — "
-            "it is shown to the user in the review card.\n"
-            "FIRST, say exactly one short sentence telling the user the draft is ready for review "
-            "(e.g. 'I've prepared the draft — review and approve it below.').\n"
-            "THEN call request_hitl exactly once with kind='approval', "
+            "Call request_hitl exactly once with kind='approval', "
             'options_json=\'[{"id":"approve","label":"Approve"},{"id":"reject","label":"Reject"}]\', '
             f"title='Review {draft_type} draft', a one-line description, and payload_json set to a JSON "
             f'object: {{"entity":"{draft_type}","content":<the FULL draft text below as a JSON string>}}.\n'
@@ -46,10 +46,7 @@ def _review_and_save_stage(
 
 
 def build_sop_translation_chain() -> SequentialAgent:
-    """SOP translation: intake → strategy → draft → review & save.
-
-    The first three stages are the reasoning trail (the UI collapses them into a
-    'Thinking' disclosure); the final stage gates on human review before saving."""
+    """SOP translation: intake → strategy → draft → review & save."""
     return SequentialAgent(
         name="sop_translation_chain",
         sub_agents=[

@@ -8,7 +8,8 @@ import AuthGate from "@/components/AuthGate";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const bare = pathname === "/login";
+  // Standalone pages with no sidebar/nav chrome (also public — see AuthGate).
+  const bare = pathname === "/login" || pathname === "/privacy" || pathname === "/terms";
 
   return (
     <AuthGate>
