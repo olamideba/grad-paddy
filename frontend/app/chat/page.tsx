@@ -461,6 +461,23 @@ function entityNav(entity?: string): { route: string; label: string } | undefine
 }
 
 function groupStream(stream: ChatItem[]) {
+  // Decide which agent messages are intermediate "thoughts" purely from position:
+  // an agent message is superseded (collapse it) when a LATER agent message exists
+  // before the next user message. Only the final agent message of each turn stays
+  // visible. Computed here — not from a per-event flag — so it's robust to live
+  // streaming, history restore, and however messages get tagged.
+  const superseded = new Set<string>();
+  let seenAgentAfter = false;
+  for (let i = stream.length - 1; i >= 0; i--) {
+    const it = stream[i];
+    if (it.type === "user") {
+      seenAgentAfter = false;
+    } else if (it.type === "agent") {
+      if (seenAgentAfter) superseded.add(it.id);
+      seenAgentAfter = true;
+    }
+  }
+
   const out: Array<
     | { kind: "standalone"; item: Exclude<ChatItem, { type: "phase" | "step" }> }
     | { kind: "group"; group: PhaseGroup }
@@ -474,7 +491,7 @@ function groupStream(stream: ChatItem[]) {
       const last = out[out.length - 1];
       if (last?.kind === "group") last.group.steps.push(item);
       else out.push({ kind: "orphan", item });
-    } else if (item.type === "agent" && item.thinking) {
+    } else if (item.type === "agent" && (item.thinking || superseded.has(item.id))) {
       const last = out[out.length - 1];
       if (last?.kind === "thinking") last.items.push(item);
       else out.push({ kind: "thinking", items: [item] });
@@ -1499,7 +1516,15 @@ export default function ChatPage() {
       setStreamingMessageId(e.messageId);
       agMsgContent.current.set(e.messageId, "");
       setStream((p) => [
-        ...p,
+        // A new agent message means the previous ones in this run were reasoning
+        // steps — fold them into "Thinking" immediately so only the latest bubble
+        // shows, instead of waiting for RUN_FINISHED (delayed by the HITL gate,
+        // which let every chain stage leak into the thread).
+        ...p.map((item) =>
+          item.type === "agent" && item.run === phaseId && !item.thinking
+            ? { ...item, thinking: true }
+            : item
+        ),
         { type: "agent", id: e.messageId, content: "", timestamp: new Date(), run: phaseId },
       ]);
     } else if (type === "TEXT_MESSAGE_CONTENT") {
@@ -1581,16 +1606,20 @@ export default function ChatPage() {
     } else if (type === "RUN_FINISHED" || type === "RUN_ERROR") {
       const status = type === "RUN_FINISHED" ? "done" : "error";
       const phaseIds: string[] = [];
-      // A multi-message run is a reasoning chain: collapse every agent message
-      // EXCEPT the last into a "Thinking" dropdown; the last stays as the visible
-      // answer (plus any result card). A single-message run stays fully visible.
-      const runAgentIdxs = stream
-        .map((item, i) => (item.type === "agent" && item.run === phaseId ? i : -1))
-        .filter((i) => i >= 0);
-      const lastAgentIdx = runAgentIdxs[runAgentIdxs.length - 1] ?? -1;
-      const collapseThinking = runAgentIdxs.length >= 2;
-      setStream((p) =>
-        p.map((item, i) => {
+      setStream((p) => {
+        // Compute the run's agent messages from the LATEST stream (p), not the
+        // closure's `stream` — the event callback captures a stale snapshot, and
+        // using it made collapseThinking false so reasoning leaked into the chat.
+        // A multi-message run is a reasoning chain: collapse every agent message
+        // EXCEPT the last into a "Thinking" dropdown; the last stays as the
+        // visible answer. A single-message run stays fully visible.
+        const runAgentIdxs = p
+          .map((item, i) => (item.type === "agent" && item.run === phaseId ? i : -1))
+          .filter((i) => i >= 0);
+        const lastAgentIdx = runAgentIdxs[runAgentIdxs.length - 1] ?? -1;
+        const collapseThinking = runAgentIdxs.length >= 2;
+        phaseIds.length = 0;
+        return p.map((item, i) => {
           if (item.type === "phase") {
             phaseIds.push(item.id);
             if (item.id === phaseId && item.status === "running") return { ...item, status };
@@ -1605,8 +1634,8 @@ export default function ChatPage() {
             return { ...item, thinking: true };
           }
           return item;
-        })
-      );
+        });
+      });
       // Run finished → collapse every activity card so the thread stays tidy.
       setCollapsedPhases((prev) => {
         const next = new Set(prev);

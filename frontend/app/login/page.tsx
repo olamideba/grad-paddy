@@ -172,7 +172,28 @@ export default function LoginPage() {
             </p>
             <GoogleButton onClick={signInWithGoogle} loading={loading} />
             <p className="text-[11px] font-dm mt-6 text-center" style={{ color: "#B0A898" }}>
-              By continuing you agree to use Grad Paddy for your own application research.
+              By continuing you agree to our{" "}
+              <a href="/terms" className="underline" style={{ color: "#5A5A5A" }}>
+                Terms
+              </a>{" "}
+              and{" "}
+              <a href="/privacy" className="underline" style={{ color: "#5A5A5A" }}>
+                Privacy Policy
+              </a>
+              .
+            </p>
+            <p className="text-[11px] font-dm mt-2 text-center" style={{ color: "#B0A898" }}>
+              Built for the{" "}
+              <a
+                href="https://rapid-agent.devpost.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+                style={{ color: "#E8472A" }}
+              >
+                RapidAgent Hackathon
+              </a>{" "}
+              by Google.
             </p>
           </div>
         </div>
