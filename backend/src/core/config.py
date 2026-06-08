@@ -29,8 +29,21 @@ class Settings(BaseSettings):
     AG_UI_APP_NAME: str = Field(default="grad_paddy")
     AG_UI_USER_ID: str = Field(default="demo_user")
     AG_UI_SESSION_TIMEOUT_SECONDS: int = Field(default=3600)
-
+    ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL: bool = Field(default=True)
     ADK_LOG_PROMPT_CONTENT: bool = Field(default=True)
+
+    # HITL Settings
+    SENSITIVE_TOOLS: list[str] = Field(default=[
+        "add_shortlist_faculty",
+        "update_shortlist_faculty",
+        "delete_shortlist_faculty",
+        "create_application",
+        "update_application",
+        "delete_application",
+        "create_draft",
+        "update_draft_content",
+        "upsert_preferences",
+    ])
 
     # Firestore
     FIRESTORE_DATABASE_ID: str = Field(default="grad-paddy-db")

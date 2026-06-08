@@ -1,6 +1,7 @@
 from google.adk.agents import LlmAgent
 
 from src.agents.subagents import build_account_agent, build_application_agent, build_governance_agent
+from src.agents.callbacks import enforce_hitl_policy_callback
 
 
 def build_internal_app_agent() -> LlmAgent:
@@ -17,6 +18,7 @@ def build_internal_app_agent() -> LlmAgent:
             build_application_agent(),
             build_governance_agent(),
         ],
+        before_tool_callback=enforce_hitl_policy_callback,
         instruction=(
             "You manage the internal application layer only.\n"
             "- Use this branch for profile, preferences, shortlist, tracker, drafts, and HITL state.\n"
