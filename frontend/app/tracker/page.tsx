@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
 import type { Application as ApiApp, TrackerStats, Attachment } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
+import EmailCanvas from "@/components/EmailCanvas";
+import { SkeletonTable } from "@/components/Skeleton";
 
 type DocStatus = "not-started" | "in-progress" | "ready";
 type AppStatus =
@@ -622,6 +625,8 @@ function EditApplicationModal({
   );
   const [calBusy, setCalBusy] = useState(false);
   const [calError, setCalError] = useState<string | null>(null);
+  // Recommender being emailed (opens the EmailCanvas modal), or null.
+  const [emailing, setEmailing] = useState<{ name: string; email: string } | null>(null);
 
   async function addToCalendar() {
     setCalBusy(true);
@@ -680,9 +685,12 @@ function EditApplicationModal({
             return null;
           })
           .filter((x): x is Attachment => x !== null);
-        const cvOpts: Attachment[] = cvsRes.data
-          .filter((c) => c.status === "approved")
-          .map((c) => ({ kind: "cv", ref_id: c.id, title: c.title }));
+        // CVs no longer have an approval step — any uploaded CV is attachable.
+        const cvOpts: Attachment[] = cvsRes.data.map((c) => ({
+          kind: "cv",
+          ref_id: c.id,
+          title: c.title,
+        }));
         setLinkOptions([...draftOpts, ...cvOpts]);
       } catch {
         // non-fatal; the picker just stays empty
@@ -999,6 +1007,15 @@ function EditApplicationModal({
                       </select>
                       <button
                         type="button"
+                        onClick={() => setEmailing({ name: r.name, email: r.email ?? "" })}
+                        title="Email this recommender"
+                        className="shrink-0"
+                        style={{ color: r.email ? "#0D0D0D" : "#C8C0AF" }}
+                      >
+                        <Icon icon="solar:letter-bold" width={12} />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setRecs((rs) => rs.filter((x) => x.name !== r.name))}
                         className="shrink-0"
                         style={{ color: "#9CA3AF" }}
@@ -1023,6 +1040,47 @@ function EditApplicationModal({
               </div>
             )}
           </div>
+
+          {emailing &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style={{ background: "rgba(13,13,13,0.55)" }}
+                onClick={() => setEmailing(null)}
+              >
+                <div className="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+                  <EmailCanvas
+                    initialTo={emailing.email}
+                    initialSubject={`Recommendation letter request — ${form.university || app.university}`}
+                    initialBody={
+                      `Dear ${emailing.name},\n\n` +
+                      `I hope you're doing well. I'm applying to ${form.program || app.program} at ` +
+                      `${form.university || app.university}` +
+                      `${form.deadline ? ` (deadline ${form.deadline})` : ""}, and I would be very grateful ` +
+                      `if you would be willing to write a letter of recommendation in support of my application.\n\n` +
+                      `I'm happy to share my CV, statement of purpose, and any other materials that would help, ` +
+                      `and to give you plenty of notice before the deadline. Thank you so much for considering.\n\n` +
+                      `Warm regards,\n[Your Name]`
+                    }
+                    kind="recommender"
+                    linkedApplicationId={app.id}
+                    refId={emailing.name}
+                    onSent={() => {
+                      setRecs((rs) =>
+                        rs.map((x) =>
+                          x.name === emailing.name && x.status === "not-asked"
+                            ? { ...x, status: "asked" }
+                            : x
+                        )
+                      );
+                      setEmailing(null);
+                    }}
+                    onCancel={() => setEmailing(null)}
+                  />
+                </div>
+              </div>,
+              document.body
+            )}
 
           <div>
             <label
@@ -1414,12 +1472,7 @@ export default function TrackerPage() {
 
         {/* Table */}
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div
-              className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
-              style={{ color: "#E8472A" }}
-            />
-          </div>
+          <SkeletonTable rows={6} />
         ) : apps.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
             <Icon
