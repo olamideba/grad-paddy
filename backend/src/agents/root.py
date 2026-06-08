@@ -5,8 +5,6 @@ from google.genai import types
 from src.agents.domain import build_domain_orchestrator_agent
 from src.agents.internal import build_internal_app_agent
 
-<<<<<<< HEAD
-=======
 
 def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
     """Turn on Gemini thought summaries for an agent and all of its sub-agents.
@@ -27,7 +25,6 @@ def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
         _enable_thinking(sub, _seen)
 
 
->>>>>>> origin/dev
 root_agent = LlmAgent(
     name="grad_paddy",
     model="gemini-3.1-pro-preview",
