@@ -1,11 +1,10 @@
-# shared in-memory store of {thread_id: asyncio.Task}
-import asyncio
+from collections.abc import Callable
 
-_registry: dict[str, asyncio.Task] = {}
+_registry: dict[str, Callable[[], None]] = {}
 
 
-def register(thread_id: str, task: asyncio.Task) -> None:
-    _registry[thread_id] = task
+def register(thread_id: str, cancel_fn: Callable[[], None]) -> None:
+    _registry[thread_id] = cancel_fn
 
 
 def deregister(thread_id: str) -> None:
@@ -13,8 +12,8 @@ def deregister(thread_id: str) -> None:
 
 
 def cancel(thread_id: str) -> bool:
-    task = _registry.get(thread_id)
-    if task and not task.done():
-        task.cancel()
+    cancel_fn = _registry.get(thread_id)
+    if cancel_fn:
+        cancel_fn()
         return True
     return False

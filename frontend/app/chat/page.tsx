@@ -1881,30 +1881,36 @@ export default function ChatPage() {
   }
 
   async function stopRun() {
+    const runningPhaseIds = stream
+      .filter((i) => i.type === "phase" && i.status === "running")
+      .map((i) => i.id);
     try {
-      const { auth } = await import("../../lib/firebase");
-      const token = await auth.currentUser?.getIdToken();
-      const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-      await fetch(`${BASE}/api/chat/stop`, { // use Next.js proxy or full URL
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { "Authorization": `Bearer ${token}` }),
-        },
-        body: JSON.stringify({ thread_id: threadId.current }),
-      });
+      const { chatApi } = await import("../../lib/api");
+      await chatApi.stop(threadId.current);
     } catch { /* ignore */ }
     subscription.current?.unsubscribe();
     setLocalRunning(false);
+    setStreamingMessageId(null);
     setStream((p) => [
-      ...p,
+      ...p.map((item) =>
+        (item.type === "phase" || item.type === "step") && item.status === "running"
+          ? { ...item, status: "done" as const }
+          : item
+      ),
       {
-        type: "agent",
+        type: "agent" as const,
         id: `stop-${crypto.randomUUID()}`,
         content: "You stopped this response.",
         timestamp: new Date(),
       },
     ]);
+    if (runningPhaseIds.length > 0) {
+      setCollapsedPhases((prev) => {
+        const next = new Set(prev);
+        runningPhaseIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
   }
 
   function addUrl() {
