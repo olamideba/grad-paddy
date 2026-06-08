@@ -887,6 +887,32 @@ export default function SettingsPage() {
               onRemove={(v) => setCountries((p) => p.filter((x) => x !== v))}
             />
           </div>
+
+          {/* Footer: legal + hackathon */}
+          <div
+            className="pt-2 pb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-dm"
+            style={{ color: "#9CA3AF" }}
+          >
+            <a href="/privacy" className="underline" style={{ color: "#5A5A5A" }}>
+              Privacy Policy
+            </a>
+            <a href="/terms" className="underline" style={{ color: "#5A5A5A" }}>
+              Terms of Service
+            </a>
+            <span>
+              Built for the{" "}
+              <a
+                href="https://rapid-agent.devpost.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+                style={{ color: "#E8472A" }}
+              >
+                RapidAgent Hackathon
+              </a>{" "}
+              by Google
+            </span>
+          </div>
         </div>
       </div>
 

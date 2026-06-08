@@ -2,11 +2,13 @@ from google.adk.agents import LlmAgent, SequentialAgent
 
 from src.agents.tools import create_draft, GOVERNANCE_TOOLS
 
+MODEL = "gemini-3.1-pro-preview"
+
 
 def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
     return LlmAgent(
         name=name,
-        model="gemini-3.1-pro-preview",
+        model=MODEL,
         description=name.replace("_", " "),
         instruction=instruction,
         output_key=output_key,
@@ -16,18 +18,19 @@ def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
 def _review_and_save_stage(
     name: str, draft_type: str, state_key: str, title_hint: str
 ) -> LlmAgent:
-    """Final stage: show the draft for human review/edit, then save on approval.
+    """Final stage: gate the draft for human review, then save on approval.
 
     The drafted text lives in session state under `state_key`. We pass it to
-    request_hitl as payload.content (entity tags where it will be saved) so the
-    UI renders an editable review card. On approval the (possibly edited)
-    content is persisted via create_draft."""
+    request_hitl as payload.content so the UI renders an editable review card.
+    On approval the (possibly edited) content is persisted via create_draft.
+
+    NOTE: the intermediate stage prose never reaches the user — chat.py buffers
+    and suppresses assistant text for any run that opens a request_hitl gate."""
     return LlmAgent(
         name=name,
-        model="gemini-3.1-pro-preview",
+        model=MODEL,
         description=name.replace("_", " "),
         instruction=(
-            "The completed draft is shown below. Before saving, ask the user to review it:\n"
             "Call request_hitl exactly once with kind='approval', "
             'options_json=\'[{"id":"approve","label":"Approve"},{"id":"reject","label":"Reject"}]\', '
             f"title='Review {draft_type} draft', a one-line description, and payload_json set to a JSON "
@@ -35,8 +38,7 @@ def _review_and_save_stage(
             "Then WAIT for the human decision. If approved (their response may include an edited "
             '"content"), call create_draft with '
             f"type='{draft_type}', a concise title ({title_hint}), and content set to the approved content "
-            "(use the response content if provided, otherwise the draft below). If rejected, do not save. "
-            "Keep any text to the user to a single short sentence.\n\n"
+            "(use the response content if provided, otherwise the draft below). If rejected, do not save.\n\n"
             f"DRAFT TEXT:\n{{{state_key}}}"
         ),
         tools=[create_draft, *GOVERNANCE_TOOLS],
@@ -44,10 +46,7 @@ def _review_and_save_stage(
 
 
 def build_sop_translation_chain() -> SequentialAgent:
-    """SOP translation: intake → strategy → draft → review & save.
-
-    The first three stages are the reasoning trail (the UI collapses them into a
-    'Thinking' disclosure); the final stage gates on human review before saving."""
+    """SOP translation: intake → strategy → draft → review & save."""
     return SequentialAgent(
         name="sop_translation_chain",
         sub_agents=[
