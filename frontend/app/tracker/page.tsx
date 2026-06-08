@@ -145,12 +145,12 @@ const DOC_META: Record<DocStatus, { icon: string; color: string }> = {
 const DOC_CYCLE: DocStatus[] = ["not-started", "in-progress", "ready"];
 
 // Application readiness: SOP + CV ready, plus each recommender submitted.
+// SOP/CV count as ready when the doc status is "ready" OR a matching file is
+// attached — otherwise attaching an SOP/CV wouldn't move the percentage.
 function readiness(app: Application): number {
-  const items = [
-    app.sop === "ready",
-    app.cv === "ready",
-    ...app.recommenders.map((r) => r.status === "submitted"),
-  ];
+  const sopReady = app.sop === "ready" || app.attachments.some((a) => a.kind === "sop");
+  const cvReady = app.cv === "ready" || app.attachments.some((a) => a.kind === "cv");
+  const items = [sopReady, cvReady, ...app.recommenders.map((r) => r.status === "submitted")];
   if (items.length === 0) return 0;
   return Math.round((items.filter(Boolean).length / items.length) * 100);
 }

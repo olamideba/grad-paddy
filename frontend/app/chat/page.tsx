@@ -515,9 +515,7 @@ const EMAIL_PAYLOAD_KEYS = [
 ];
 
 // Extract email-canvas metadata from a HITL payload (only for entity="email").
-function emailMetaFromPayload(
-  payload: Record<string, unknown>
-):
+function emailMetaFromPayload(payload: Record<string, unknown>):
   | {
       to: string;
       subject: string;
@@ -1799,8 +1797,10 @@ export default function ChatPage() {
               if (h.status === "pending") continue;
               blocks.push({ ts: new Date(h.created_at).getTime(), items: hitlToItems(h) });
             }
-          } catch (e) {
-            console.error("[chat] load session HITL error", e);
+          } catch {
+            // Non-fatal: restoring resolved gates is an enhancement. Older
+            // backends without GET /api/hitl/sessions/{id} just 404 here — the
+            // messages still load fine, so degrade silently.
           }
           blocks.sort((a, b) => a.ts - b.ts);
           const items = blocks.flatMap((b) => b.items);
