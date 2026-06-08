@@ -71,7 +71,6 @@ instance/
 backend/src/scraper/grad_scraper/output/
 backend/service-account.json
 backend/docker-compose.yml
-backend/src/core/config.py
 backend/grad-paddy-firebase-adminsdk-fbsvc-5c475865e8.json
 
 # Sphinx documentation
