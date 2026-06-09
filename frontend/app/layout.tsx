@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body
-        className="flex h-screen overflow-hidden font-dm"
+        className="flex h-screen overflow-hidden font-space"
         style={{ background: "#F7F0E3", color: "#0D0D0D" }}
       >
         <AuthProvider>

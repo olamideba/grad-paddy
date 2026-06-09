@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
+import { FileText, Plus, Pencil, Send, Trash2, Check, Clock, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
 import type { Draft as ApiDraft, DraftStats } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
 import MarkdownCanvas from "@/components/MarkdownCanvas";
 import EmailCanvas from "@/components/EmailCanvas";
 import { SkeletonCardGrid } from "@/components/Skeleton";
+import { NeoButton, StatusPill } from "@/components/Neo";
 
 // Split an outreach draft into a subject + body for the email canvas. The
 // drafting chain writes the subject on the first "Subject:" line.
@@ -105,6 +107,13 @@ const STATUS_META: Record<
   "in-review": { label: "In Review", bg: "#E8472A", color: "#FFFFFF", border: "#0D0D0D" },
   approved: { label: "Approved", bg: "#4ECDC4", color: "#0D0D0D", border: "#0D0D0D" },
   archived: { label: "Archived", bg: "#F7F0E3", color: "#9CA3AF", border: "#C8C0AF" },
+};
+
+// Neobrutalist icon-tile background per draft type.
+const TYPE_ICON_BG: Record<DraftType, string> = {
+  sop: "bg-accent-orange text-white",
+  "outreach-prep": "bg-accent-teal text-ink",
+  "research-narrative": "bg-ink text-paper",
 };
 
 function timeAgo(date: Date): string {
@@ -343,137 +352,78 @@ function DraftCard({
   onSend: () => void;
 }) {
   const type = TYPE_META[draft.type];
-  const status = STATUS_META[draft.status];
+  const tone =
+    draft.status === "approved" ? "teal" : draft.status === "in-review" ? "yellow" : "muted";
 
   return (
-    <div className="card-brutal flex flex-col overflow-hidden p-0">
+    <article className="neo-card overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="p-4 flex items-start gap-3" style={{ borderBottom: "2px solid #0D0D0D" }}>
+      <div className="px-4 py-3 border-b-2 border-ink flex items-start gap-3">
         <div
-          className="w-10 h-10 flex items-center justify-center flex-shrink-0"
-          style={{ background: type.accent, border: "2px solid #0D0D0D", borderRadius: "4px" }}
+          className={clsx(
+            "size-12 border-2 border-ink grid place-items-center shrink-0",
+            TYPE_ICON_BG[draft.type]
+          )}
         >
-          <Icon icon={type.icon} width={16} style={{ color: type.iconColor }} />
+          <FileText className="size-5" strokeWidth={2.5} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <span
-              className="text-[10px] font-bold uppercase tracking-wider font-space"
-              style={{ color: "#9CA3AF" }}
-            >
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-[10px] tracking-[0.18em] font-bold uppercase text-muted-foreground">
               {type.label}
-            </span>
-            <span
-              className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold font-space flex-shrink-0"
-              style={{
-                background: status.bg,
-                color: status.color,
-                border: `1.5px solid ${status.border}`,
-                borderRadius: "4px",
-              }}
-            >
-              {status.label}
-            </span>
+            </div>
+            <StatusPill tone={tone}>{STATUS_META[draft.status].label}</StatusPill>
           </div>
-          <p
-            className="text-sm font-bold font-space leading-tight mt-0.5"
-            style={{ color: "#0D0D0D" }}
-          >
-            {draft.title}
-          </p>
+          <h3 className="font-bold text-lg mt-0.5 leading-tight">{draft.title}</h3>
         </div>
       </div>
 
-      {/* Excerpt */}
-      <div className="px-4 py-3 flex-1" style={{ borderBottom: "1.5px solid #EDE6D3" }}>
-        <p className="text-xs font-dm leading-relaxed line-clamp-4" style={{ color: "#5A5A5A" }}>
-          {draft.excerpt}
-        </p>
+      {/* Preview */}
+      <div className="p-4 text-sm leading-relaxed text-muted-foreground border-b-2 border-ink min-h-[140px] line-clamp-6">
+        {draft.excerpt}
       </div>
 
-      {/* Sources + AI warning */}
-      {(draft.sourceTags.length > 0 || (draft.isAiDraft && draft.status === "draft")) && (
-        <div
-          className="px-4 py-3 flex flex-col gap-2"
-          style={{ borderBottom: "2px solid #0D0D0D", background: "#FAFAF8" }}
-        >
-          {draft.isAiDraft && draft.status === "draft" && (
-            <div className="flex items-center gap-1.5">
-              <Icon
-                icon="solar:danger-triangle-bold"
-                width={11}
-                style={{ color: "#D97706" }}
-                className="shrink-0"
-              />
-              <p className="text-[11px] font-dm" style={{ color: "#5A5A5A" }}>
-                <span className="font-semibold" style={{ color: "#0D0D0D" }}>
-                  AI draft
-                </span>{" "}
-                — personalise before use
-              </p>
-            </div>
-          )}
-          {draft.sourceTags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {draft.sourceTags.map((source) => (
-                <span
-                  key={source}
-                  className="text-[10px] font-mono px-2 py-0.5"
-                  style={{
-                    background: "#EDE6D3",
-                    border: "1.5px solid #C8C0AF",
-                    color: "#5A5A5A",
-                    borderRadius: "4px",
-                  }}
-                >
-                  {source}
-                </span>
-              ))}
-            </div>
-          )}
+      {/* AI warning */}
+      {draft.isAiDraft && (
+        <div className="px-4 py-2 bg-accent-yellow/40 border-b-2 border-ink flex items-center gap-2 text-xs">
+          <AlertTriangle className="size-3.5" strokeWidth={2.5} />
+          <span className="font-bold">AI draft</span>
+          <span className="text-muted-foreground">— personalise before use</span>
         </div>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-1.5 text-[10px] font-dm" style={{ color: "#B0A898" }}>
-          <Icon icon="solar:clock-circle-bold" width={10} />
-          <span>{timeAgo(draft.lastEdited)}</span>
+      <div className="px-4 py-3 flex items-center gap-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Clock className="size-3.5" />{" "}
+          <span className="font-mono">{timeAgo(draft.lastEdited)}</span>
           {draft.wordCount > 0 && (
             <>
               <span>·</span>
-              <span>{draft.wordCount}w</span>
+              <span className="font-mono">{draft.wordCount}w</span>
             </>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={onEdit} className="btn-black btn-sm gap-1 text-xs">
-            <Icon icon="solar:pen-bold" width={10} />
-            Edit
-          </button>
+        <div className="ml-auto flex gap-2">
+          <NeoButton size="sm" onClick={onEdit}>
+            <Pencil className="size-3.5" /> Edit
+          </NeoButton>
           {draft.type === "outreach-prep" && (
-            <button onClick={onSend} className="btn-teal btn-sm gap-1 text-xs">
-              <Icon icon="solar:letter-bold" width={10} />
-              Send
-            </button>
+            <NeoButton size="sm" variant="teal" onClick={onSend}>
+              <Send className="size-3.5" /> Send
+            </NeoButton>
           )}
           {draft.status === "draft" && draft.isAiDraft && (
-            <button onClick={onApprove} className="btn-teal btn-sm gap-1 text-xs">
-              <Icon icon="solar:check-circle-bold" width={10} />
-              Approve
-            </button>
+            <NeoButton size="sm" variant="teal" onClick={onApprove}>
+              <Check className="size-3.5" /> Approve
+            </NeoButton>
           )}
-          <button
-            onClick={onDelete}
-            title="Delete draft"
-            className="btn-white btn-sm gap-1 text-xs"
-            style={{ color: "#E8472A", borderColor: "#E8472A" }}
-          >
-            <Icon icon="solar:trash-bin-trash-bold" width={11} />
-          </button>
+          <NeoButton size="sm" variant="danger" onClick={onDelete} title="Delete draft">
+            <Trash2 className="size-3.5" />
+          </NeoButton>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -761,67 +711,45 @@ export default function DraftsPage() {
   const aiDraftCount = drafts.filter((d) => d.isAiDraft && d.status === "draft").length;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
-      {/* Header — black */}
-      <div
-        className="px-4 sm:px-6 py-4 shrink-0"
-        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1
-              className="text-sm font-bold font-space flex items-center gap-2"
-              style={{ color: "#FFFFFF" }}
-            >
-              <Icon icon="solar:document-text-bold" width={15} style={{ color: "#E8472A" }} />
-              Drafts
-            </h1>
-            <p
-              className="text-xs font-dm mt-0.5 truncate"
-              style={{ color: "rgba(255,255,255,0.45)" }}
-            >
-              {loading
-                ? "Loading…"
-                : stats
-                  ? `${stats.total - stats.approved} drafts · ${stats.approved} approved${stats.need_review > 0 ? ` · ${stats.need_review} need review` : ""}`
-                  : `${drafts.length} drafts`}
-            </p>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <button className="btn-white btn-sm" onClick={() => setShowAddModal(true)}>
-              <Icon icon="solar:pen-bold" width={14} />
-              <span className="text-sm hidden sm:inline">New Draft</span>
-            </button>
-            <a href="/chat" className="btn-coral btn-sm">
-              <Icon icon="solar:add-circle-bold" width={14} />
-              <span className="text-sm hidden sm:inline">Generate Draft</span>
-            </a>
-          </div>
+    <div className="flex flex-col h-full overflow-hidden bg-paper font-space">
+      {/* Header — black branded bar */}
+      <div className="px-6 py-4 shrink-0 relative flex items-center gap-4 bg-ink text-paper border-b-2 border-ink">
+        <div className="size-9 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+          <FileText className="size-5 text-paper" strokeWidth={2.5} />
         </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight leading-tight">Drafts</h1>
+          <p className="text-xs mt-0.5 truncate text-paper/70">
+            {loading
+              ? "Loading…"
+              : stats
+                ? `${stats.total - stats.approved} drafts · ${stats.approved} approved${stats.need_review > 0 ? ` · ${stats.need_review} need review` : ""}`
+                : `${drafts.length} drafts`}
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <NeoButton variant="default" onClick={() => setShowAddModal(true)}>
+            <Pencil className="size-4" /> <span className="hidden sm:inline">New Draft</span>
+          </NeoButton>
+          <NeoButton variant="primary" as="a" href="/chat">
+            <Plus className="size-4" /> <span className="hidden sm:inline">Generate Draft</span>
+          </NeoButton>
+        </div>
+        <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-accent-orange" />
       </div>
 
       {/* Filter bar */}
-      <div
-        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
-        style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
-      >
-        <div
-          className="flex overflow-hidden"
-          style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}
-        >
+      <div className="px-6 py-4 shrink-0 flex gap-4 flex-wrap bg-paper border-b-2 border-ink">
+        <div className="flex border-2 border-ink neo-shadow-sm">
           {(["all", "sop", "outreach-prep", "research-narrative"] as const).map((t, i) => (
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
               className={clsx(
-                "px-3 py-2 text-xs font-semibold font-space bouncy",
-                i > 0 && "border-l-2"
+                "px-4 py-2 text-sm font-bold transition-colors",
+                typeFilter === t ? "bg-accent-orange text-white" : "bg-paper-2 hover:bg-paper",
+                i < 3 && "border-r-2 border-ink"
               )}
-              style={{
-                background: typeFilter === t ? "#E8472A" : "#FFFFFF",
-                color: typeFilter === t ? "#FFFFFF" : "#5A5A5A",
-                borderColor: "#0D0D0D",
-              }}
             >
               {t === "all"
                 ? "All"
@@ -833,23 +761,16 @@ export default function DraftsPage() {
             </button>
           ))}
         </div>
-        <div
-          className="flex overflow-hidden"
-          style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}
-        >
+        <div className="flex border-2 border-ink neo-shadow-sm">
           {(["all", "draft", "in-review", "approved"] as const).map((s, i) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={clsx(
-                "px-3 py-2 text-xs font-semibold font-space bouncy",
-                i > 0 && "border-l-2"
+                "px-4 py-2 text-sm font-bold transition-colors",
+                statusFilter === s ? "bg-accent-orange text-white" : "bg-paper-2 hover:bg-paper",
+                i < 3 && "border-r-2 border-ink"
               )}
-              style={{
-                background: statusFilter === s ? "#E8472A" : "#FFFFFF",
-                color: statusFilter === s ? "#FFFFFF" : "#5A5A5A",
-                borderColor: "#0D0D0D",
-              }}
             >
               {s === "all"
                 ? "All"
@@ -862,65 +783,40 @@ export default function DraftsPage() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {!loading && aiDraftCount > 0 && (
-          <div
-            className="mb-5 p-4 flex items-center gap-3"
-            style={{
-              background: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              boxShadow: "3px 3px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            <div
-              className="w-8 h-8 flex items-center justify-center flex-shrink-0"
-              style={{
-                background: "rgba(217,119,6,0.12)",
-                border: "1.5px solid #D97706",
-                borderRadius: "4px",
-              }}
-            >
-              <Icon icon="solar:danger-triangle-bold" width={14} style={{ color: "#D97706" }} />
+          <div className="neo-card bg-paper-2 p-5 flex items-center gap-4">
+            <div className="size-12 bg-accent-yellow border-2 border-ink grid place-items-center shrink-0">
+              <AlertTriangle className="size-5" strokeWidth={2.5} />
             </div>
             <div>
-              <p className="text-sm font-bold font-space" style={{ color: "#0D0D0D" }}>
-                AI drafts require personalisation
-              </p>
-              <p className="text-xs font-dm mt-0.5" style={{ color: "#5A5A5A" }}>
-                Generated from indexed content — <strong>review and personalise</strong> before
+              <div className="font-bold">AI drafts require personalisation</div>
+              <div className="text-sm text-muted-foreground">
+                Generated from indexed content —{" "}
+                <span className="font-bold text-ink">review and personalise</span> before
                 submission.
-              </p>
+              </div>
             </div>
           </div>
         )}
 
         {loading ? (
-          <SkeletonCardGrid
-            count={6}
-            gridClassName="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
-          />
+          <SkeletonCardGrid count={4} gridClassName="grid grid-cols-1 lg:grid-cols-2 gap-5" />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <Icon
-              icon="solar:document-text-bold"
-              width={32}
-              style={{ color: "#B0A898" }}
-              className="mb-3"
-            />
-            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>
-              No drafts yet
-            </p>
-            <p className="text-xs font-dm mt-1 mb-4" style={{ color: "#9CA3AF" }}>
+            <div className="size-12 bg-accent-yellow border-2 border-ink grid place-items-center mb-3">
+              <FileText className="size-5" strokeWidth={2.5} />
+            </div>
+            <p className="font-bold">No drafts yet</p>
+            <p className="text-sm mt-1 mb-4 text-muted-foreground">
               Generate your first SOP in Agent Chat
             </p>
-            <a href="/chat" className="btn-coral btn-sm">
-              <Icon icon="solar:alt-arrow-right-bold" width={13} />
-              <span className="text-sm">Go to Chat</span>
-            </a>
+            <NeoButton variant="primary" as="a" href="/chat">
+              <Plus className="size-4" /> Go to Chat
+            </NeoButton>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {filtered.map((draft) => (
               <DraftCard
                 key={draft.id}

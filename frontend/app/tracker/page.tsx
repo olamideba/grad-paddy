@@ -3,10 +3,31 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
+import clsx from "clsx";
+import {
+  Calendar,
+  Plus,
+  FileText,
+  Users,
+  DollarSign,
+  Clock,
+  Pencil,
+  Check,
+  AlertTriangle,
+  Circle,
+  Paperclip,
+  UploadCloud,
+  X,
+  Trash2,
+  Plus as PlusIcon,
+} from "lucide-react";
+import type { LucideProps } from "lucide-react";
+import type { ComponentType } from "react";
 import type { Application as ApiApp, TrackerStats, Attachment } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
 import EmailCanvas from "@/components/EmailCanvas";
 import { SkeletonTable } from "@/components/Skeleton";
+import { NeoButton, StatusPill } from "@/components/Neo";
 
 type DocStatus = "not-started" | "in-progress" | "ready";
 type AppStatus =
@@ -89,33 +110,14 @@ function DeadlineBadge({ date }: { date: Date }) {
     day: "numeric",
     year: "numeric",
   });
-  const urgent = days < 30;
+  const tone = days < 0 ? "orange" : days < 30 ? "yellow" : "muted";
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-mono font-semibold" style={{ color: "#0D0D0D" }}>
-        {formatted}
-      </span>
-      <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold font-space w-fit"
-        style={
-          urgent
-            ? {
-                background: "#E8472A",
-                color: "#FFFFFF",
-                border: "1.5px solid #0D0D0D",
-                borderRadius: "4px",
-              }
-            : {
-                background: "#EDE6D3",
-                color: "#5A5A5A",
-                border: "1.5px solid #0D0D0D",
-                borderRadius: "4px",
-              }
-        }
-      >
-        <Icon icon="solar:clock-circle-bold" width={9} />
+    <div className="flex flex-col gap-1 items-start">
+      <span className="text-xs font-mono text-ink">{formatted}</span>
+      <StatusPill tone={tone}>
+        <Clock className="size-3 mr-1" />
         {days}d left
-      </span>
+      </StatusPill>
     </div>
   );
 }
@@ -136,41 +138,35 @@ const STATUS_META: Record<AppStatus, { label: string; bg: string; color: string;
     waitlisted: { label: "Waitlisted", bg: "#F7F0E3", color: "#92400E", border: "#D97706" },
   };
 
-const DOC_META: Record<DocStatus, { icon: string; color: string }> = {
-  "not-started": { icon: "solar:circle-bold", color: "#C8C0AF" },
-  "in-progress": { icon: "solar:danger-triangle-bold", color: "#E8472A" },
-  ready: { icon: "solar:check-circle-bold", color: "#4ECDC4" },
+const DOC_META: Record<DocStatus, { Icon: ComponentType<LucideProps>; cell: string }> = {
+  "not-started": { Icon: Circle, cell: "bg-paper text-muted-foreground" },
+  "in-progress": { Icon: AlertTriangle, cell: "bg-accent-yellow text-ink" },
+  ready: { Icon: Check, cell: "bg-accent-teal text-ink" },
 };
 
 const DOC_CYCLE: DocStatus[] = ["not-started", "in-progress", "ready"];
 
 // Application readiness: SOP + CV ready, plus each recommender submitted.
+// SOP/CV count as ready when the doc status is "ready" OR a matching file is
+// attached — otherwise attaching an SOP/CV wouldn't move the percentage.
 function readiness(app: Application): number {
-  const items = [
-    app.sop === "ready",
-    app.cv === "ready",
-    ...app.recommenders.map((r) => r.status === "submitted"),
-  ];
+  const sopReady = app.sop === "ready" || app.attachments.some((a) => a.kind === "sop");
+  const cvReady = app.cv === "ready" || app.attachments.some((a) => a.kind === "cv");
+  const items = [sopReady, cvReady, ...app.recommenders.map((r) => r.status === "submitted")];
   if (items.length === 0) return 0;
   return Math.round((items.filter(Boolean).length / items.length) * 100);
 }
 
 function ReadinessBar({ value }: { value: number }) {
-  const color = value === 100 ? "#4ECDC4" : value >= 50 ? "#0D0D0D" : "#E8472A";
   return (
     <div className="flex items-center gap-2">
-      <div
-        className="flex-1 h-2.5 overflow-hidden"
-        style={{ background: "#EDE6D3", border: "1.5px solid #0D0D0D", borderRadius: "999px" }}
-      >
+      <div className="flex-1 h-3 border-2 border-ink bg-paper overflow-hidden">
         <div
-          className="h-full"
-          style={{ width: `${value}%`, background: color, transition: "width 200ms ease-out" }}
+          className="h-full bg-accent-orange"
+          style={{ width: `${value}%`, transition: "width 200ms ease-out" }}
         />
       </div>
-      <span className="text-[10px] font-mono shrink-0" style={{ color: "#5A5A5A" }}>
-        {value}%
-      </span>
+      <span className="font-mono text-xs w-9 text-right text-ink">{value}%</span>
     </div>
   );
 }
@@ -179,33 +175,27 @@ function FilterChip({
   label,
   count,
   active,
-  accent = "#0D0D0D",
   onClick,
 }: {
   label: string;
   count: number;
   active: boolean;
-  accent?: string;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="bouncy inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold font-space"
-      style={{
-        background: active ? accent : "#FFFFFF",
-        color: active ? "#FFFFFF" : "#5A5A5A",
-        border: `1.5px solid ${active ? accent : "#C8C0AF"}`,
-        borderRadius: "4px",
-      }}
+      className={clsx(
+        "flex items-center gap-2 px-4 py-2 border-2 border-ink neo-shadow-sm text-sm font-bold transition-colors",
+        active ? "bg-ink text-paper" : "bg-paper-2 hover:bg-paper"
+      )}
     >
       {label}
       <span
-        className="text-[10px] font-mono px-1 rounded"
-        style={{
-          background: active ? "rgba(255,255,255,0.2)" : "#EDE6D3",
-          color: active ? "#FFFFFF" : "#9CA3AF",
-        }}
+        className={clsx(
+          "text-[11px] font-mono px-1.5 py-0.5 border-2",
+          active ? "border-paper" : "border-ink"
+        )}
       >
         {count}
       </span>
@@ -216,30 +206,43 @@ function FilterChip({
 function DocCell({
   status,
   label,
+  attached,
   onCycle,
 }: {
   status: DocStatus;
   label: string;
+  attached?: boolean;
   onCycle?: () => void;
 }) {
-  const { icon, color } = DOC_META[status];
+  // An attached SOP/CV auto-marks the cell ready — no manual cycling needed.
+  if (attached) {
+    return (
+      <div
+        title={`${label} attached`}
+        className="size-6 border-2 border-ink grid place-items-center bg-accent-teal text-ink"
+      >
+        <Paperclip className="size-3.5" strokeWidth={2.5} />
+      </div>
+    );
+  }
+  const { Icon: DocIcon, cell } = DOC_META[status];
   return (
     <button
       type="button"
       onClick={onCycle}
       title={`${label}: ${status.replace(/-/g, " ")} — click to change`}
-      className="bouncy p-0.5"
+      className={clsx("size-6 border-2 border-ink grid place-items-center transition-colors", cell)}
     >
-      <Icon icon={icon} width={18} color={color} />
+      <DocIcon className="size-3.5" strokeWidth={2.5} />
     </button>
   );
 }
 
 const REC_STYLE: Record<RecommenderStatus, { bg: string; border: string }> = {
-  "not-asked": { bg: "#EDE6D3", border: "#C8C0AF" },
-  asked: { bg: "#C8C0AF", border: "#9CA3AF" },
-  confirmed: { bg: "#5A5A5A", border: "#0D0D0D" },
-  submitted: { bg: "#0D0D0D", border: "#0D0D0D" },
+  "not-asked": { bg: "#FBF7EF", border: "#1D1A16" },
+  asked: { bg: "#FBE49A", border: "#1D1A16" },
+  confirmed: { bg: "#4ECDC4", border: "#1D1A16" },
+  submitted: { bg: "#1D1A16", border: "#1D1A16" },
 };
 
 function RecDots({ recommenders }: { recommenders: Application["recommenders"] }) {
@@ -249,14 +252,38 @@ function RecDots({ recommenders }: { recommenders: Application["recommenders"] }
         <div
           key={i}
           title={`${r.name}: ${r.status.replace(/-/g, " ")}`}
-          className="w-3 h-3"
-          style={{
-            background: REC_STYLE[r.status].bg,
-            border: `1px solid ${REC_STYLE[r.status].border}`,
-            borderRadius: "2px",
-          }}
+          className="size-3.5 border-2 border-ink"
+          style={{ background: REC_STYLE[r.status].bg }}
         />
       ))}
+    </div>
+  );
+}
+
+function StatCard({
+  Icon: StatIcon,
+  label,
+  value,
+  tone,
+}: {
+  Icon: ComponentType<LucideProps>;
+  label: string;
+  value: string;
+  tone: "teal" | "ink" | "orange";
+}) {
+  const bg = tone === "teal" ? "bg-accent-teal" : tone === "orange" ? "bg-accent-orange" : "bg-ink";
+  const fg = tone === "teal" ? "text-ink" : "text-paper";
+  return (
+    <div className="neo-card p-5 flex items-center gap-4">
+      <div className={clsx("size-14 border-2 border-ink grid place-items-center", bg, fg)}>
+        <StatIcon className="size-6" strokeWidth={2.5} />
+      </div>
+      <div>
+        <div className="text-4xl font-bold font-mono leading-none">{value}</div>
+        <div className="text-[11px] tracking-[0.18em] font-bold text-muted-foreground mt-2">
+          {label}
+        </div>
+      </div>
     </div>
   );
 }
@@ -294,6 +321,76 @@ const EMPTY_APP_FORM: AddAppForm = {
   notes: "",
 };
 
+// Drag-and-drop (or click) CV upload. Uploads straight to the user's Documents
+// via cvsApi.upload, then hands the new CV back so it can be attached.
+function CvDropzone({ onUploaded }: { onUploaded: (cv: { id: string; title: string }) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [drag, setDrag] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const { cvsApi } = await import("../../lib/api");
+      const res = await cvsApi.upload(file);
+      onUploaded({ id: res.data.id, title: res.data.title });
+    } catch (e) {
+      setErr(
+        e instanceof Error && e.message.startsWith("415")
+          ? "PDF or Word only."
+          : "Upload failed. Try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.doc,.docx"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) upload(f);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) upload(f);
+        }}
+        className={clsx(
+          "w-full border-2 border-dashed border-ink p-3 flex items-center justify-center gap-2 text-xs font-bold transition-colors",
+          drag ? "bg-accent-yellow/40" : "bg-paper-2 hover:bg-paper"
+        )}
+      >
+        {busy ? (
+          <span className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+        ) : (
+          <UploadCloud className="size-4" strokeWidth={2.5} />
+        )}
+        {busy ? "Uploading…" : "Drop a new CV here, or click to upload"}
+      </button>
+      {err && <p className="text-xs text-accent-orange mt-1">{err}</p>}
+    </div>
+  );
+}
+
 function AddApplicationModal({
   onClose,
   onAdd,
@@ -304,6 +401,7 @@ function AddApplicationModal({
   const [form, setForm] = useState<AddAppForm>(EMPTY_APP_FORM);
   const [recs, setRecs] = useState<string[]>([]);
   const [recInput, setRecInput] = useState("");
+  const [pendingCv, setPendingCv] = useState<{ id: string; title: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const firstRef = useRef<HTMLInputElement>(null);
@@ -342,7 +440,18 @@ function AddApplicationModal({
         ...(form.notes.trim() && { notes: form.notes.trim() }),
         recommenders: recs.map((name) => ({ name, status: "not_asked" })),
       });
-      onAdd(mapApp(res.data));
+      let created = mapApp(res.data);
+      // Attach the dragged/uploaded CV to the freshly-created application.
+      if (pendingCv) {
+        try {
+          const att = { kind: "cv" as const, ref_id: pendingCv.id, title: pendingCv.title };
+          const attRes = await trackerApi.addAttachment(created.id, att);
+          created = { ...created, attachments: attRes.data.attachments ?? [att] };
+        } catch {
+          // best-effort; application is created regardless
+        }
+      }
+      onAdd(created);
       onClose();
     } catch {
       setError("Failed to add application. Try again.");
@@ -359,25 +468,15 @@ function AddApplicationModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        className="w-full max-w-lg flex flex-col max-h-[90vh] overflow-y-auto"
-        style={{
-          background: "#F7F0E3",
-          border: "2px solid #0D0D0D",
-          boxShadow: "6px 6px 0 #0D0D0D",
-          borderRadius: "4px",
-        }}
-      >
+      <div className="w-full max-w-[786px] flex flex-col max-h-[90vh] overflow-y-auto bg-paper-2 border-2 border-ink neo-shadow font-space">
         {/* Header */}
-        <div
-          className="px-5 py-4 flex items-center justify-between shrink-0"
-          style={{ background: "#0D0D0D", borderRadius: "2px 2px 0 0" }}
-        >
-          <span className="font-bold font-space text-sm" style={{ color: "#FFFFFF" }}>
-            Add Application
-          </span>
-          <button onClick={onClose} className="bouncy" style={{ color: "rgba(255,255,255,0.5)" }}>
-            <Icon icon="solar:close-circle-bold" width={18} />
+        <div className="px-5 py-4 flex items-center gap-3 shrink-0 bg-ink text-paper border-b-2 border-ink">
+          <div className="size-8 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+            <Calendar className="size-4 text-paper" strokeWidth={2.5} />
+          </div>
+          <span className="font-bold text-base flex-1">Add Application</span>
+          <button onClick={onClose} className="shrink-0 text-paper/60 hover:text-paper">
+            <X className="size-5" />
           </button>
         </div>
 
@@ -557,24 +656,50 @@ function AddApplicationModal({
             />
           </div>
 
-          {error && (
-            <p className="text-xs font-dm font-semibold" style={{ color: "#E8472A" }}>
-              {error}
+          {/* CV — drag-drop a new one (saved to Documents) and attach it */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-[0.18em] mb-1.5 text-muted-foreground">
+              CV (optional)
+            </label>
+            {pendingCv ? (
+              <div className="flex items-center gap-2 border-2 border-ink bg-accent-teal px-3 py-2 text-sm">
+                <Paperclip className="size-4 shrink-0" strokeWidth={2.5} />
+                <span className="flex-1 min-w-0 truncate font-bold">{pendingCv.title}</span>
+                <button
+                  type="button"
+                  onClick={() => setPendingCv(null)}
+                  className="shrink-0 hover:text-accent-orange"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            ) : (
+              <CvDropzone onUploaded={setPendingCv} />
+            )}
+            <p className="text-[10px] mt-1 text-muted-foreground">
+              Uploads to your Documents and attaches to this application.
             </p>
-          )}
+          </div>
+
+          {error && <p className="text-xs font-semibold text-accent-orange">{error}</p>}
 
           <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={saving} className="btn-coral btn-sm flex-1">
+            <NeoButton
+              type="submit"
+              variant="primary"
+              disabled={saving}
+              className="flex-1 justify-center"
+            >
               {saving ? (
-                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
               ) : (
-                <Icon icon="solar:add-circle-bold" width={14} />
+                <PlusIcon className="size-4" />
               )}
-              <span className="text-sm">{saving ? "Saving…" : "Add Application"}</span>
-            </button>
-            <button type="button" onClick={onClose} className="btn-white btn-sm">
-              <span className="text-sm">Cancel</span>
-            </button>
+              {saving ? "Saving…" : "Add Application"}
+            </NeoButton>
+            <NeoButton type="button" variant="default" onClick={onClose}>
+              Cancel
+            </NeoButton>
           </div>
         </form>
       </div>
@@ -810,24 +935,14 @@ function EditApplicationModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        className="w-full max-w-lg flex flex-col max-h-[90vh] overflow-y-auto"
-        style={{
-          background: "#F7F0E3",
-          border: "2px solid #0D0D0D",
-          boxShadow: "6px 6px 0 #0D0D0D",
-          borderRadius: "4px",
-        }}
-      >
-        <div
-          className="px-5 py-4 flex items-center justify-between shrink-0"
-          style={{ background: "#0D0D0D", borderRadius: "2px 2px 0 0" }}
-        >
-          <span className="font-bold font-space text-sm" style={{ color: "#FFFFFF" }}>
-            Edit Application
-          </span>
-          <button onClick={onClose} className="bouncy" style={{ color: "rgba(255,255,255,0.5)" }}>
-            <Icon icon="solar:close-circle-bold" width={18} />
+      <div className="w-full max-w-[786px] flex flex-col max-h-[90vh] overflow-y-auto bg-paper-2 border-2 border-ink neo-shadow font-space">
+        <div className="px-5 py-4 flex items-center gap-3 shrink-0 bg-ink text-paper border-b-2 border-ink">
+          <div className="size-8 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+            <Pencil className="size-4 text-paper" strokeWidth={2.5} />
+          </div>
+          <span className="font-bold text-base flex-1">Edit Application</span>
+          <button onClick={onClose} className="shrink-0 text-paper/60 hover:text-paper">
+            <X className="size-5" />
           </button>
         </div>
 
@@ -1107,71 +1222,77 @@ function EditApplicationModal({
             </label>
             {(() => {
               const attachedIds = new Set(attachments.map((a) => a.ref_id));
-              const available = linkOptions.filter((o) => !attachedIds.has(o.ref_id));
+              const slots: { kind: Attachment["kind"]; label: string }[] = [
+                { kind: "sop", label: "SOP" },
+                { kind: "cv", label: "CV" },
+                { kind: "narrative", label: "Research Narrative" },
+              ];
               return (
-                <>
-                  <select
-                    value=""
-                    disabled={linkBusy || available.length === 0}
-                    onChange={(e) => {
-                      const opt = available.find((o) => o.ref_id === e.target.value);
-                      if (opt) linkAttachment(opt);
-                    }}
-                    className="input-brutal w-full text-sm"
-                  >
-                    <option value="">
-                      {available.length === 0
-                        ? "No approved documents to link"
-                        : "Link an approved SOP / narrative / CV…"}
-                    </option>
-                    {available.map((o) => (
-                      <option key={o.ref_id} value={o.ref_id}>
-                        {ATTACH_META[o.kind].label}: {o.title}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] font-dm mt-1" style={{ color: "#9CA3AF" }}>
-                    Only approved documents appear here. Approve them in Drafts or Documents.
-                  </p>
-                  {attachments.length > 0 && (
-                    <div className="flex flex-col gap-1.5 mt-2">
-                      {attachments.map((a) => (
-                        <div
-                          key={a.ref_id}
-                          className="flex items-center gap-2 px-2 py-1.5 text-[11px] font-dm"
-                          style={{
-                            background: "#EDE6D3",
-                            border: "1.5px solid #C8C0AF",
-                            borderRadius: "4px",
-                          }}
-                        >
-                          <Icon
-                            icon={ATTACH_META[a.kind].icon}
-                            width={13}
-                            className="shrink-0"
-                            style={{ color: ATTACH_META[a.kind].color }}
-                          />
-                          <span
-                            className="shrink-0 font-semibold font-space"
-                            style={{ color: "#9CA3AF" }}
-                          >
-                            {ATTACH_META[a.kind].label}
-                          </span>
-                          <span className="flex-1 min-w-0 truncate">{a.title}</span>
-                          <button
-                            type="button"
-                            onClick={() => unlinkAttachment(a.ref_id)}
-                            className="shrink-0"
-                            style={{ color: "#9CA3AF" }}
-                            title="Unlink"
-                          >
-                            <Icon icon="solar:close-circle-bold" width={12} />
-                          </button>
+                <div className="space-y-3">
+                  {slots.map(({ kind, label }) => {
+                    const current = attachments.find((a) => a.kind === kind);
+                    const available = linkOptions.filter(
+                      (o) => o.kind === kind && !attachedIds.has(o.ref_id)
+                    );
+                    return (
+                      <div key={kind}>
+                        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1">
+                          {label}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </>
+                        {current ? (
+                          <div className="flex items-center gap-2 border-2 border-ink bg-accent-teal px-3 py-2 text-sm">
+                            <Paperclip className="size-4 shrink-0" strokeWidth={2.5} />
+                            <span className="flex-1 min-w-0 truncate font-bold">
+                              {current.title}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => unlinkAttachment(current.ref_id)}
+                              title="Unlink"
+                              className="shrink-0 hover:text-accent-orange"
+                            >
+                              <X className="size-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <select
+                              value=""
+                              disabled={linkBusy || available.length === 0}
+                              onChange={(e) => {
+                                const opt = available.find((o) => o.ref_id === e.target.value);
+                                if (opt) linkAttachment(opt);
+                              }}
+                              className="input-brutal w-full text-sm"
+                            >
+                              <option value="">
+                                {available.length === 0
+                                  ? `No approved ${label} to link`
+                                  : `Link an approved ${label}…`}
+                              </option>
+                              {available.map((o) => (
+                                <option key={o.ref_id} value={o.ref_id}>
+                                  {o.title}
+                                </option>
+                              ))}
+                            </select>
+                            {kind === "cv" && (
+                              <CvDropzone
+                                onUploaded={(cv) =>
+                                  linkAttachment({ kind: "cv", ref_id: cv.id, title: cv.title })
+                                }
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] text-muted-foreground">
+                    SOP &amp; Narrative pull from approved Drafts. Drop a CV to upload it to
+                    Documents and attach it here.
+                  </p>
+                </div>
               );
             })()}
           </div>
@@ -1238,24 +1359,27 @@ function EditApplicationModal({
           )}
 
           <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={saving || deleting} className="btn-coral btn-sm flex-1">
+            <NeoButton
+              type="submit"
+              variant="primary"
+              disabled={saving || deleting}
+              className="flex-1 justify-center"
+            >
               {saving ? (
-                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
               ) : (
-                <Icon icon="solar:check-circle-bold" width={14} />
+                <Check className="size-4" />
               )}
-              <span className="text-sm">{saving ? "Saving…" : "Save Changes"}</span>
-            </button>
-            <button
+              {saving ? "Saving…" : "Save Changes"}
+            </NeoButton>
+            <NeoButton
               type="button"
+              variant="danger"
               onClick={() => setConfirmDelete(true)}
               disabled={saving || deleting}
-              className="btn-white btn-sm"
-              style={{ color: "#E8472A", borderColor: "#E8472A" }}
             >
-              <Icon icon="solar:trash-bin-trash-bold" width={14} />
-              <span className="text-sm">Delete</span>
-            </button>
+              <Trash2 className="size-4" /> Delete
+            </NeoButton>
           </div>
         </form>
       </div>
@@ -1343,65 +1467,59 @@ export default function TrackerPage() {
   );
   const totalDrafting = apps.filter((a) => a.status === "drafting").length;
 
-  const statCards = [
+  const statCards: {
+    label: string;
+    Icon: ComponentType<LucideProps>;
+    value: string;
+    tone: "teal" | "ink" | "orange";
+  }[] = [
     {
-      label: "SOP Ready",
-      icon: "solar:document-text-bold",
+      label: "SOP READY",
+      Icon: FileText,
       value: stats ? `${stats.sop_ready}/${stats.total}` : "—",
-      accent: "#4ECDC4",
+      tone: "teal",
     },
     {
-      label: "Recs Confirmed",
-      icon: "solar:users-group-two-rounded-bold",
+      label: "RECS CONFIRMED",
+      Icon: Users,
       value: stats ? `${stats.recs_confirmed}` : "—",
-      accent: "#0D0D0D",
+      tone: "ink",
     },
     {
-      label: "Funded Programs",
-      icon: "solar:dollar-minimalistic-bold",
+      label: "FUNDED PROGRAMS",
+      Icon: DollarSign,
       value: stats ? `${stats.funded_programs}/${stats.total}` : "—",
-      accent: "#E8472A",
+      tone: "orange",
     },
   ];
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
-      {/* Header — black */}
-      <div
-        className="px-4 sm:px-6 py-4 shrink-0"
-        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1
-              className="text-sm font-bold font-space flex items-center gap-2"
-              style={{ color: "#FFFFFF" }}
-            >
-              <Icon icon="solar:calendar-bold" width={15} style={{ color: "#E8472A" }} />
-              Application Tracker
-            </h1>
-            <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {loading ? "Loading…" : `${apps.length} applications · ${totalDrafting} drafting`}
-              {!loading && totalDue30 > 0 && (
-                <span style={{ color: "#E8472A" }}>
-                  {" "}
-                  · {totalDue30} deadline{totalDue30 > 1 ? "s" : ""} in &lt;30 days
-                </span>
-              )}
-            </p>
-          </div>
-          <button className="btn-coral btn-sm shrink-0" onClick={() => setShowAddModal(true)}>
-            <Icon icon="solar:add-circle-bold" width={14} />
-            <span className="text-sm hidden sm:inline">Add Application</span>
-          </button>
+    <div className="flex flex-col h-full overflow-hidden bg-paper font-space">
+      {/* Header — black branded bar */}
+      <div className="px-6 py-4 shrink-0 relative flex items-center gap-4 bg-ink text-paper border-b-2 border-ink">
+        <div className="size-9 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+          <Calendar className="size-5 text-paper" strokeWidth={2.5} />
         </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight leading-tight">Application Tracker</h1>
+          <p className="text-xs mt-0.5 text-paper/70">
+            {loading ? "Loading…" : `${apps.length} applications · ${totalDrafting} drafting`}
+            {!loading && totalDue30 > 0 && (
+              <span className="text-accent-orange font-semibold">
+                {" "}
+                · {totalDue30} deadline{totalDue30 > 1 ? "s" : ""} in &lt;30 days
+              </span>
+            )}
+          </p>
+        </div>
+        <NeoButton variant="primary" onClick={() => setShowAddModal(true)} className="shrink-0">
+          <Plus className="size-4" /> <span className="hidden sm:inline">Add Application</span>
+        </NeoButton>
+        <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-accent-orange" />
       </div>
 
       {/* Filter bar */}
-      <div
-        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-2 flex-wrap"
-        style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
-      >
+      <div className="px-6 py-4 shrink-0 flex items-center gap-3 flex-wrap bg-paper border-b-2 border-ink">
         <FilterChip
           label="All"
           count={apps.length}
@@ -1412,10 +1530,8 @@ export default function TrackerPage() {
           label="Due <30d"
           count={totalDue30}
           active={filter === "due-soon"}
-          accent="#E8472A"
           onClick={() => setFilter("due-soon")}
         />
-        <span className="w-px h-5" style={{ background: "#E0D8CA" }} />
         {presentStatuses.map((s) => (
           <FilterChip
             key={s}
@@ -1428,45 +1544,11 @@ export default function TrackerPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6">
+      <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Summary stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
-          {statCards.map(({ label, icon, value, accent }) => (
-            <div
-              key={label}
-              className="p-4 flex items-center gap-4"
-              style={{
-                background: "#FFFFFF",
-                border: "2px solid #0D0D0D",
-                boxShadow: "3px 3px 0 #0D0D0D",
-                borderRadius: "4px",
-              }}
-            >
-              <div
-                className="w-10 h-10 flex items-center justify-center flex-shrink-0"
-                style={{ background: accent, border: "2px solid #0D0D0D", borderRadius: "4px" }}
-              >
-                <Icon
-                  icon={icon}
-                  width={18}
-                  style={{ color: accent === "#0D0D0D" ? "#FFFFFF" : "#0D0D0D" }}
-                />
-              </div>
-              <div>
-                <div
-                  className="text-2xl font-bold font-mono leading-none"
-                  style={{ color: "#0D0D0D" }}
-                >
-                  {value}
-                </div>
-                <div
-                  className="text-[10px] font-semibold uppercase tracking-wider font-space mt-1"
-                  style={{ color: "#9CA3AF" }}
-                >
-                  {label}
-                </div>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {statCards.map((c) => (
+            <StatCard key={c.label} Icon={c.Icon} label={c.label} value={c.value} tone={c.tone} />
           ))}
         </div>
 
@@ -1475,28 +1557,14 @@ export default function TrackerPage() {
           <SkeletonTable rows={6} />
         ) : apps.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <Icon
-              icon="solar:calendar-bold"
-              width={32}
-              style={{ color: "#B0A898" }}
-              className="mb-3"
-            />
-            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>
-              No applications yet
-            </p>
-            <p className="text-sm font-dm mt-1" style={{ color: "#9CA3AF" }}>
-              Add your first application above
-            </p>
+            <div className="size-12 bg-accent-yellow border-2 border-ink grid place-items-center mb-3">
+              <Calendar className="size-5" strokeWidth={2.5} />
+            </div>
+            <p className="font-bold">No applications yet</p>
+            <p className="text-sm mt-1 text-muted-foreground">Add your first application above</p>
           </div>
         ) : (
-          <div
-            className="overflow-x-auto"
-            style={{
-              border: "2px solid #0D0D0D",
-              boxShadow: "4px 4px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
+          <div className="neo-card overflow-x-auto">
             <table className="table-brutal w-full">
               <thead>
                 <tr>
@@ -1623,13 +1691,19 @@ export default function TrackerPage() {
                           <DocCell
                             status={app.sop}
                             label="SOP"
+                            attached={app.attachments.some((a) => a.kind === "sop")}
                             onCycle={() => cycleDoc(app, "sop")}
                           />
                         </div>
                       </td>
                       <td className="text-center">
                         <div className="flex justify-center">
-                          <DocCell status={app.cv} label="CV" onCycle={() => cycleDoc(app, "cv")} />
+                          <DocCell
+                            status={app.cv}
+                            label="CV"
+                            attached={app.attachments.some((a) => a.kind === "cv")}
+                            onCycle={() => cycleDoc(app, "cv")}
+                          />
                         </div>
                       </td>
                       <td>
@@ -1640,30 +1714,17 @@ export default function TrackerPage() {
                         </div>
                       </td>
                       <td className="text-center">
-                        {app.funded === true && <span className="badge-teal">Yes</span>}
-                        {app.funded === false && <span className="badge-coral">No</span>}
-                        {app.funded === "unknown" && <span className="badge-gray">?</span>}
+                        {app.funded === true && <StatusPill tone="teal">Yes</StatusPill>}
+                        {app.funded === false && <StatusPill tone="orange">No</StatusPill>}
+                        {app.funded === "unknown" && <StatusPill tone="muted">?</StatusPill>}
                       </td>
                       <td>
                         <button
                           onClick={() => setEditApp(app)}
                           title="Edit application"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bouncy"
-                          style={{
-                            border: "1.5px solid #0D0D0D",
-                            color: "#9CA3AF",
-                            borderRadius: "4px",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "#EDE6D3";
-                            e.currentTarget.style.color = "#0D0D0D";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "";
-                            e.currentTarget.style.color = "#9CA3AF";
-                          }}
+                          className="size-8 grid place-items-center border-2 border-ink text-ink opacity-0 group-hover:opacity-100 transition-all hover:bg-ink hover:text-paper"
                         >
-                          <Icon icon="solar:pen-bold" width={14} />
+                          <Pencil className="size-4" />
                         </button>
                       </td>
                     </tr>
