@@ -3,8 +3,6 @@ from pydantic import Field
 from functools import lru_cache
 from pathlib import Path
 
-# _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
-# print("Looking for .env at:", _ENV_FILE, "| exists:", _ENV_FILE.exists())
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -17,7 +15,6 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_LOCATION: str = Field(default="global")
     GOOGLE_GENAI_USE_VERTEXAI: bool = Field(default=True)
     GOOGLE_APPLICATION_CREDENTIALS: Path | None = Field(default=None)
-    GOOGLE_API_KEY: str = Field(..., description="Google API key")
 
     # Firebase Storage bucket (e.g. "<project>.appspot.com"). Required for CV uploads.
     STORAGE_BUCKET: str = Field(default="")
@@ -52,11 +49,7 @@ class Settings(BaseSettings):
             "platform.core.generate_esql,"
             "platform.core.execute_esql,"
             "platform.core.get_document_by_id,"
-            "platform.core.create_visualization,"
-            "find_faculty_by_research1,"
-            "find_faculty_by_research_and_schools1,"
-            "find_universities_by_program1,"
-            "check_program_deadlines_and_application_fees1"
+            "platform.core.create_visualization"
         )
     )
     ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
@@ -79,20 +72,6 @@ class Settings(BaseSettings):
     DOC_PROFILE: str = Field(default="profile")
     DOC_PREFERENCES: str = Field(default="preferences")
     DOC_GOOGLE_INTEGRATION: str = Field(default="google")
-
-    # Elastic Search
-    ES_URL: str = Field(default="https://my-elasticsearch-project-b387b6.es.us-central1.gcp.elastic.cloud:443")
-    PROGRAM_ES_INDEX: str = Field(default="grad-programs")
-    FACULTY_ES_INDEX: str = Field(default="faculty-profiles")
-
-    EMBEDDING_MODEL: str = Field(default="text-embedding-004")
-
-    GEMINI_ENABLED: bool = Field(default=True)            
-    GEMINI_MODEL: str = Field(default="gemini-2.5-flash") 
-
-    DOWNLOAD_DELAY: int = Field(default=2)
-    CONCURRENT_REQUESTS: int = Field(default=4)
-    LOG_LEVEL: str = Field(default="INFO") 
 
 
 @lru_cache

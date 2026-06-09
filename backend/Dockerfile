@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -22,4 +22,4 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080", \
      "--ws-ping-timeout", "60"]
 
 HEALTHCHECK --interval=3h --timeout=5s --start-period=60s --retries=3 \
-     CMD curl -fsS http://127.0.0.1:8080/health || exit 1
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
