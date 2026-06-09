@@ -20,6 +20,7 @@
     "clsx": "^2.1.1",
     "countries-list": "^3.3.0",
     "firebase": "^12.13.0",
+    "framer-motion": "^12.40.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "react": "^19.2.6",
