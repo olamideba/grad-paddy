@@ -109,9 +109,9 @@ export default function Sidebar() {
       >
         {!collapsed && (
           <>
-            <div className="flex-1 min-w-0">
+            <Link href="/" aria-label="Go to landing page" className="flex-1 min-w-0">
               <Logo />
-            </div>
+            </Link>
             <button
               onClick={toggleCollapse}
               className="bouncy flex-shrink-0 p-1"

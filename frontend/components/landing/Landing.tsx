@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import {
   motion,
@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { Icon } from "@iconify/react";
+import { useAuth } from "@/context/AuthContext";
 import Starfield from "./Starfield";
 import CursorGlow from "./CursorGlow";
 
@@ -102,14 +103,68 @@ const STEPS = [
 ];
 
 // ── motion helpers ─────────────────────────────────────────────────────────────
-function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
+type Dir = "up" | "down" | "left" | "right" | "scale";
+
+const OFFSETS: Record<Dir, { x?: number; y?: number; scale?: number }> = {
+  up: { y: 36 },
+  down: { y: -36 },
+  left: { x: 48 },
+  right: { x: -48 },
+  scale: { scale: 0.88 },
+};
+
+// Reveals children as they scroll into view. `dir` controls the entrance vector.
+function Reveal({
+  children,
+  delay = 0,
+  dir = "up",
+  className,
+}: {
+  children: ReactNode;
+  delay?: number;
+  dir?: Dir;
+  className?: string;
+}) {
+  const from = OFFSETS[dir];
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      className={className}
+      initial={{ opacity: 0, ...from }}
+      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.7, delay, ease: [0.22, 1, 0.36, 1] }}
     >
+      {children}
+    </motion.div>
+  );
+}
+
+// Scroll-scrubbed scale: oversized while the element is still below the fold,
+// easing down to its natural size as it reaches the centre of the viewport.
+function ScaleIn({
+  children,
+  scrollRef,
+  from = 1.28,
+  className,
+}: {
+  children: ReactNode;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  from?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    container: scrollRef,
+    target: ref,
+    offset: ["start end", "center center"],
+  });
+  const scale = useSpring(useTransform(scrollYProgress, [0, 1], [from, 1]), {
+    stiffness: 90,
+    damping: 22,
+  });
+  const opacity = useTransform(scrollYProgress, [0, 0.55], [0.25, 1]);
+  return (
+    <motion.div ref={ref} style={{ scale, opacity }} className={className}>
       {children}
     </motion.div>
   );
@@ -179,9 +234,16 @@ function Magnetic({
 }
 
 export default function Landing() {
+  const { user } = useAuth();
+  // Logged-in users go straight to the app; everyone else signs in first.
+  const cta = user ? "/chat" : "/login";
+  // The app's <body> is overflow-hidden, so the landing owns its own scroll —
+  // and the scroll-linked animations track this container, not the window.
+  const scrollRef = useRef<HTMLDivElement>(null);
   return (
     <div
-      className="relative min-h-screen w-full overflow-x-hidden font-space text-white md:cursor-none"
+      ref={scrollRef}
+      className="relative h-screen w-full overflow-y-auto overflow-x-hidden font-space text-white md:cursor-none"
       style={{ background: "#05060f" }}
     >
       <Starfield className="fixed inset-0 h-full w-full" />
@@ -192,24 +254,29 @@ export default function Landing() {
             "radial-gradient(circle at 50% 0%, rgba(232,71,42,0.18), transparent 45%), radial-gradient(circle at 80% 60%, rgba(78,205,196,0.12), transparent 40%)",
         }}
       />
+      {/* Planet rides the scroll on an elliptical spiral; clipped so it never
+          spills past the viewport and triggers a horizontal scrollbar. */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <ScrollPlanet scrollRef={scrollRef} />
+      </div>
       <CursorGlow />
       <div className="relative z-10">
-        <Navbar />
-        <Hero />
-        <Demo />
+        <Navbar cta={cta} />
+        <Hero cta={cta} scrollRef={scrollRef} />
+        <Demo scrollRef={scrollRef} />
         <HowItWorks />
         <Team />
-        <Footer />
+        <Footer cta={cta} />
       </div>
     </div>
   );
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
-function Navbar() {
+function Navbar({ cta }: { cta: string }) {
   return (
-    <nav className="fixed top-0 inset-x-0 z-50 px-5 py-3">
-      <div className="max-w-6xl mx-auto flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl px-4 py-2.5">
+    <nav className="fixed top-0 inset-x-0 z-50 px-3 sm:px-5 py-3">
+      <div className="max-w-6xl mx-auto flex items-center gap-2 sm:gap-4 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl px-3 sm:px-4 py-2.5">
         <Link href="/" className="flex items-center gap-2.5 mr-auto">
           <span
             className="size-9 grid place-items-center border-[3px] border-white bg-[#ff4500]"
@@ -241,8 +308,8 @@ function Navbar() {
         </a>
         <Magnetic strength={0.3}>
           <Link
-            href="/login"
-            className="group inline-flex items-center gap-1.5 rounded-xl bg-white text-[#05060f] px-4 py-2 text-sm font-bold hover:shadow-[0_0_24px_rgba(78,205,196,0.7)] transition-shadow"
+            href={cta}
+            className="group inline-flex items-center gap-1.5 rounded-xl bg-white text-[#05060f] px-3 sm:px-4 py-2 text-sm font-bold hover:shadow-[0_0_24px_rgba(78,205,196,0.7)] transition-shadow"
           >
             Try it free
             <ArrowRight className="size-4 group-hover:translate-x-0.5 transition-transform" />
@@ -254,38 +321,61 @@ function Navbar() {
 }
 
 // ── Glowing planet ──────────────────────────────────────────────────────────────
-function Planet() {
+// Rides the whole-page scroll on an elliptical spiral: it sweeps left↔right while
+// descending, shrinks into the distance, and retraces the path on scroll-up.
+// Springs give it a weightless, lagging drift.
+function ScrollPlanet({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
+  const { scrollYProgress } = useScroll({ container: scrollRef });
+  const spring = { stiffness: 60, damping: 20, mass: 1.1 };
+
+  // Horizontal sweep across the viewport — multiple lobes = the spiral.
+  const xRaw = useTransform(
+    scrollYProgress,
+    [0, 0.2, 0.4, 0.6, 0.8, 1],
+    ["0vw", "26vw", "-26vw", "24vw", "-22vw", "8vw"]
+  );
+  // Vertical descent down the page and back.
+  const yRaw = useTransform(scrollYProgress, [0, 1], ["-4vh", "58vh"]);
+  // Recede into the distance.
+  const scaleRaw = useTransform(scrollYProgress, [0, 0.5, 1], [1, 0.62, 0.5]);
+  const rotateRaw = useTransform(scrollYProgress, [0, 1], [0, 220]);
+
+  const x = useSpring(xRaw, spring);
+  const y = useSpring(yRaw, spring);
+  const scale = useSpring(scaleRaw, spring);
+  const rotate = useSpring(rotateRaw, spring);
+
   return (
-    <Float
-      x={6}
-      y={18}
-      dur={9}
-      className="pointer-events-none absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2"
+    <motion.div
+      style={{ x, y, scale }}
+      className="absolute left-1/2 top-[34%] -translate-x-1/2 -translate-y-1/2"
     >
-      <div className="relative">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-          className="absolute left-1/2 top-1/2 size-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#4ecdc4]/15"
-          style={{ transform: "translate(-50%,-50%) rotateX(72deg)" }}
-        />
-        <div
-          className="size-[300px] sm:size-[380px] rounded-full"
-          style={{
-            background:
-              "radial-gradient(circle at 34% 28%, #4ecdc4 0%, #e8472a 42%, #1e1b4b 70%, #0a0820 100%)",
-            boxShadow:
-              "0 0 140px 30px rgba(232,71,42,0.45), 0 0 60px 10px rgba(78,205,196,0.35), inset -26px -26px 90px rgba(0,0,0,0.65)",
-          }}
-        />
-      </div>
-    </Float>
+      <Float x={6} y={16} dur={9}>
+        <div className="relative">
+          <div className="absolute left-1/2 top-1/2 size-[340px] sm:size-[520px] -translate-x-1/2 -translate-y-1/2">
+            <motion.div
+              style={{ rotate }}
+              className="size-full rounded-full border border-[#4ecdc4]/15"
+            />
+          </div>
+          <div
+            className="size-[220px] sm:size-[380px] rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle at 34% 28%, #4ecdc4 0%, #e8472a 42%, #1e1b4b 70%, #0a0820 100%)",
+              boxShadow:
+                "0 0 140px 30px rgba(232,71,42,0.45), 0 0 60px 10px rgba(78,205,196,0.35), inset -26px -26px 90px rgba(0,0,0,0.65)",
+            }}
+          />
+        </div>
+      </Float>
+    </motion.div>
   );
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
-function Hero() {
-  const { scrollYProgress } = useScroll();
+function Hero({ cta, scrollRef }: { cta: string; scrollRef: RefObject<HTMLDivElement | null> }) {
+  const { scrollYProgress } = useScroll({ container: scrollRef });
   const y = useTransform(scrollYProgress, [0, 0.25], [0, -120]);
   const fade = useTransform(scrollYProgress, [0, 0.2], [1, 0]);
   return (
@@ -293,7 +383,6 @@ function Hero() {
       id="top"
       className="relative min-h-screen flex items-center justify-center px-5 pt-24 pb-16"
     >
-      <Planet />
       <motion.div
         style={{ y, opacity: fade }}
         className="relative z-10 max-w-4xl mx-auto text-center"
@@ -336,7 +425,7 @@ function Hero() {
         >
           <Magnetic strength={0.4}>
             <Link
-              href="/login"
+              href={cta}
               className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#4ecdc4] to-[#e8472a] px-6 py-3.5 text-base font-bold text-white shadow-[0_0_34px_rgba(232,71,42,0.6)] hover:shadow-[0_0_50px_rgba(78,205,196,0.8)] transition-shadow"
             >
               <Rocket className="size-5 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
@@ -364,7 +453,7 @@ function Hero() {
 }
 
 // ── Demo ────────────────────────────────────────────────────────────────────
-function Demo() {
+function Demo({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
   return (
     <section id="demo" className="relative px-5 py-28">
       <div className="relative max-w-5xl mx-auto">
@@ -382,7 +471,7 @@ function Demo() {
             </p>
           </div>
         </Reveal>
-        <Reveal delay={0.1}>
+        <ScaleIn scrollRef={scrollRef}>
           <Float x={4} y={8} dur={8}>
             <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-white/[0.04] p-3 backdrop-blur-xl shadow-[0_40px_120px_-20px_rgba(232,71,42,0.4)]">
               <div className="flex items-center gap-1.5 px-3 py-2">
@@ -394,7 +483,7 @@ function Demo() {
               <ChatMockup />
             </div>
           </Float>
-        </Reveal>
+        </ScaleIn>
       </div>
     </section>
   );
@@ -503,7 +592,7 @@ function HowItWorks() {
         </Reveal>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {STEPS.map((s, i) => (
-            <Reveal key={s.title} delay={i * 0.08}>
+            <Reveal key={s.title} delay={i * 0.08} dir={i % 2 === 0 ? "right" : "left"}>
               <Float x={5} y={8} dur={6 + i}>
                 <Magnetic strength={0.18}>
                   <div
@@ -719,7 +808,7 @@ function TeamModal({ member, onClose }: { member: Member; onClose: () => void })
 }
 
 // ── Footer ──────────────────────────────────────────────────────────────────
-function Footer() {
+function Footer({ cta }: { cta: string }) {
   return (
     <footer className="relative px-5 py-16 border-t border-white/10">
       <div className="max-w-6xl mx-auto">
@@ -731,7 +820,7 @@ function Footer() {
             </p>
             <Magnetic strength={0.4} className="inline-block mt-7">
               <Link
-                href="/login"
+                href={cta}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#e8472a] px-7 py-4 text-base font-bold text-white shadow-[0_0_34px_rgba(232,71,42,0.6)]"
               >
                 <MessageSquare className="size-5" /> Start chatting
