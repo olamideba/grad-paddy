@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import type { CV } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
+import { SkeletonCardGrid } from "@/components/Skeleton";
 
 const ACCEPT = ".pdf,.doc,.docx";
 
@@ -83,17 +84,6 @@ export default function DocumentsPage() {
     }
   }
 
-  async function toggleApprove(cv: CV) {
-    const next = cv.status === "approved" ? "draft" : "approved";
-    setCvs((prev) => prev.map((c) => (c.id === cv.id ? { ...c, status: next } : c)));
-    try {
-      const { cvsApi } = await import("../../lib/api");
-      await cvsApi.update(cv.id, { status: next });
-    } catch {
-      setCvs((prev) => prev.map((c) => (c.id === cv.id ? { ...c, status: cv.status } : c)));
-    }
-  }
-
   function startRename(cv: CV) {
     setRenamingId(cv.id);
     setRenameDraft(cv.title);
@@ -123,8 +113,6 @@ export default function DocumentsPage() {
     }
   }
 
-  const approvedCount = cvs.filter((c) => c.status === "approved").length;
-
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
       {/* Header — black */}
@@ -145,9 +133,7 @@ export default function DocumentsPage() {
               className="text-xs font-dm mt-0.5 truncate"
               style={{ color: "rgba(255,255,255,0.45)" }}
             >
-              {loading
-                ? "Loading…"
-                : `${cvs.length} resume${cvs.length === 1 ? "" : "s"} · ${approvedCount} approved`}
+              {loading ? "Loading…" : `${cvs.length} resume${cvs.length === 1 ? "" : "s"}`}
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -189,12 +175,10 @@ export default function DocumentsPage() {
       {/* List */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div
-              className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
-              style={{ color: "#E8472A" }}
-            />
-          </div>
+          <SkeletonCardGrid
+            count={6}
+            gridClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          />
         ) : cvs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-center">
             <Icon
@@ -217,14 +201,13 @@ export default function DocumentsPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {cvs.map((cv) => {
-              const approved = cv.status === "approved";
               return (
                 <div key={cv.id} className="card-brutal flex flex-col p-4">
                   <div className="flex items-start gap-3">
                     <div
                       className="w-9 h-9 flex items-center justify-center shrink-0"
                       style={{
-                        background: approved ? "#4ECDC4" : "#EDE6D3",
+                        background: "#4ECDC4",
                         border: "2px solid #0D0D0D",
                         borderRadius: "4px",
                       }}
@@ -263,21 +246,8 @@ export default function DocumentsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-3">
-                    <span
-                      className="text-[10px] font-bold font-space px-2 py-0.5"
-                      style={{
-                        background: approved ? "#4ECDC4" : "#EDE6D3",
-                        color: approved ? "#0D0D0D" : "#5A5A5A",
-                        border: "1.5px solid #0D0D0D",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      {approved ? "Approved" : "Draft"}
-                    </span>
-                    <span className="text-[11px] font-dm" style={{ color: "#B0A898" }}>
-                      {timeAgo(cv.updated_at)}
-                    </span>
+                  <div className="mt-3 text-[11px] font-dm" style={{ color: "#B0A898" }}>
+                    {timeAgo(cv.updated_at)}
                   </div>
 
                   <div
@@ -288,12 +258,6 @@ export default function DocumentsPage() {
                       icon={busyId === cv.id ? "svg-spinners:ring-resize" : "solar:eye-bold"}
                       label="Open"
                       onClick={() => openCv(cv)}
-                    />
-                    <CardAction
-                      icon={approved ? "solar:close-circle-bold" : "solar:check-circle-bold"}
-                      label={approved ? "Unapprove" : "Approve"}
-                      onClick={() => toggleApprove(cv)}
-                      accent={!approved}
                     />
                     <CardAction
                       icon="solar:pen-bold"

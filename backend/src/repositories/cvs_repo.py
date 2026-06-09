@@ -46,7 +46,9 @@ class CVsRepository:
             "filename": filename,
             "content_type": content_type,
             "size": len(file_bytes),
-            "status": "draft",
+            # The user added it themselves — no approval step. Stays usable and
+            # attachable to applications immediately.
+            "status": "approved",
             "storage_path": storage_path,
             "created_at": now,
             "updated_at": now,

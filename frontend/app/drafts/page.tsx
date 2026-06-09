@@ -1,11 +1,30 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
 import clsx from "clsx";
 import type { Draft as ApiDraft, DraftStats } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
 import MarkdownCanvas from "@/components/MarkdownCanvas";
+import EmailCanvas from "@/components/EmailCanvas";
+import { SkeletonCardGrid } from "@/components/Skeleton";
+
+// Split an outreach draft into a subject + body for the email canvas. The
+// drafting chain writes the subject on the first "Subject:" line.
+function parseEmailDraft(
+  content: string,
+  fallbackSubject: string
+): { subject: string; body: string } {
+  const lines = content.split(/\r?\n/);
+  if (lines.length && /^\s*subject:/i.test(lines[0])) {
+    return {
+      subject: lines[0].replace(/^\s*subject:\s*/i, "").trim(),
+      body: lines.slice(1).join("\n").trim(),
+    };
+  }
+  return { subject: fallbackSubject, body: content };
+}
 
 type DraftType = "sop" | "outreach-prep" | "research-narrative";
 type DraftStatus = "draft" | "in-review" | "approved" | "archived";
@@ -315,11 +334,13 @@ function DraftCard({
   onEdit,
   onApprove,
   onDelete,
+  onSend,
 }: {
   draft: Draft;
   onEdit: () => void;
   onApprove: () => void;
   onDelete: () => void;
+  onSend: () => void;
 }) {
   const type = TYPE_META[draft.type];
   const status = STATUS_META[draft.status];
@@ -430,7 +451,13 @@ function DraftCard({
             <Icon icon="solar:pen-bold" width={10} />
             Edit
           </button>
-          {draft.status === "draft" && (
+          {draft.type === "outreach-prep" && (
+            <button onClick={onSend} className="btn-teal btn-sm gap-1 text-xs">
+              <Icon icon="solar:letter-bold" width={10} />
+              Send
+            </button>
+          )}
+          {draft.status === "draft" && draft.isAiDraft && (
             <button onClick={onApprove} className="btn-teal btn-sm gap-1 text-xs">
               <Icon icon="solar:check-circle-bold" width={10} />
               Approve
@@ -693,6 +720,7 @@ export default function DraftsPage() {
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [approvingDraft, setApprovingDraft] = useState<Draft | null>(null);
   const [confirmDeleteDraft, setConfirmDeleteDraft] = useState<Draft | null>(null);
+  const [sendingDraft, setSendingDraft] = useState<Draft | null>(null);
 
   function updateDraft(updated: Draft) {
     setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
@@ -868,12 +896,10 @@ export default function DraftsPage() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div
-              className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
-              style={{ color: "#E8472A" }}
-            />
-          </div>
+          <SkeletonCardGrid
+            count={6}
+            gridClassName="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+          />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
             <Icon
@@ -902,6 +928,7 @@ export default function DraftsPage() {
                 onEdit={() => setEditingDraft(draft)}
                 onApprove={() => setApprovingDraft(draft)}
                 onDelete={() => setConfirmDeleteDraft(draft)}
+                onSend={() => setSendingDraft(draft)}
               />
             ))}
           </div>
@@ -945,6 +972,26 @@ export default function DraftsPage() {
           }}
         />
       )}
+      {sendingDraft &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(13,13,13,0.55)" }}
+            onClick={() => setSendingDraft(null)}
+          >
+            <div className="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+              <EmailCanvas
+                initialTo=""
+                initialSubject={parseEmailDraft(sendingDraft.content, sendingDraft.title).subject}
+                initialBody={parseEmailDraft(sendingDraft.content, sendingDraft.title).body}
+                kind="recommender"
+                onSent={() => setSendingDraft(null)}
+                onCancel={() => setSendingDraft(null)}
+              />
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

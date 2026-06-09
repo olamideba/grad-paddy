@@ -48,6 +48,10 @@ class EmailsService:
         email = await EmailsRepository.get_email(user_id, email_id)
         if email is None:
             raise ValueError("Email record not found")
+        # Idempotent: a UI "Send via Gmail" and a stray agent send must not both
+        # fire a real email. Once sent, return the record unchanged.
+        if email.get("status") == "sent":
+            return email
         if not email.get("to"):
             raise ValueError("Email has no recipient")
 

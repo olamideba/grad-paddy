@@ -221,6 +221,20 @@ class HITLRepository:
         return _normalize_hitl(refreshed.to_dict())
 
     @staticmethod
+    async def set_artifact_id(user_id: str, hitl_id: str, artifact_id: str) -> None:
+        """Record the id of the artifact (e.g. draft) persisted from this HITL,
+        so approval can't create duplicates."""
+        db = get_db()
+        settings = get_settings()
+        doc_ref = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_HITL)
+            .document(hitl_id)
+        )
+        await doc_ref.update({"artifact_id": artifact_id})
+
+    @staticmethod
     def default_expiry(seconds: int | None) -> datetime | None:
         if not seconds or seconds <= 0:
             return None

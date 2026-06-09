@@ -18,16 +18,23 @@ APPROVAL_RULE = (
     "APPROVAL POLICY: Before any create, update, or delete action (shortlist, tracker, drafts, "
     "profile, preferences, sessions, groups), you MUST first call request_hitl with kind='approval', "
     "options_json='[{\"id\":\"yes\",\"label\":\"Approve\"},{\"id\":\"no\",\"label\":\"Reject\"}]', and a title/"
-    "description stating exactly what you will change. In payload_json include an \"entity\" key naming the "
-    "target (\"tracker\", \"shortlist\", or \"draft\") and the proposed fields the user should review (use a "
-    "\"content\" string for long text like a draft). Then WAIT for the human's decision. Perform the write only "
-    "after approval, using the (possibly edited) values from the response; if rejected, do not write. "
-    "EMAILS: to email a professor or a recommender, first call create_email (status stays 'draft'), then "
-    "request_hitl with kind='approval', entity=\"email\", and payload \"content\" set to the email body so the "
-    "human reviews and edits it in the canvas; only after approval call send_email with the returned email id, "
-    "using the edited body. Never call send_email without approval. "
+    "description stating exactly what you will change. In payload_json always include: an \"entity\" key "
+    "(\"tracker\", \"shortlist\", or \"draft\"), an \"action\" key (\"create\", \"update\", or \"delete\"), and "
+    "the proposed values as a \"fields\" object (for a draft, put the long text in \"content\" instead). For "
+    "update/delete also include \"ref_id\" (the target id). Then WAIT for the human's decision.\n"
+    "CREATING a shortlist faculty, a tracker application, or a draft: do NOT call the create tool yourself. "
+    "When the human approves, the system saves the record from the payload fields (and the user's edits). "
+    "Just open the gate with complete \"fields\"/\"content\". For UPDATE or DELETE, and for any OTHER create "
+    "(profile, preferences, groups), perform the write yourself after approval using the (possibly edited) "
+    "response values; if rejected, do not write.\n"
+    "EMAILS: to email a professor or a recommender, first call create_email (status stays 'draft') — it "
+    "returns an email id. Then call request_hitl with kind='approval', entity=\"email\", and payload_json "
+    "including \"ref_id\" (the create_email id), \"to\" (the recipient address), \"subject\", and \"content\" "
+    "(the email body), so the human reviews, edits, and sends it from the email canvas. Do NOT call send_email "
+    "yourself — the human sends from the canvas with the Send via Gmail button. Always open this email gate "
+    "even when auto_approve is true, because sending an email is irreversible. "
     "EXCEPTION: when auto_approve is true (current value: {auto_approve}), skip the gate and perform the "
-    "action directly. Read-only actions never require approval."
+    "action directly yourself (including creates). Read-only actions never require approval."
 )
 
 
@@ -126,6 +133,11 @@ def build_application_agent() -> LlmAgent:
         instruction=(
             "You handle application planning artifacts: shortlist entries, tracker records, and drafts. "
             "Use the tools to keep these records in sync with the user's current application workflow. "
+            "To email a recommender, first call get_application (or list_applications) to read that "
+            "recommender's stored email on the named application, then set create_email's \"to\" to that "
+            "address, kind=\"recommender\", linked_application_id to the application id, and ref_id to the "
+            "recommender's name. If the recommender has no stored email, leave \"to\" blank so the user can "
+            "fill it in the email canvas. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
@@ -161,8 +173,14 @@ def build_operations_agent() -> LlmAgent:
             "You are the operational specialist for the Grad Paddy app. "
             "Use the tools for user profile, preferences, shortlist, tracker, drafts, and HITL. "
             "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed. "
+            "To email a recommender, first call get_application (or list_applications) to read that "
+            "recommender's stored email on the named application, then set create_email's \"to\" to that "
+            "address, kind=\"recommender\", linked_application_id to the application id, and ref_id to the "
+            "recommender's name. If there is no stored email, leave \"to\" blank for the user to fill. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
         tools=OPERATIONS_TOOLS,
     )
+
+
