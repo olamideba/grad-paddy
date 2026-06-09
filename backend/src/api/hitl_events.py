@@ -28,5 +28,5 @@ class RunFinishedWithStatusEvent(ConfiguredBaseModel):
     type: Literal["RUN_FINISHED"] = "RUN_FINISHED"
     thread_id: str
     run_id: str
-    status: Literal["completed", "interrupted", "error"] = "completed"
+    status: Literal["completed", "interrupted", "error", "cancelled"] = "completed"
     result: Optional[Any] = None

@@ -457,7 +457,15 @@ export const groupsApi = {
     }),
 };
 
-// ── HITL ──────────────────────────────────────────────────────────────────────
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+export const chatApi = {
+  stop: (thread_id: string) =>
+    request<Std<{ cancelled: boolean }>>("/api/chat/stop", {
+      method: "POST",
+      body: JSON.stringify({ thread_id }),
+    }),
+};
 
 export type HITLKind = "approval" | "choice" | "input";
 export type HITLDecision = "approved" | "rejected";
