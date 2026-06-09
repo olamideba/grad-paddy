@@ -2253,6 +2253,39 @@ export default function ChatPage() {
     }
   }
 
+  async function stopRun() {
+    const runningPhaseIds = stream
+      .filter((i) => i.type === "phase" && i.status === "running")
+      .map((i) => i.id);
+    try {
+      const { chatApi } = await import("../../lib/api");
+      await chatApi.stop(threadId.current);
+    } catch { /* ignore */ }
+    subscription.current?.unsubscribe();
+    setLocalRunning(false);
+    setStreamingMessageId(null);
+    setStream((p) => [
+      ...p.map((item) =>
+        (item.type === "phase" || item.type === "step") && item.status === "running"
+          ? { ...item, status: "done" as const }
+          : item
+      ),
+      {
+        type: "agent" as const,
+        id: `stop-${crypto.randomUUID()}`,
+        content: "You stopped this response.",
+        timestamp: new Date(),
+      },
+    ]);
+    if (runningPhaseIds.length > 0) {
+      setCollapsedPhases((prev) => {
+        const next = new Set(prev);
+        runningPhaseIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }
+
   function addUrl() {
     const t = urlInput.trim();
     if (t && !urls.includes(t)) setUrls((p) => [...p, t]);
@@ -2643,31 +2676,38 @@ export default function ChatPage() {
                 {autoApprove ? "Always allow" : "Ask before changes"}
               </button>
             </div>
-            <button
-              onClick={send}
-              disabled={!input.trim() && urls.length === 0}
-              className={clsx(
-                "flex items-center gap-1.5 btn-sm font-space font-semibold text-xs bouncy",
-                input.trim() || urls.length > 0 ? "btn-coral" : "btn-cream"
-              )}
-              style={
-                !(input.trim() || urls.length > 0)
-                  ? { color: "#B0A898", cursor: "not-allowed" }
-                  : undefined
-              }
-            >
-              {inputBlocked ? (
-                <>
-                  <Icon icon="solar:spinner-bold" width={13} className="animate-spin" />
-                  Queue
-                </>
-              ) : (
-                <>
-                  <Icon icon="solar:arrow-right-up-bold" width={13} />
-                  Send
-                </>
-              )}
-            </button>
+            {isAgentRunning ? (
+              <button onClick={stopRun} className="btn-coral btn-sm gap-1.5 text-xs">
+                <Icon icon="solar:stop-bold" width={13} />
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={send}
+                disabled={!input.trim() && urls.length === 0}
+                className={clsx(
+                  "flex items-center gap-1.5 btn-sm font-space font-semibold text-xs bouncy",
+                  input.trim() || urls.length > 0 ? "btn-coral" : "btn-cream"
+                )}
+                style={
+                  !(input.trim() || urls.length > 0)
+                    ? { color: "#B0A898", cursor: "not-allowed" }
+                    : undefined
+                }
+              >
+                {pendingApproval ? (
+                  <>
+                    <Icon icon="solar:spinner-bold" width={13} className="animate-spin" />
+                    Queue
+                  </>
+                ) : (
+                  <>
+                    <Icon icon="solar:arrow-right-up-bold" width={13} />
+                    Send
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>
