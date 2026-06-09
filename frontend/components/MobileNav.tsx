@@ -40,17 +40,32 @@ export default function MobileNav() {
     <>
       {/* Mobile top bar */}
       <header
-        className="md:hidden shrink-0 flex items-center gap-3 px-4 h-[80px]"
-        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
+        className="md:hidden shrink-0 flex items-center gap-3 px-4"
+        style={{
+          background: "#0D0D0D",
+          borderBottom: "2px solid #E8472A",
+          // Clear the Dynamic Island / status bar on notched iPhones so the
+          // toggle isn't hidden underneath it.
+          paddingTop: "env(safe-area-inset-top)",
+          minHeight: "calc(96px + env(safe-area-inset-top))",
+        }}
       >
         <button
           onClick={() => setOpen(true)}
           aria-label="Open menu"
-          className="bouncy shrink-0 flex items-center justify-center w-9 h-9"
-          style={{ color: "rgba(255,255,255,0.6)", borderRadius: "4px" }}
+          className="bouncy shrink-0 flex items-center justify-center w-12 h-12"
+          style={{
+            color: "#FFFFFF",
+            background: "rgba(255,255,255,0.12)",
+            border: "1.5px solid rgba(255,255,255,0.3)",
+            borderRadius: "8px",
+          }}
         >
-          <Icon icon="solar:sidebar-minimalistic-bold" width={16} />
+          <Icon icon="solar:sidebar-minimalistic-bold" width={26} />
         </button>
+        <div className="min-w-0">
+          <Logo size="sm" />
+        </div>
       </header>
 
       {/* Slide-over drawer */}
