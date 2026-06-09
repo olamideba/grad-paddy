@@ -1,5 +1,20 @@
+import logging
+
 from src.api.hitl_events import HITLRequiredEvent
 from src.repositories.hitl_repo import HITLRepository
+
+logger = logging.getLogger(__name__)
+
+# entity tag on a HITL payload -> draft type to persist on approval.
+_DRAFT_ENTITIES = {
+    "sop": ("sop", "Statement of Purpose"),
+    "outreach": ("outreach-prep", "Outreach draft"),
+    "outreach-prep": ("outreach-prep", "Outreach draft"),
+    "outreach_prep": ("outreach-prep", "Outreach draft"),
+    "narrative": ("research-narrative", "Research narrative"),
+    "research-narrative": ("research-narrative", "Research narrative"),
+    "research_narrative": ("research-narrative", "Research narrative"),
+}
 
 
 class HITLService:
@@ -44,6 +59,14 @@ class HITLService:
         return await HITLRepository.get_pending_hitl_for_session(user_id, session_id)
 
     @staticmethod
+    async def list_hitl(user_id: str, session_id: str) -> list[dict]:
+        """All HITL records for a session (pending + resolved), oldest first.
+
+        Used to rebuild approval gates and their result cards when a session is
+        reloaded, so a gated turn isn't lost on refresh."""
+        return await HITLRepository.list_hitl_for_session(user_id, session_id)
+
+    @staticmethod
     async def resolve_hitl(
         user_id: str,
         hitl_id: str,
@@ -54,9 +77,100 @@ class HITLService:
         if decision not in {"approved", "rejected"}:
             raise ValueError("decision must be 'approved' or 'rejected'")
         try:
-            return await HITLRepository.resolve_hitl(user_id, hitl_id, decision, response)
+            record, newly_resolved = await HITLRepository.resolve_hitl(
+                user_id, hitl_id, decision, response
+            )
         except KeyError as e:
             raise ValueError("HITL record not found") from e
+
+        # Persist the artifact deterministically on approval. The proposed values
+        # are already in the HITL payload (and the user's edits in `response`), so
+        # we save them here rather than relying on the agent to re-enter its final
+        # sub-agent and call the write tool on resume (that resume is unreliable,
+        # which left approved writes unsaved). Only CREATE is handled here; updates
+        # and deletes stay with the agent (deterministic destructive ops are risky).
+        if newly_resolved and decision == "approved":
+            try:
+                await HITLService._persist_artifact(user_id, record, response)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to persist approved artifact for HITL %s: %s", hitl_id, exc)
+
+        return record, newly_resolved
+
+    @staticmethod
+    def _payload_fields(payload: dict) -> dict:
+        """Proposed field values from the payload: a `fields` object if present,
+        otherwise the payload minus control keys."""
+        fields = payload.get("fields")
+        if isinstance(fields, dict):
+            return fields
+        control = {"entity", "action", "content", "title", "ref_id", "fields"}
+        return {k: v for k, v in payload.items() if k not in control}
+
+    @staticmethod
+    async def _persist_artifact(user_id: str, record: dict, response: dict | None) -> None:
+        """Persist the approved artifact (draft / shortlist faculty / tracker app)."""
+        if record.get("artifact_id"):
+            return  # already persisted — don't duplicate
+
+        payload = record.get("payload") or {}
+        entity = str(payload.get("entity") or "").lower()
+        action = str(payload.get("action") or "create").lower()
+        artifact_id: str | None = None
+
+        # ── Drafts (entity + content) ──
+        mapping = _DRAFT_ENTITIES.get(entity)
+        if mapping:
+            draft_type, default_title = mapping
+            content = ""
+            if isinstance(response, dict):
+                content = str(response.get("content") or "").strip()
+            if not content:
+                content = str(payload.get("content") or "").strip()
+            if not content:
+                return
+            from src.services.drafts_service import DraftsService
+
+            draft = await DraftsService.create_draft(
+                user_id,
+                {
+                    "type": draft_type,
+                    "title": str(payload.get("title") or default_title),
+                    "content": content,
+                    "ai_generated": True,
+                    # Approved through the chat HITL gate → already approved; no
+                    # need to re-approve it in the Drafts section, and it's
+                    # immediately attachable to an application.
+                    "status": "approved",
+                    "linked_application_id": payload.get("linked_application_id"),
+                    "linked_faculty_id": payload.get("linked_faculty_id"),
+                },
+            )
+            artifact_id = draft.get("id")
+
+        # ── Shortlist faculty (create only) ──
+        elif entity in {"shortlist", "faculty"} and action == "create" and not payload.get("ref_id"):
+            fields = HITLService._payload_fields(payload)
+            if str(fields.get("name") or "").strip():
+                from src.services.shortlist_service import ShortlistService
+
+                faculty = await ShortlistService.add_faculty(user_id, fields)
+                artifact_id = faculty.get("id")
+
+        # ── Tracker application (create only) ──
+        elif entity in {"tracker", "application", "app"} and action == "create" and not payload.get("ref_id"):
+            fields = HITLService._payload_fields(payload)
+            if str(fields.get("university") or "").strip() and str(fields.get("program") or "").strip():
+                from src.services.tracker_service import TrackerService
+
+                app = await TrackerService.create_application(user_id, fields)
+                artifact_id = app.get("id")
+
+        if artifact_id:
+            try:
+                await HITLRepository.set_artifact_id(user_id, record["id"], artifact_id)
+            except Exception:  # noqa: BLE001
+                pass
 
     @staticmethod
     async def mark_continued(user_id: str, hitl_id: str, run_id: str) -> dict:

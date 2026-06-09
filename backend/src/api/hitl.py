@@ -15,6 +15,16 @@ async def get_pending_hitl(request: Request, session_id: str) -> dict:
     return {"success": True, "data": hitl, "message": ""}
 
 
+@router.get("/sessions/{session_id}", response_model=StandardResponse[list[HITLResponse]])
+async def list_session_hitl(request: Request, session_id: str) -> dict:
+    """All HITL records (pending + resolved) for a session, oldest first.
+
+    Lets the client rebuild approval gates and result cards on reload."""
+    user_id = request.state.user_id
+    records = await HITLService.list_hitl(user_id, session_id)
+    return {"success": True, "data": records, "message": ""}
+
+
 @router.post("/{hitl_id}/resolve", response_model=StandardResponse[HITLResponse])
 async def resolve_hitl(request: Request, hitl_id: str, body: HITLResolveRequest) -> dict:
     user_id = request.state.user_id

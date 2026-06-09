@@ -77,6 +77,14 @@ export interface Email {
 export const emailsApi = {
   list: () => request<Std<Email[]>>("/api/emails/"),
   get: (id: string) => request<Std<Email>>(`/api/emails/${id}`),
+  create: (data: {
+    to: string;
+    subject: string;
+    body_markdown: string;
+    kind?: "faculty" | "recommender";
+    ref_id?: string | null;
+    linked_application_id?: string | null;
+  }) => request<Std<Email>>("/api/emails/", { method: "POST", body: JSON.stringify(data) }),
   update: (id: string, data: { to?: string; subject?: string; body_markdown?: string }) =>
     request<Std<Email>>(`/api/emails/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   send: (id: string) => request<Std<Email>>(`/api/emails/${id}/send`, { method: "POST" }),
@@ -487,6 +495,8 @@ export interface HITLItem {
 export const hitlApi = {
   getPending: (sessionId: string) =>
     request<Std<HITLItem | null>>(`/api/hitl/sessions/${sessionId}/pending`),
+  listForSession: (sessionId: string) =>
+    request<Std<HITLItem[]>>(`/api/hitl/sessions/${sessionId}`),
   resolve: (hitlId: string, decision: HITLDecision, response?: Record<string, unknown>) =>
     request<Std<HITLItem>>(`/api/hitl/${hitlId}/resolve`, {
       method: "POST",

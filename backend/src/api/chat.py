@@ -7,7 +7,15 @@ from uuid6 import uuid7
 
 from ag_ui.core import EventType, RunAgentInput, ToolMessage
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
-from fastapi import APIRouter, Depends, Request, HTTPException
+# Step events let us surface each suppressed reasoning stage as an activity card
+# without leaking its prose. Imported defensively so an unexpected class name in
+# this ag_ui version degrades to "no step cards" instead of crashing the app.
+try:  # pragma: no cover - depends on installed ag_ui version
+    from ag_ui.core import StepStartedEvent, StepFinishedEvent
+except Exception:  # noqa: BLE001
+    StepStartedEvent = None  # type: ignore[assignment]
+    StepFinishedEvent = None  # type: ignore[assignment]
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from google.adk.runners import Runner
 from src.services.firestore_adk_session import FirestoreSessionService
@@ -25,19 +33,73 @@ from src.services.users_service import UserService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/api/chat", tags=["chat"], dependencies=[Depends(verify_firebase_auth)]
-)
+# Monkey-patch EventTranslator to propagate the author name of the ADK Event
+# to the TextMessageStartEvent. This allows chat.py to identify which sub-agent
+# produced intermediate reasoning so it can render descriptive activity step cards
+# (e.g. "Intake", "Strategy", "Draft") instead of generic "Step 1", "Step 2".
+try:
+    import ag_ui_adk.event_translator
+    original_translate_text_content = ag_ui_adk.event_translator.EventTranslator._translate_text_content
+
+    async def patched_translate_text_content(
+        self: Any, adk_event: Any, thread_id: str, run_id: str
+    ) -> AsyncGenerator[Any, None]:
+        async for event in original_translate_text_content(self, adk_event, thread_id, run_id):
+            if getattr(event, "type", None) == EventType.TEXT_MESSAGE_START:
+                author = getattr(adk_event, "author", None)
+                if author:
+                    event.name = author
+            yield event
+
+    ag_ui_adk.event_translator.EventTranslator._translate_text_content = patched_translate_text_content  # type: ignore[method-assign]
+except Exception as exc:
+    logger.error("Failed to monkey patch EventTranslator: %s", exc)
+
+
+router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(verify_firebase_auth)])
 
 REQUEST_HITL_TOOL_NAME = "request_hitl"
+
+# Human-readable labels for the reasoning stages surfaced as activity cards.
+# Keyed by the ADK sub-agent name. These describe the activity to the user
+# without leaking internal agent/tool names (see NO_LEAK_RULE). Unknown names
+# fall back to the heuristic in _stage_label below.
+STAGE_LABELS: dict[str, str] = {
+    # SOP translation chain
+    "sop_translation_intake": "Reviewing your notes",
+    "sop_translation_strategy": "Planning your statement",
+    "sop_translation_draft": "Drafting your statement of purpose",
+    "sop_translation_persist": "Preparing draft for review",
+    # Outreach prep chain
+    "outreach_paper_summary": "Reading faculty research",
+    "outreach_talking_points": "Building talking points",
+    "outreach_crm_draft": "Drafting your outreach message",
+    "outreach_persist": "Preparing draft for review",
+    # Research narrative framing chain
+    "research_evidence_synthesis": "Synthesizing research evidence",
+    "research_narrative_angles": "Exploring narrative angles",
+    "research_framing_recommendation": "Framing your research story",
+    "research_narrative_persist": "Preparing draft for review",
+    # Application intake + general subagents
+    "planner": "Planning the approach",
+    "researcher": "Researching",
+    "application_agent": "Preparing your application",
+    "account_agent": "Updating your account",
+    "governance_agent": "Checking requirements",
+    "operations_agent": "Coordinating tasks",
+    # Domain subagents
+    "faculty_discovery_agent": "Finding faculty",
+    "faculty_profile_deep_dive_agent": "Reviewing faculty profiles",
+    "application_tracker_agent": "Updating application tracker",
+    "funding_requirement_flag_detection_agent": "Checking funding requirements",
+    "domain_orchestrator_agent": "Organizing the work",
+}
 
 
 class PersistentChatAgent(ADKAgent):
     """ADK agent wrapper that persists AG-UI message streams and HITL interrupts."""
 
-    async def _prepare_input(
-        self, input: RunAgentInput, user_id: str
-    ) -> tuple[RunAgentInput, bool]:
+    async def _prepare_input(self, input: RunAgentInput, user_id: str) -> tuple[RunAgentInput, bool]:
         """Apply forwardedProps.resume by injecting a tool result for the suspended call."""
         state = dict(input.state) if isinstance(input.state, dict) else {}
         state["current_run_id"] = input.run_id
@@ -50,14 +112,8 @@ class PersistentChatAgent(ADKAgent):
             state["auto_approve"] = False
         input = input.model_copy(update={"state": state})
 
-        forwarded = (
-            input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
-        )
-        resume = (
-            forwarded.get("resume")
-            if isinstance(forwarded.get("resume"), dict)
-            else None
-        )
+        forwarded = input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
+        resume = forwarded.get("resume") if isinstance(forwarded.get("resume"), dict) else None
         if not resume:
             return input, False
 
@@ -82,24 +138,19 @@ class PersistentChatAgent(ADKAgent):
 
         await HITLService.mark_continued(user_id, str(hitl_id), input.run_id)
 
-        tool_content = json.dumps(
-            {
-                "decision": resume.get("decision"),
-                "response": resume.get("response"),
-                "hitl_id": hitl_id,
-                "status": hitl.get("status"),
-            }
-        )
+        tool_content = json.dumps({
+            "decision": resume.get("decision"),
+            "response": resume.get("response"),
+            "hitl_id": hitl_id,
+            "status": hitl.get("status"),
+        })
         tool_message = ToolMessage(
             id=str(uuid7()),
             role="tool",
             tool_call_id=str(tool_call_id),
             content=tool_content,
         )
-        return (
-            input.model_copy(update={"messages": [*input.messages, tool_message]}),
-            False,
-        )
+        return input.model_copy(update={"messages": [*input.messages, tool_message]}), False
 
     @staticmethod
     async def _create_hitl_from_args(
@@ -122,9 +173,7 @@ class PersistentChatAgent(ADKAgent):
 
         kind = args.get("kind") or "approval"
         options = _maybe_json(args.get("options_json")) or args.get("options")
-        input_schema = _maybe_json(args.get("input_schema_json")) or args.get(
-            "input_schema"
-        )
+        input_schema = _maybe_json(args.get("input_schema_json")) or args.get("input_schema")
         payload = _maybe_json(args.get("payload_json")) or args.get("payload") or {}
         try:
             await HITLService.create_hitl(
@@ -211,10 +260,41 @@ class PersistentChatAgent(ADKAgent):
         current_text_parts: list[str] = []
         current_message_events: list[dict[str, Any]] = []
         current_message_complete = False
+        # request_hitl is a long-running tool: ag_ui_adk forwards the call to the
+        # client instead of executing the Python body, so the HITL record is
+        # never written. We reconstruct it from the tool-call stream here.
         hitl_arg_buffers: dict[str, list[str]] = {}
+        # Assistant text is buffered, never streamed live: intermediate chain-stage
+        # prose must not leak. We hold each message's events and, at RUN_FINISHED,
+        # release ONLY the final message — and nothing at all if the run opened a
+        # request_hitl gate (a drafting/approval flow whose draft lives in the
+        # review card, not the chat).
         run_has_hitl = False
-        buffered_msg_events: list[Any] = []  # in-progress message's event objects
-        final_msg_events: list[Any] = []  # last completed message (release if no gate)
+        buffered_msg_events: list[Any] = []   # in-progress message's event objects
+        final_msg_events: list[Any] = []      # last completed message (release if no gate)
+        current_message_name: str | None = None  # sub-agent author of in-progress message
+        final_msg_name: str | None = None         # author of last completed message
+        stage_idx = 0
+
+        _DROP_WORDS = {
+            "sop", "outreach", "research", "translation", "narrative", "framing",
+            "agent", "chain", "prep", "persist",
+        }
+
+        def _stage_label(name: str | None) -> str | None:
+            if not name:
+                return None
+            mapped = STAGE_LABELS.get(name)
+            if mapped:
+                return mapped
+            words = [w for w in name.replace("-", "_").split("_") if w]
+            kept = [w for w in words if w.lower() not in _DROP_WORDS] or words
+            return " ".join(w.capitalize() for w in kept[-2:])
+
+        def _step_events(label: str) -> list[Any]:
+            if StepStartedEvent is None or StepFinishedEvent is None:
+                return []
+            return [StepStartedEvent(step_name=label), StepFinishedEvent(step_name=label)]
 
         try:
             while True:
@@ -233,11 +313,12 @@ class PersistentChatAgent(ADKAgent):
                     pending = await HITLService.get_pending_hitl(user_id, session_id)
                     status = "interrupted" if pending else "completed"
 
-                    if (
-                        status == "completed"
-                        and current_message_id
-                        and current_message_complete
-                    ):
+                    # NOTE: do NOT emit a custom HITL_REQUIRED event — the AG-UI client
+                    # rejects unknown event types (invalid_union_discriminator) and
+                    # aborts the stream. The frontend surfaces the gate by polling
+                    # GET /api/hitl/.../pending once the run finishes/interrupts.
+
+                    if status == "completed" and current_message_id and current_message_complete:
                         content = "".join(current_text_parts).strip()
                         try:
                             await SessionRepository.upsert_message(
@@ -258,7 +339,44 @@ class PersistentChatAgent(ADKAgent):
                                 exc,
                                 exc_info=True,
                             )
+                    elif status == "interrupted":
+                        # An interrupted (HITL gate) run isn't a completed message, but
+                        # its activity (reasoning + steps) should survive a reload so the
+                        # thought-process card returns. Persist only the non-text events;
+                        # the suppressed answer/draft text is never stored.
+                        activity = [
+                            e
+                            for e in pending_events
+                            if e.get("type")
+                            not in (
+                                "TEXT_MESSAGE_START",
+                                "TEXT_MESSAGE_CONTENT",
+                                "TEXT_MESSAGE_END",
+                            )
+                        ]
+                        if activity:
+                            try:
+                                await SessionRepository.upsert_message(
+                                    user_id=user_id,
+                                    session_id=session_id,
+                                    message_id=str(uuid7()),
+                                    data={
+                                        "role": "assistant",
+                                        "content": "",
+                                        "ag_ui_events": activity,
+                                    },
+                                )
+                            except Exception as exc:
+                                logger.error(
+                                    "Failed to persist interrupted-run activity for session %s: %s",
+                                    session_id,
+                                    exc,
+                                    exc_info=True,
+                                )
 
+                    # Release the final assistant message now (buffered, never streamed
+                    # live). Suppress entirely if the run opened a gate — the draft is
+                    # in the review card, not the chat.
                     if not run_has_hitl:
                         for buffered in final_msg_events:
                             yield buffered
@@ -278,6 +396,9 @@ class PersistentChatAgent(ADKAgent):
                     run_has_hitl = False
                     buffered_msg_events = []
                     final_msg_events = []
+                    current_message_name = None
+                    final_msg_name = None
+                    stage_idx = 0
                     continue
 
                 if event_type == EventType.RUN_ERROR:
@@ -290,12 +411,27 @@ class PersistentChatAgent(ADKAgent):
                     run_has_hitl = False
                     buffered_msg_events = []
                     final_msg_events = []
+                    current_message_name = None
+                    final_msg_name = None
+                    stage_idx = 0
                     continue
 
+                # Reconstruct the HITL record from the request_hitl tool-call stream.
                 if event_type == EventType.TOOL_CALL_START and (
                     getattr(event, "tool_call_name", None) == REQUEST_HITL_TOOL_NAME
                 ):
+                    # This run opened an approval/review gate → suppress all of its
+                    # assistant prose (the draft lives in the review card).
                     run_has_hitl = True
+                    # The last completed message before the gate was a reasoning stage
+                    # (e.g. the draft) → surface it as a step, not prose.
+                    if final_msg_events:
+                        stage_idx += 1
+                        label = _stage_label(final_msg_name) or f"Step {stage_idx}"
+                        for step_ev in _step_events(label):
+                            yield step_ev
+                        final_msg_events = []
+                        final_msg_name = None
                     hitl_arg_buffers[str(getattr(event, "tool_call_id", ""))] = []
                 elif event_type == EventType.TOOL_CALL_ARGS and (
                     str(getattr(event, "tool_call_id", "")) in hitl_arg_buffers
@@ -309,20 +445,24 @@ class PersistentChatAgent(ADKAgent):
                     tcid = str(getattr(event, "tool_call_id", ""))
                     raw = "".join(hitl_arg_buffers.pop(tcid, []))
                     try:
-                        await self._create_hitl_from_args(
-                            user_id, session_id, input.run_id, tcid, raw
-                        )
+                        await self._create_hitl_from_args(user_id, session_id, input.run_id, tcid, raw)
                     except Exception as exc:
-                        logger.error(
-                            "Failed to create HITL from tool args: %s",
-                            exc,
-                            exc_info=True,
-                        )
+                        logger.error("Failed to create HITL from tool args: %s", exc, exc_info=True)
 
                 pending_events.append(event_payload)
 
                 if event_type == EventType.TEXT_MESSAGE_START:
+                    # A new message means the previous completed one was an intermediate
+                    # reasoning stage: surface it as an activity step (no prose).
+                    if final_msg_events:
+                        stage_idx += 1
+                        label = _stage_label(final_msg_name) or f"Step {stage_idx}"
+                        for step_ev in _step_events(label):
+                            yield step_ev
+                        final_msg_events = []
+                        final_msg_name = None
                     current_message_id = getattr(event, "message_id", None)
+                    current_message_name = getattr(event, "name", None)
                     current_text_parts = []
                     current_message_events = list(pending_events)
                     current_message_complete = False
@@ -347,9 +487,14 @@ class PersistentChatAgent(ADKAgent):
                 ):
                     current_message_complete = True
                     buffered_msg_events.append(event)
+                    # Keep only the latest complete message; earlier ones in the run
+                    # were intermediate reasoning and are turned into step cards.
                     final_msg_events = buffered_msg_events
+                    final_msg_name = current_message_name
                     buffered_msg_events = []
 
+                # Never stream assistant text live — it's released (or suppressed) at
+                # RUN_FINISHED. Everything else (tools, steps) streams normally.
                 if event_type in (
                     EventType.TEXT_MESSAGE_START,
                     EventType.TEXT_MESSAGE_CONTENT,
@@ -364,7 +509,7 @@ class PersistentChatAgent(ADKAgent):
             run_registry.deregister(session_id)
 
 
-async def _extract_chat_state(request: Request, input_data: Any) -> dict[str, Any]:
+async def _extract_chat_state(request: Request, _input_data: Any) -> dict[str, Any]:
     user_id = getattr(request.state, "user_id", None)
     if not user_id:
         return {}
@@ -398,15 +543,9 @@ add_adk_fastapi_endpoint(
 
 
 class DebugChatRequest(BaseModel):
-    prompt: str = Field(
-        ..., description="Plain user message to send to the grad_paddy agent."
-    )
-    thread_id: str = Field(
-        default="swagger-thread", description="Session/thread identifier."
-    )
-    user_id: str = Field(
-        default="swagger-user", description="User identifier for the ADK session."
-    )
+    prompt: str = Field(..., description="Plain user message to send to the grad_paddy agent.")
+    thread_id: str = Field(default="swagger-thread", description="Session/thread identifier.")
+    user_id: str = Field(default="swagger-user", description="User identifier for the ADK session.")
     state: dict[str, object] = Field(
         default_factory=dict,
         description="Optional structured state. This must be a JSON object, not a string.",
@@ -429,26 +568,6 @@ def _extract_text(content: types.Content | None) -> str:
         if getattr(part, "text", None):
             fragments.append(part.text)
     return "\n".join(fragment for fragment in fragments if fragment).strip()
-
-
-@router.post(
-    "/stop",
-    summary="Stop a running agent turn",
-    response_model=StandardResponse[StopChatResponse],
-)
-async def stop_run(request: Request) -> dict:
-    # user_id = getattr(request.state, "user_id", None)
-    # thread_id comes from the request body
-    body = await request.json()
-    thread_id = body.get("thread_id", "")
-    if not thread_id:
-        raise HTTPException(status_code=400, detail="thread_id required")
-    cancelled = run_registry.cancel(thread_id)
-    return {
-        "success": True,
-        "data": {"cancelled": cancelled},
-        "message": "Agent run cancelled." if cancelled else "No active run found.",
-    }
 
 
 @router.post(
@@ -496,3 +615,21 @@ async def debug_chat(payload: DebugChatRequest) -> DebugChatResponse:
         response=final_response,
         events_seen=events_seen,
     )
+
+
+@router.post(
+    "/stop",
+    summary="Stop a running agent turn",
+    response_model=StandardResponse[StopChatResponse],
+)
+async def stop_run(request: Request) -> dict:
+    body = await request.json()
+    thread_id = body.get("thread_id", "")
+    if not thread_id:
+        raise HTTPException(status_code=400, detail="thread_id required")
+    cancelled = run_registry.cancel(thread_id)
+    return {
+        "success": True,
+        "data": {"cancelled": cancelled},
+        "message": "Agent run cancelled." if cancelled else "No active run found.",
+    }
