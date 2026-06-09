@@ -1,10 +1,10 @@
 "use client";
 
-import { Icon } from "@iconify/react";
+import { GraduationCap } from "lucide-react";
 import clsx from "clsx";
 
-// Brand mark: diploma icon in a coral box + stacked Grad/Paddy wordmark.
-// Designed for dark backgrounds.
+// Brand mark: graduation cap in a coral tile + stacked Grad/Paddy wordmark.
+// Neobrutalist — sharp corners, hard shadow, paper border. For dark backgrounds.
 export default function Logo({
   size = "md",
   iconOnly = false,
@@ -12,30 +12,24 @@ export default function Logo({
   size?: "sm" | "md";
   iconOnly?: boolean;
 }) {
-  const box = size === "sm" ? "w-7 h-7" : "w-9 h-9";
-  const iconW = size === "sm" ? 14 : 18;
-  const text = size === "sm" ? "text-sm" : "text-base";
+  const box = size === "sm" ? "size-9" : "size-12";
+  const iconW = size === "sm" ? 18 : 24;
+  const text = size === "sm" ? "text-sm" : "text-lg";
 
   return (
     <div className="flex items-center gap-3">
       <div
-        className={clsx("flex items-center justify-center flex-shrink-0", box)}
-        style={{ background: "#E8472A", border: "2px solid #FFFFFF", borderRadius: "4px" }}
+        className={clsx(
+          "grid place-items-center flex-shrink-0 bg-accent-orange border-2 border-paper neo-shadow-sm",
+          box
+        )}
       >
-        <Icon icon="solar:diploma-bold" width={iconW} style={{ color: "#FFFFFF" }} />
+        <GraduationCap width={iconW} height={iconW} strokeWidth={2.5} className="text-paper" />
       </div>
       {!iconOnly && (
-        <div className="leading-none">
-          <span
-            className={clsx("block font-space font-bold tracking-tight", text)}
-            style={{ color: "#FFFFFF" }}
-          >
-            Grad
-          </span>
-          <span
-            className={clsx("block font-space font-bold tracking-tight", text)}
-            style={{ color: "#E8472A" }}
-          >
+        <div className="leading-tight font-space">
+          <span className={clsx("block font-bold tracking-tight text-paper", text)}>Grad</span>
+          <span className={clsx("block font-bold tracking-tight text-accent-orange -mt-1", text)}>
             Paddy
           </span>
         </div>
