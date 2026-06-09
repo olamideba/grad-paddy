@@ -68,10 +68,6 @@ instance/
 
 # Scrapy stuff:
 .scrapy
-backend/src/scraper/grad_scraper/output/
-backend/service-account.json
-backend/docker-compose.yml
-backend/grad-paddy-firebase-adminsdk-fbsvc-5c475865e8.json
 
 # Sphinx documentation
 docs/_build/
@@ -154,7 +150,6 @@ activemq-data/
 
 # Environments
 .env
-.enves
 .envrc
 .venv
 env/
@@ -162,7 +157,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-.DS_Store
 
 # Spyder project settings
 .spyderproject
