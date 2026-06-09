@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 
 // Routes viewable without authentication (Google OAuth verification needs the
 // privacy policy + terms reachable by anyone, logged in or not).
-const PUBLIC_ROUTES = ["/login", "/privacy", "/terms"];
+const PUBLIC_ROUTES = ["/", "/login", "/privacy", "/terms"];
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
