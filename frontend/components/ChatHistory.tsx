@@ -273,10 +273,13 @@ export default function ChatHistory({
   return (
     <div
       ref={rootRef}
-      className={clsx("flex flex-col", fill ? "flex-1 min-h-0" : "flex-shrink-0")}
+      className={clsx("flex flex-col min-h-0", fill ? "flex-1" : "shrink")}
       style={{
         borderTop: "2px solid #0D0D0D",
-        height: !fill && panelOpen ? height : undefined,
+        // Preferred height when open, but allowed to shrink (min-h-0 + shrink) so
+        // a short viewport collapses the list's scroll area instead of pushing
+        // the profile footer off-screen.
+        flexBasis: !fill && panelOpen ? height : undefined,
       }}
     >
       {/* Resize handle (drag to adjust height) — desktop only */}
