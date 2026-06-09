@@ -1,4 +1,5 @@
 from google.adk.agents import LlmAgent, SequentialAgent
+from google.adk.tools import agent_tool
 
 from src.agents.domain.chains import (
     build_outreach_prep_chain,
@@ -6,6 +7,7 @@ from src.agents.domain.chains import (
     build_sop_translation_chain,
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
+from src.agents.subagents import build_web_search_agent
 from src.services.ingestion_service import IngestionService
 
 
@@ -18,7 +20,7 @@ def build_faculty_discovery_agent() -> LlmAgent:
         description=(
             "Finds and ranks faculty using Elastic hybrid search and evidence retrieval."
         ),
-        instruction=(
+        static_instruction=(
             "You are the faculty discovery specialist.\n"
             "- Use Elastic MCP tools when available to search indexed faculty, program, paper, lab, and funding evidence.\n"
             "- Prefer Elastic search and ES|QL evidence over unsupported recall.\n"
@@ -40,7 +42,7 @@ def build_faculty_profile_deep_dive_agent() -> LlmAgent:
         description=(
             "Performs paper retrieval, fit scoring, and conversation-angle generation for a faculty profile."
         ),
-        instruction=(
+        static_instruction=(
             "You are the faculty profile deep-dive specialist.\n"
             "- Use Elastic MCP tools when available to retrieve faculty profiles, publications, program pages, and prior user decisions.\n"
             "- Translate papers into fit signals, research themes, and conversation angles.\n"
@@ -67,7 +69,7 @@ def build_application_tracker_agent() -> LlmAgent:
     elastic_tools = build_elastic_mcp_tools()
     return LlmAgent(
         name="application_tracker_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Tracks deadlines, status, and weekly summaries using Elastic evidence and ES|QL.",
         instruction=(
             "You are the application tracker specialist.\n"
@@ -86,7 +88,7 @@ def build_funding_requirement_flag_detection_agent() -> LlmAgent:
     elastic_tools = build_elastic_mcp_tools()
     return LlmAgent(
         name="funding_requirement_flag_detection_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Flags funding and requirement issues from ES-backed application data.",
         instruction=(
             "You are the funding and requirement flag detection specialist.\n"
@@ -104,14 +106,14 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
     """
     Agent that handles the full scrape → chunk → embed → index pipeline.
     Called when the user provides a URL that needs to be ingested into ES.
-    
+
     Flow:
       1. check_url_indexed  — avoid re-scraping already indexed URLs
       2. ingest_url         — scrape → clean → chunk → embed → index
     """
     return LlmAgent(
         name="ingestion_pipeline_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description=(
             "Handles the full data ingestion pipeline for grad program and faculty URLs. "
             "Scrapes the URL, chunks and embeds the content, and indexes it into "
@@ -121,28 +123,22 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
         instruction=(
             "You are the data ingestion specialist for the grad-paddy system. "
             "Your job is to take a URL from the user and get it into the database.\n\n"
-
             "Always follow this exact sequence:\n"
             "1. Call check_url_indexed(url) first\n"
             "   - If already indexed: Do NOT re-ingest.\n"
             "   - If not indexed: proceed to step 2\n\n"
-
             "2. Determine url_type:\n"
             "   - 'faculty' if the URL contains /people/, /faculty/, /role/faculty, "
             "     or /directory/faculty\n"
             "   - 'program' if the URL contains programs/, /graduate-programs/, "
             "     or /graduate-admissions/"
-
-
             "3. Call ingest_url(url, url_type, user_id)\n"
             "   - Wait for completion\n"
             "   - Report back: how many chunks were indexed, "
             "     what programs or faculty were found\n\n"
-
             "4. If ingest_url returns status='failed':\n"
             "   - Tell the user what went wrong\n"
             "   - Suggest checking the URL is publicly accessible\n\n"
-
             "Be concise. The user just wants to know it worked.\n"
         ),
         tools=[
@@ -150,6 +146,7 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
             IngestionService.ingest_url,
         ],
     )
+
 
 def build_research_narrative_framing_agent() -> SequentialAgent:
     """Prompt-chain agent for research narrative framing."""
@@ -162,6 +159,12 @@ def build_domain_orchestrator_agent() -> LlmAgent:
         name="domain_orchestrator_agent",
         model="gemini-3.1-pro-preview",
         description="Routes domain work to the correct Grad Paddy specialist agent.",
+        tools=[
+            *build_elastic_mcp_tools(),
+            agent_tool.AgentTool(
+                agent=build_web_search_agent("domain_google_search_agent")
+            ),
+        ],
         sub_agents=[
             build_faculty_discovery_agent(),
             build_faculty_profile_deep_dive_agent(),
@@ -170,9 +173,9 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             build_application_tracker_agent(),
             build_funding_requirement_flag_detection_agent(),
             build_research_narrative_framing_agent(),
-            build_ingestion_pipeline_agent()
+            build_ingestion_pipeline_agent(),
         ],
-        instruction=(
+        static_instruction=(
             "You are the domain orchestrator for Grad Paddy.\n"
             "- Route user intent to the correct specialist agent.\n"
             "- If the request is ambiguous, ask one clarifying question before selecting a branch.\n"
@@ -184,6 +187,15 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "- Use funding and requirement flag detection for blocking conditions and readiness checks.\n"
             "- Use research narrative framing when the user needs the story that connects their evidence to the program or faculty.\n"
             "- Use ingestion pipeline when the user needs deep research about university programs and faculty.\n"
+            "- For real-time or current information not in Elastic (e.g. upcoming intake dates, current application deadlines, "
+            "recent faculty news), call domain_google_search_agent directly — do NOT ask the user for URLs.\n"
+            "- MEMORY: After any interaction where the user reveals important information about themselves, "
+            "call save_memory1 to persist it for future sessions. Save: research interests, academic background, "
+            "target programs or faculty, application strategy decisions, SOP framing choices, funding constraints, "
+            "timeline goals, or any explicitly stated preference. Write facts in third person: "
+            "'User is targeting NLP programs with a focus on healthcare AI.' "
+            "Use search_memory1 when the user references past decisions or you need background context not in this session. "
+            "Use delete_memory1 when the user explicitly asks to forget something.\n"
             "- Treat outward-facing actions, CRM writes, and any irreversible change as requiring explicit user confirmation.\n"
             "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"

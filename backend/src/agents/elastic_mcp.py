@@ -7,6 +7,8 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_elastic_mcp_tools_cache: list[Any] | None = None
+
 
 def _parse_tool_filter(raw: str) -> list[str] | None:
     tools = [tool.strip() for tool in raw.split(",") if tool.strip()]
@@ -27,16 +29,24 @@ def _merge_tool_filters(default_tools: str, extra_tools: str) -> list[str] | Non
 def build_elastic_mcp_tools() -> list[Any]:
     """Build the Elastic Agent Builder MCP toolset when configured.
 
+    Returns a singleton list so all agents share one McpToolset instance,
+    avoiding N concurrent session-initialization timeouts at request time.
+
     The integration is intentionally optional so local development and tests can
     run without Elastic credentials. In production, set ELASTIC_MCP_URL to the
     Kibana Agent Builder MCP URL and ELASTIC_API_KEY to an encoded Elastic API key.
     """
+    global _elastic_mcp_tools_cache
+    if _elastic_mcp_tools_cache is not None:
+        return _elastic_mcp_tools_cache
+
     settings = get_settings()
     mcp_url = settings.ELASTIC_MCP_URL.strip()
     api_key = settings.ELASTIC_API_KEY.strip()
 
     if not mcp_url or not api_key:
-        return []
+        _elastic_mcp_tools_cache = []
+        return _elastic_mcp_tools_cache
 
     try:
         try:
@@ -47,9 +57,10 @@ def build_elastic_mcp_tools() -> list[Any]:
         from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
     except ImportError as exc:
         logger.warning("Elastic MCP tools are disabled because ADK MCP imports failed: %s", exc)
-        return []
+        _elastic_mcp_tools_cache = []
+        return _elastic_mcp_tools_cache
 
-    return [
+    _elastic_mcp_tools_cache = [
         McpToolset(
             connection_params=StreamableHTTPConnectionParams(
                 url=mcp_url,
@@ -67,3 +78,4 @@ def build_elastic_mcp_tools() -> list[Any]:
             ),
         )
     ]
+    return _elastic_mcp_tools_cache

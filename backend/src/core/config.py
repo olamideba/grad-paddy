@@ -6,11 +6,10 @@ from pathlib import Path
 # _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 # print("Looking for .env at:", _ENV_FILE, "| exists:", _ENV_FILE.exists())
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     GOOGLE_CLOUD_PROJECT: str = Field(default="")
@@ -35,17 +34,19 @@ class Settings(BaseSettings):
     ADK_LOG_PROMPT_CONTENT: bool = Field(default=True)
 
     # HITL Settings
-    SENSITIVE_TOOLS: list[str] = Field(default=[
-        "add_shortlist_faculty",
-        "update_shortlist_faculty",
-        "delete_shortlist_faculty",
-        "create_application",
-        "update_application",
-        "delete_application",
-        "create_draft",
-        "update_draft_content",
-        "upsert_preferences",
-    ])
+    SENSITIVE_TOOLS: list[str] = Field(
+        default=[
+            "add_shortlist_faculty",
+            "update_shortlist_faculty",
+            "delete_shortlist_faculty",
+            "create_application",
+            "update_application",
+            "delete_application",
+            "create_draft",
+            "update_draft_content",
+            "upsert_preferences",
+        ]
+    )
 
     # Firestore
     FIRESTORE_DATABASE_ID: str = Field(default="grad-paddy-db")
@@ -53,7 +54,7 @@ class Settings(BaseSettings):
     # Elastic Agent Builder MCP
     ELASTIC_MCP_URL: str = Field(default="")
     ELASTIC_API_KEY: str = Field(default="")
-    ELASTIC_MCP_TIMEOUT_SECONDS: int = Field(default=30)
+    ELASTIC_MCP_TIMEOUT_SECONDS: int = Field(default=60)
     ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS: int = Field(default=300)
     ELASTIC_MCP_TOOL_FILTER: str = Field(
         default=(
@@ -68,7 +69,10 @@ class Settings(BaseSettings):
             "find_faculty_by_research1,"
             "find_faculty_by_research_and_schools1,"
             "find_universities_by_program1,"
-            "check_program_deadlines_and_application_fees1"
+            "check_program_deadlines_and_application_fees1,"
+            "save_memory1,"
+            "search_memory1,"
+            "delete_memory1"
         )
     )
     ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
@@ -93,18 +97,24 @@ class Settings(BaseSettings):
     DOC_GOOGLE_INTEGRATION: str = Field(default="google")
 
     # Elastic Search
-    ES_URL: str = Field(default="https://my-elasticsearch-project-b387b6.es.us-central1.gcp.elastic.cloud:443")
+    ES_URL: str = Field(default="")
     PROGRAM_ES_INDEX: str = Field(default="grad-programs")
     FACULTY_ES_INDEX: str = Field(default="faculty-profiles")
+    MEMORY_ES_INDEX: str = Field(default="user-memories")
+    # Top-K memories to retrieve per turn for context injection / semantic search
+    MEMORY_TOP_K: int = Field(default=8)
+    # Elasticsearch kNN score threshold for deduplication (0–1 normalized cosine).
+    # Scores >= this value are treated as duplicates and updated in-place.
+    MEMORY_SIMILARITY_THRESHOLD: float = Field(default=0.92)
 
     EMBEDDING_MODEL: str = Field(default="text-embedding-004")
 
-    GEMINI_ENABLED: bool = Field(default=True)            
-    GEMINI_MODEL: str = Field(default="gemini-2.5-flash") 
+    GEMINI_ENABLED: bool = Field(default=True)
+    GEMINI_MODEL: str = Field(default="gemini-3.1-flash-lite")
 
     DOWNLOAD_DELAY: int = Field(default=2)
     CONCURRENT_REQUESTS: int = Field(default=4)
-    LOG_LEVEL: str = Field(default="INFO") 
+    LOG_LEVEL: str = Field(default="INFO")
 
 
 @lru_cache

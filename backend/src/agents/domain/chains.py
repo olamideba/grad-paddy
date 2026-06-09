@@ -2,7 +2,8 @@ from google.adk.agents import LlmAgent, SequentialAgent
 
 from src.agents.tools import GOVERNANCE_TOOLS
 
-MODEL = "gemini-3.1-pro-preview"
+MODEL = "gemini-3.1-flash-lite-preview"
+PERSIST_MODEL = "gemini-3.1-flash-lite-preview"
 
 
 def _stage(name: str, output_key: str, instruction: str) -> LlmAgent:
@@ -32,7 +33,7 @@ def _review_and_save_stage(
     title in the payload."""
     return LlmAgent(
         name=name,
-        model=MODEL,
+        model=PERSIST_MODEL,
         description=name.replace("_", " "),
         instruction=(
             "Call request_hitl exactly once with kind='approval', "

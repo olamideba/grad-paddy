@@ -19,12 +19,19 @@ def _configure_logging() -> None:
 
 _configure_logging()
 
-from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups, cvs, integrations, emails
+from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups, cvs, integrations, emails, memory
+from src.services.memory_service import MemoryService
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_firebase(get_settings())
+    try:
+        await MemoryService.ensure_index()
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Memory index check failed at startup (non-fatal — index may already exist): %s", exc
+        )
     yield
 
 
@@ -56,6 +63,7 @@ app.include_router(groups.router)
 app.include_router(cvs.router)
 app.include_router(integrations.router)
 app.include_router(emails.router)
+app.include_router(memory.router)
 
 
 app.add_middleware(

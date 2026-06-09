@@ -1,12 +1,17 @@
+import logging
 from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.models import LlmRequest, LlmResponse
 from google.adk.planners import BuiltInPlanner
 from google.genai import types
 
 from src.agents.domain import build_domain_orchestrator_agent
 from src.agents.internal import build_internal_app_agent
+from src.services.memory_service import MemoryService
+
+logger = logging.getLogger(__name__)
 
 
 async def _inject_date(callback_context: CallbackContext) -> None:
@@ -15,13 +20,47 @@ async def _inject_date(callback_context: CallbackContext) -> None:
     )
 
 
-def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
-    """Turn on Gemini thought summaries for an agent and all of its sub-agents.
+async def _inject_memories(
+    callback_context: CallbackContext, llm_request: LlmRequest
+) -> LlmResponse | None:
+    """Append the user's persistent memories to the system prompt.
 
-    With include_thoughts=True the model emits thought parts; ag_ui_adk
-    translates those into REASONING_* events, which the chat surfaces live in
-    the thought-process feed so the agent's work is no longer a black box. The
-    visible answer is unaffected — thoughts stream on a separate channel."""
+    Fires before every root-agent LLM call.  Retrieves the top-K most recently
+    updated memories from Elasticsearch and injects them as a <USER_MEMORIES>
+    block so the agent has cross-session context without the agent needing to
+    call a tool first.
+    """
+    user_id = callback_context.state.get("user_id")
+    if not user_id:
+        return None
+    try:
+        memories = await MemoryService.search_memory(user_id=str(user_id))
+        if not memories:
+            return None
+        facts = "\n".join(f"- {m['fact']}" for m in memories)
+        memory_block = (
+            "\n\n<USER_MEMORIES>\n"
+            "You know the following about this user from past sessions:\n"
+            f"{facts}\n"
+            "</USER_MEMORIES>"
+        )
+        if llm_request.config is None:
+            llm_request.config = types.GenerateContentConfig(
+                system_instruction=memory_block
+            )
+        else:
+            existing = llm_request.config.system_instruction or ""
+            llm_request.config.system_instruction = existing + memory_block
+    except Exception as exc:
+        logger.warning("Memory injection failed: %s", exc)
+    return None
+
+
+def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
+    """Enable Gemini thought summaries on every LlmAgent in the tree.
+
+    ag_ui_adk translates thought parts into REASONING_* events, surfacing live
+    reasoning in the chat feed for all agents."""
     _seen = _seen if _seen is not None else set()
     if id(agent) in _seen:
         return
@@ -36,11 +75,12 @@ def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
 
 root_agent = LlmAgent(
     name="grad_paddy",
-    model="gemini-3.1-pro-preview",
+    model="gemini-3.1-flash-lite-preview",
     description=(
         "Graduate school orchestrator that separates internal app-state work from domain reasoning."
     ),
     before_agent_callback=_inject_date,
+    before_model_callback=_inject_memories,
     sub_agents=[
         build_internal_app_agent(),
         build_domain_orchestrator_agent(),
@@ -68,7 +108,4 @@ root_agent = LlmAgent(
     ),
 )
 
-# Surface model reasoning live on sub-agents only; the root agent does
-# intent classification/routing and doesn't need deep thinking.
-for _sub in root_agent.sub_agents:
-    _enable_thinking(_sub)
+_enable_thinking(root_agent)
