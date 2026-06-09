@@ -1,9 +1,18 @@
+from datetime import datetime, timezone
+
 from google.adk.agents import LlmAgent
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.planners import BuiltInPlanner
 from google.genai import types
 
 from src.agents.domain import build_domain_orchestrator_agent
 from src.agents.internal import build_internal_app_agent
+
+
+async def _inject_date(callback_context: CallbackContext) -> None:
+    callback_context.state["current_date"] = datetime.now(timezone.utc).strftime(
+        "%A, %d %B %Y"
+    )
 
 
 def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
@@ -31,11 +40,14 @@ root_agent = LlmAgent(
     description=(
         "Graduate school orchestrator that separates internal app-state work from domain reasoning."
     ),
+    before_agent_callback=_inject_date,
     sub_agents=[
         build_internal_app_agent(),
         build_domain_orchestrator_agent(),
     ],
     instruction=(
+        "Today's date is {current_date}.\n"
+        "\n"
         "You are the top-level coordinator for the Grad Paddy system.\n"
         "\n"
         "## Intent Classification (do this first, before any routing)\n"
@@ -56,5 +68,7 @@ root_agent = LlmAgent(
     ),
 )
 
-# Surface model reasoning live (see _enable_thinking docstring).
-_enable_thinking(root_agent)
+# Surface model reasoning live on sub-agents only; the root agent does
+# intent classification/routing and doesn't need deep thinking.
+for _sub in root_agent.sub_agents:
+    _enable_thinking(_sub)

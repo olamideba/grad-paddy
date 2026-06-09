@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_LOCATION: str = Field(default="global")
     GOOGLE_GENAI_USE_VERTEXAI: bool = Field(default=True)
     GOOGLE_APPLICATION_CREDENTIALS: Path | None = Field(default=None)
-    GOOGLE_API_KEY: str = Field(..., description="Google API key")
 
     # Firebase Storage bucket (e.g. "<project>.appspot.com"). Required for CV uploads.
     STORAGE_BUCKET: str = Field(default="")

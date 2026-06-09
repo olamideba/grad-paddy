@@ -28,12 +28,6 @@ UNI_MAP = {
 }
 
 class FacultyService:
-    @staticmethod
-    def _get_genai_client() -> genai.Client:
-        global _genai_client
-        if _genai_client is None:
-            _genai_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-        return _genai_client
 
     @staticmethod
     async def embed(text: str) -> list[float]:
