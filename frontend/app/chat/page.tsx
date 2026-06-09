@@ -2231,6 +2231,43 @@ export default function ChatPage() {
     setShowUrlInput(false);
   }
 
+  // Stop the in-flight run: tell the backend to abort, drop the stream
+  // subscription, mark running phases/steps done, and leave a note.
+  async function stopRun() {
+    const runningPhaseIds = stream
+      .filter((i) => i.type === "phase" && i.status === "running")
+      .map((i) => i.id);
+    try {
+      const { chatApi } = await import("../../lib/api");
+      await chatApi.stop(threadId.current);
+    } catch {
+      /* ignore — client-side stop below still applies */
+    }
+    subscription.current?.unsubscribe();
+    setLocalRunning(false);
+    setStreamingMessageId(null);
+    setStream((p) => [
+      ...p.map((item) =>
+        (item.type === "phase" || item.type === "step") && item.status === "running"
+          ? { ...item, status: "done" as const }
+          : item
+      ),
+      {
+        type: "agent" as const,
+        id: `stop-${crypto.randomUUID()}`,
+        content: "You stopped this response.",
+        timestamp: new Date(),
+      },
+    ]);
+    if (runningPhaseIds.length > 0) {
+      setCollapsedPhases((prev) => {
+        const next = new Set(prev);
+        runningPhaseIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }
+
   function send() {
     const text = input.trim();
     if (!text && urls.length === 0) return;
@@ -2600,39 +2637,48 @@ export default function ChatPage() {
               {autoApprove ? "Always allow" : "Ask before changes"}
             </button>
             <div className="ml-auto">
-              <button
-                ref={sendBtnRef}
-                onClick={() => {
-                  if (!inputBlocked && (input.trim() || urls.length > 0)) {
-                    const el = sendBtnRef.current;
-                    if (el) {
-                      const r = el.getBoundingClientRect();
-                      setFlyPos({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+              {isAgentRunning ? (
+                <button
+                  onClick={stopRun}
+                  className="inline-flex items-center gap-2 font-bold border-2 border-ink neo-shadow-sm px-3.5 py-2 text-sm bg-accent-orange text-white transition-transform active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <span className="size-3 bg-current inline-block" /> Stop
+                </button>
+              ) : (
+                <button
+                  ref={sendBtnRef}
+                  onClick={() => {
+                    if (!inputBlocked && (input.trim() || urls.length > 0)) {
+                      const el = sendBtnRef.current;
+                      if (el) {
+                        const r = el.getBoundingClientRect();
+                        setFlyPos({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+                      }
+                      setLaunching(true);
+                      setTimeout(() => {
+                        setLaunching(false);
+                        setFlyPos(null);
+                      }, 950);
                     }
-                    setLaunching(true);
-                    setTimeout(() => {
-                      setLaunching(false);
-                      setFlyPos(null);
-                    }, 950);
-                  }
-                  send();
-                }}
-                disabled={!input.trim() && urls.length === 0}
-                className={clsx(
-                  "rocket-btn relative inline-flex items-center gap-2 font-bold border-2 border-ink neo-shadow-sm px-3.5 py-2 text-sm bg-accent-orange text-white transition-transform active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed",
-                  launching && "launching"
-                )}
-              >
-                <span className="relative inline-flex items-center">
-                  <span className="rocket-flame absolute top-1/2 right-full mr-1 -translate-y-1/2 pointer-events-none" />
-                  {inputBlocked ? (
-                    <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                  ) : (
-                    <Rocket className="rocket-ico size-4" />
+                    send();
+                  }}
+                  disabled={!input.trim() && urls.length === 0}
+                  className={clsx(
+                    "rocket-btn relative inline-flex items-center gap-2 font-bold border-2 border-ink neo-shadow-sm px-3.5 py-2 text-sm bg-accent-orange text-white transition-transform active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed",
+                    launching && "launching"
                   )}
-                </span>
-                {inputBlocked ? "Queue" : "Send"}
-              </button>
+                >
+                  <span className="relative inline-flex items-center">
+                    <span className="rocket-flame absolute top-1/2 right-full mr-1 -translate-y-1/2 pointer-events-none" />
+                    {pendingApproval ? (
+                      <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                    ) : (
+                      <Rocket className="rocket-ico size-4" />
+                    )}
+                  </span>
+                  {pendingApproval ? "Queue" : "Send"}
+                </button>
+              )}
             </div>
           </div>
         </div>

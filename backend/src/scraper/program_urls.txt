@@ -1,0 +1,15 @@
+# Graduate program URLs to scrape
+# One URL per line. Lines starting with # are ignored.
+# These are example URLs — replace with the actual grad program pages you want to scrape.
+
+#Stanford
+https://gradadmissions.stanford.edu/explore-programs
+
+#ICL
+https://www.imperial.ac.uk/business-school/masters/
+
+#NUS
+https://study.nus.edu.sg/programme?programmeType=%255B%2522Master%27s%2520by%2520Research%2522%252C%2522Doctorate%2520by%2520Research%252F%2520PhD%2522%255D&utm_source=nusgs&utm_medium=website
+
+#Cornell
+https://gradschool.cornell.edu/academic-progress/degrees-fields/graduate-school-degrees/

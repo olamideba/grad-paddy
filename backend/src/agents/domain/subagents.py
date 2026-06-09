@@ -6,6 +6,7 @@ from src.agents.domain.chains import (
     build_sop_translation_chain,
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
+from src.services.ingestion_service import IngestionService
 
 
 def build_faculty_discovery_agent() -> LlmAgent:
@@ -99,6 +100,57 @@ def build_funding_requirement_flag_detection_agent() -> LlmAgent:
     )
 
 
+def build_ingestion_pipeline_agent() -> LlmAgent:
+    """
+    Agent that handles the full scrape → chunk → embed → index pipeline.
+    Called when the user provides a URL that needs to be ingested into ES.
+    
+    Flow:
+      1. check_url_indexed  — avoid re-scraping already indexed URLs
+      2. ingest_url         — scrape → clean → chunk → embed → index
+    """
+    return LlmAgent(
+        name="ingestion_pipeline_agent",
+        model="gemini-3.1-pro-preview",
+        description=(
+            "Handles the full data ingestion pipeline for grad program and faculty URLs. "
+            "Scrapes the URL, chunks and embeds the content, and indexes it into "
+            "Elasticsearch so it can be searched by other agents."
+        ),
+        sub_agents=[],
+        instruction=(
+            "You are the data ingestion specialist for the grad-paddy system. "
+            "Your job is to take a URL from the user and get it into the database.\n\n"
+
+            "Always follow this exact sequence:\n"
+            "1. Call check_url_indexed(url) first\n"
+            "   - If already indexed: Do NOT re-ingest.\n"
+            "   - If not indexed: proceed to step 2\n\n"
+
+            "2. Determine url_type:\n"
+            "   - 'faculty' if the URL contains /people/, /faculty/, /role/faculty, "
+            "     or /directory/faculty\n"
+            "   - 'program' if the URL contains programs/, /graduate-programs/, "
+            "     or /graduate-admissions/"
+
+
+            "3. Call ingest_url(url, url_type, user_id)\n"
+            "   - Wait for completion\n"
+            "   - Report back: how many chunks were indexed, "
+            "     what programs or faculty were found\n\n"
+
+            "4. If ingest_url returns status='failed':\n"
+            "   - Tell the user what went wrong\n"
+            "   - Suggest checking the URL is publicly accessible\n\n"
+
+            "Be concise. The user just wants to know it worked.\n"
+        ),
+        tools=[
+            IngestionService.check_url_indexed,
+            IngestionService.ingest_url,
+        ],
+    )
+
 def build_research_narrative_framing_agent() -> SequentialAgent:
     """Prompt-chain agent for research narrative framing."""
     return build_research_narrative_framing_chain()
@@ -118,6 +170,7 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             build_application_tracker_agent(),
             build_funding_requirement_flag_detection_agent(),
             build_research_narrative_framing_agent(),
+            build_ingestion_pipeline_agent()
         ],
         instruction=(
             "You are the domain orchestrator for Grad Paddy.\n"
@@ -130,6 +183,7 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "- Use application tracker for Elastic-backed deadline, readiness, and status analysis.\n"
             "- Use funding and requirement flag detection for blocking conditions and readiness checks.\n"
             "- Use research narrative framing when the user needs the story that connects their evidence to the program or faculty.\n"
+            "- Use ingestion pipeline when the user needs deep research about university programs and faculty.\n"
             "- Treat outward-facing actions, CRM writes, and any irreversible change as requiring explicit user confirmation.\n"
             "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"
