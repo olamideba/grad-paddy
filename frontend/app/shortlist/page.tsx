@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
+import { Star, Plus, Search, ExternalLink, Mail, Trash2, MessageSquare } from "lucide-react";
 import clsx from "clsx";
 import type { Faculty as ApiFaculty, ShortlistStats } from "../../lib/api";
 import { SkeletonCardGrid } from "@/components/Skeleton";
+import { NeoButton, StatusPill } from "@/components/Neo";
 
 type OutreachStatus = "none" | "drafted" | "sent" | "responded";
 type PositionStatus = boolean | "unknown";
@@ -64,214 +66,106 @@ const OUTREACH_META: Record<OutreachStatus, { label: string; bg: string; color: 
   responded: { label: "Responded", bg: "#4ECDC4", color: "#0D0D0D" },
 };
 
-function ScoreBadge({ score }: { score: number }) {
-  const bg = score >= 85 ? "#4ECDC4" : score >= 70 ? "#0D0D0D" : "#B0A898";
-  const color = score >= 85 ? "#0D0D0D" : "#FFFFFF";
+function initials(name: string): string {
   return (
-    <div
-      className="flex-shrink-0 flex items-center justify-center"
-      style={{
-        width: 48,
-        height: 48,
-        background: bg,
-        border: "2px solid #0D0D0D",
-        borderRadius: "4px",
-      }}
-    >
-      <span className="font-space font-bold text-base leading-none" style={{ color }}>
-        {score}
-      </span>
-    </div>
-  );
-}
-
-function PositionBadge({ status }: { status: PositionStatus }) {
-  if (status === true) return <span className="badge-teal">Open</span>;
-  if (status === false) return <span className="badge-coral">Closed</span>;
-  return <span className="badge-gray">?</span>;
-}
-
-function FitBar({ score }: { score: number }) {
-  const fill = score >= 85 ? "#4ECDC4" : score >= 70 ? "#0D0D0D" : "#B0A898";
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className="flex-1 h-1.5 overflow-hidden"
-        style={{ background: "#EDE6D3", border: "1px solid #C8C0AF", borderRadius: "2px" }}
-      >
-        <div
-          className="h-full"
-          style={{ width: `${score}%`, background: fill, borderRadius: "2px" }}
-        />
-      </div>
-    </div>
+    name
+      .replace(/^(prof\.?|dr\.?)\s+/i, "")
+      .split(/\s+/)
+      .map((w) => w.charAt(0))
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
   );
 }
 
 function FacultyCard({ faculty }: { faculty: Faculty }) {
   const outreach = OUTREACH_META[faculty.outreachStatus];
+  const contacted = faculty.outreachStatus !== "none";
+  const open = faculty.openPositions === true;
+  const positionLabel =
+    faculty.openPositions === true
+      ? "Open"
+      : faculty.openPositions === false
+        ? "Closed"
+        : "Unknown";
   return (
-    <div className="card-brutal flex flex-col overflow-hidden p-0">
+    <article className="neo-card flex flex-col">
       {/* Header */}
-      <div className="p-4 flex gap-3" style={{ borderBottom: "2px solid #0D0D0D" }}>
-        <ScoreBadge score={faculty.fitScore} />
+      <div className="p-4 border-b-2 border-ink flex gap-4">
+        <div className="size-16 shrink-0 bg-accent-yellow border-2 border-ink grid place-items-center font-bold text-xl font-mono">
+          {initials(faculty.name)}
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-1">
-            <h3 className="font-bold text-sm font-space leading-tight" style={{ color: "#0D0D0D" }}>
-              {faculty.name}
-            </h3>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-bold text-lg leading-tight truncate">{faculty.name}</h3>
             <button
-              className="bouncy shrink-0 p-1"
-              style={{ color: "#C8C0AF", border: "1.5px solid transparent", borderRadius: "4px" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#E8472A";
-                e.currentTarget.style.borderColor = "#0D0D0D";
-                e.currentTarget.style.background = "#FFF0ED";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = "#C8C0AF";
-                e.currentTarget.style.borderColor = "transparent";
-                e.currentTarget.style.background = "";
-              }}
+              title="Remove"
+              className="size-7 grid place-items-center border-2 border-ink hover:bg-accent-orange hover:text-white transition-colors shrink-0"
             >
-              <Icon icon="solar:trash-bin-trash-bold" width={12} />
+              <Trash2 className="size-3.5" />
             </button>
           </div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span
-              className="text-[10px] font-bold font-space px-1.5 py-0.5"
-              style={{ background: "#0D0D0D", color: "#FFFFFF", borderRadius: "3px" }}
-            >
-              {faculty.university}
-            </span>
-            <span className="text-[10px] font-dm truncate" style={{ color: "#9CA3AF" }}>
-              {faculty.department}
-            </span>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <StatusPill tone="ink">{faculty.university}</StatusPill>
+            <StatusPill tone="muted">{faculty.department}</StatusPill>
           </div>
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <PositionBadge status={faculty.openPositions} />
+          <div className="mt-2">
+            <StatusPill tone={open ? "teal" : "muted"}>{positionLabel}</StatusPill>
           </div>
         </div>
       </div>
 
-      {/* Body */}
-      <div className="p-4 flex-1 flex flex-col gap-3">
-        {faculty.researchAreas.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {faculty.researchAreas.map((area) => (
-              <span
-                key={area}
-                className="text-[10px] px-2 py-0.5 font-dm"
-                style={{
-                  background: "#F7F0E3",
-                  border: "1.5px solid #C8C0AF",
-                  color: "#5A5A5A",
-                  borderRadius: "4px",
-                }}
-              >
-                {area}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Fit bar */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span
-              className="text-[10px] font-semibold uppercase tracking-wider font-space"
-              style={{ color: "#9CA3AF" }}
-            >
-              Research Fit
-            </span>
-            <span className="text-[10px] font-bold font-mono" style={{ color: "#0D0D0D" }}>
-              {faculty.fitScore}%
-            </span>
-          </div>
-          <FitBar score={faculty.fitScore} />
-        </div>
-
-        {/* Research summary */}
-        {faculty.researchSummary && (
-          <div className="flex items-start gap-2 pt-3" style={{ borderTop: "1px solid #EDE6D3" }}>
-            <Icon
-              icon="solar:document-text-bold"
-              width={11}
-              className="shrink-0 mt-0.5"
-              style={{ color: "#C8C0AF" }}
-            />
-            <p
-              className="text-[11px] font-dm leading-snug line-clamp-2"
-              style={{ color: "#9CA3AF" }}
-            >
-              {faculty.researchSummary}
-            </p>
-          </div>
-        )}
+      {/* Summary */}
+      <div className="p-4 text-sm text-muted-foreground leading-relaxed flex-1">
+        {faculty.researchSummary || "No research summary yet."}
       </div>
 
-      {/* Footer */}
-      <div
-        className="flex"
-        style={{ borderTop: "2px solid #0D0D0D", borderRadius: "0 0 4px 4px", overflow: "hidden" }}
-      >
+      {/* Research fit */}
+      <div className="px-4 pb-3">
+        <div className="flex items-center justify-between text-[11px] tracking-[0.18em] font-bold mb-1.5">
+          <span>RESEARCH FIT</span>
+          <span className="font-mono text-base text-ink">{faculty.fitScore}%</span>
+        </div>
+        <div className="h-3 border-2 border-ink bg-paper overflow-hidden">
+          <div
+            className="h-full bg-accent-orange border-r-2 border-ink"
+            style={{ width: `${faculty.fitScore}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Footer actions */}
+      <div className="grid grid-cols-3 border-t-2 border-ink divide-x-2 divide-ink">
         <div
-          className="px-3 py-2 shrink-0 flex items-center"
-          style={{ background: outreach.bg, borderRight: "2px solid #0D0D0D" }}
-        >
-          <span
-            className="text-[10px] font-bold font-space whitespace-nowrap"
-            style={{ color: outreach.color }}
-          >
-            {outreach.label}
-          </span>
-        </div>
-        <div className="flex flex-1">
-          {faculty.profileUrl ? (
-            <a
-              href={faculty.profileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
-              style={{ color: "#5A5A5A", borderRight: "1px solid #EDE6D3" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#0D0D0D";
-                e.currentTarget.style.color = "#fff";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "";
-                e.currentTarget.style.color = "#5A5A5A";
-              }}
-            >
-              <Icon icon="solar:arrow-right-up-bold" width={10} />
-              Profile
-            </a>
-          ) : (
-            <span
-              className="flex-1 flex items-center justify-center py-2 text-[11px] font-space"
-              style={{ color: "#C8C0AF", borderRight: "1px solid #EDE6D3" }}
-            >
-              No link
-            </span>
+          className={clsx(
+            "py-2.5 px-1 text-xs font-bold flex items-center justify-center gap-1.5 text-center",
+            contacted ? "bg-accent-teal" : "bg-paper text-muted-foreground"
           )}
-          <button
-            className="flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold font-space bouncy"
-            style={{ color: "#5A5A5A" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#EDE6D3";
-              e.currentTarget.style.color = "#0D0D0D";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "";
-              e.currentTarget.style.color = "#5A5A5A";
-            }}
-          >
-            <Icon icon="solar:letter-bold" width={10} />
-            Email
-          </button>
+        >
+          {outreach.label}
         </div>
+        {faculty.profileUrl ? (
+          <a
+            href={faculty.profileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-paper transition-colors"
+          >
+            <ExternalLink className="size-3.5" /> Page
+          </a>
+        ) : (
+          <span className="py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 text-muted-foreground">
+            <ExternalLink className="size-3.5" /> Page
+          </span>
+        )}
+        <a
+          href="/chat"
+          className="py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-accent-orange hover:text-white transition-colors"
+        >
+          <Mail className="size-3.5" /> Email
+        </a>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -541,73 +435,50 @@ export default function ShortlistPage() {
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
-      {/* Header — black */}
-      <div
-        className="px-4 sm:px-6 py-4 shrink-0"
-        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1
-              className="text-sm font-bold font-space flex items-center gap-2"
-              style={{ color: "#FFFFFF" }}
-            >
-              <Icon icon="solar:star-bold" width={15} style={{ color: "#E8472A" }} />
-              Faculty Shortlist
-            </h1>
-            <p className="text-xs font-dm mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {loading
-                ? "Loading…"
-                : stats
-                  ? `${stats.total} saved · ${stats.open_positions} open positions · ${stats.contacted} contacted`
-                  : `${faculty.length} saved`}
-            </p>
-          </div>
-          <button className="btn-coral btn-sm shrink-0" onClick={() => setShowAddModal(true)}>
-            <Icon icon="solar:add-circle-bold" width={14} />
-            <span className="text-sm hidden sm:inline">Add Faculty</span>
-          </button>
+    <div className="flex flex-col h-full overflow-hidden bg-paper font-space">
+      {/* Header — black branded bar */}
+      <div className="px-6 py-4 shrink-0 relative flex items-center gap-4 bg-ink text-paper border-b-2 border-ink">
+        <div className="size-9 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+          <Star className="size-5 text-paper" strokeWidth={2.5} />
         </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight leading-tight">Faculty Shortlist</h1>
+          <p className="text-xs mt-0.5 text-paper/70">
+            {loading
+              ? "Loading…"
+              : stats
+                ? `${stats.total} saved · ${stats.open_positions} open positions · ${stats.contacted} contacted`
+                : `${faculty.length} saved`}
+          </p>
+        </div>
+        <NeoButton variant="primary" onClick={() => setShowAddModal(true)} className="shrink-0">
+          <Plus className="size-4" /> <span className="hidden sm:inline">Add Faculty</span>
+        </NeoButton>
+        <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-accent-orange" />
       </div>
 
       {/* Search + filter bar */}
-      <div
-        className="px-4 sm:px-6 py-3 shrink-0 flex items-center gap-3 flex-wrap"
-        style={{ background: "#FFFFFF", borderBottom: "2px solid #0D0D0D" }}
-      >
-        <div className="relative flex-1 min-w-48">
-          <Icon
-            icon="solar:magnifer-bold"
-            width={13}
-            className="absolute left-3 top-1/2 -translate-y-1/2"
-            style={{ color: "#B0A898" }}
-          />
+      <div className="px-6 py-4 shrink-0 flex gap-4 flex-wrap bg-paper border-b-2 border-ink">
+        <div className="flex-1 min-w-[300px] flex items-center gap-2 bg-paper-2 border-2 border-ink px-4 py-2.5 neo-shadow-sm">
+          <Search className="size-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search faculty, university, research area..."
+            placeholder="Search faculty, university, research area…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="input-brutal pl-8 text-sm w-full"
+            className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
           />
         </div>
-        <div
-          className="flex overflow-hidden"
-          style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}
-        >
+        <div className="flex border-2 border-ink neo-shadow-sm">
           {(["all", "open", "outreach"] as const).map((f, i) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={clsx(
-                "px-3 py-2 text-xs font-semibold font-space bouncy",
-                i > 0 && "border-l-2"
+                "px-4 py-2.5 text-sm font-bold transition-colors",
+                filter === f ? "bg-accent-orange text-white" : "bg-paper-2 hover:bg-paper",
+                i < 2 && "border-r-2 border-ink"
               )}
-              style={{
-                background: filter === f ? "#E8472A" : "#FFFFFF",
-                color: filter === f ? "#FFFFFF" : "#5A5A5A",
-                borderColor: "#0D0D0D",
-              }}
             >
               {f === "all" ? "All" : f === "open" ? "Open Positions" : "Outreach"}
             </button>
@@ -616,31 +487,28 @@ export default function ShortlistPage() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {loading ? (
           <SkeletonCardGrid
-            count={8}
-            gridClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+            count={6}
+            gridClassName="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
           />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <Icon
-              icon="solar:graduation-cap-bold"
-              width={32}
-              style={{ color: "#B0A898" }}
-              className="mb-3"
-            />
-            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>
+            <div className="size-12 bg-accent-yellow border-2 border-ink grid place-items-center mb-3">
+              <Star className="size-5" strokeWidth={2.5} />
+            </div>
+            <p className="font-bold">
               {faculty.length === 0 ? "No faculty saved yet" : "No faculty found"}
             </p>
-            <p className="text-sm font-dm mt-1" style={{ color: "#9CA3AF" }}>
+            <p className="text-sm mt-1 text-muted-foreground">
               {faculty.length === 0
                 ? "Ask the agent to find professors matching your interests"
                 : "Adjust search or filters"}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filtered.map((f) => (
               <FacultyCard key={f.id} faculty={f} />
             ))}
@@ -648,27 +516,19 @@ export default function ShortlistPage() {
         )}
 
         {/* CTA */}
-        <div
-          className="mt-6 p-5 flex items-center justify-between"
-          style={{
-            background: "#FFFFFF",
-            border: "2px solid #0D0D0D",
-            boxShadow: "4px 4px 0 #0D0D0D",
-            borderRadius: "4px",
-          }}
-        >
-          <div>
-            <p className="font-bold font-space text-sm" style={{ color: "#0D0D0D" }}>
-              Want more faculty matches?
-            </p>
-            <p className="text-xs font-dm mt-0.5" style={{ color: "#9CA3AF" }}>
-              Paste program URLs in Agent Chat.
-            </p>
+        <div className="neo-card bg-paper-2 p-5 flex items-center gap-4">
+          <div className="size-12 bg-accent-yellow border-2 border-ink grid place-items-center shrink-0">
+            <Star className="size-5" strokeWidth={2.5} />
           </div>
-          <a href="/chat" className="btn-coral btn-sm ml-4 shrink-0">
-            <span className="text-sm">Open Chat</span>
-            <Icon icon="solar:alt-arrow-right-bold" width={13} />
-          </a>
+          <div className="flex-1">
+            <div className="font-bold">Want more faculty matches?</div>
+            <div className="text-sm text-muted-foreground">
+              Paste program URLs in Agent Chat or describe your research.
+            </div>
+          </div>
+          <NeoButton variant="primary" as="a" href="/chat" className="shrink-0">
+            <MessageSquare className="size-4" /> Open Chat
+          </NeoButton>
         </div>
       </div>
 

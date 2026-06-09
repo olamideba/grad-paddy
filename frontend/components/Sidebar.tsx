@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState, useCallback } from "react";
+import type { ComponentType } from "react";
 import { Icon } from "@iconify/react";
+import {
+  MessageSquare,
+  Star,
+  Calendar,
+  FileText,
+  Folder,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import type { LucideProps } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "@/context/AuthContext";
 import Logo from "@/components/Logo";
@@ -14,45 +24,28 @@ const MAX_WIDTH = 340;
 const DEFAULT_WIDTH = 256;
 const COLLAPSE_AT = 130;
 
-const NAV_ITEMS = [
-  { href: "/chat", label: "Agent Chat", icon: "solar:chat-round-bold", desc: "Talk to Grad Paddy" },
-  {
-    href: "/shortlist",
-    label: "Shortlist",
-    icon: "solar:star-bold",
-    desc: "Saved faculty & programs",
-  },
-  {
-    href: "/tracker",
-    label: "App Tracker",
-    icon: "solar:calendar-bold",
-    desc: "Deadlines & status",
-  },
-  {
-    href: "/drafts",
-    label: "Drafts",
-    icon: "solar:document-text-bold",
-    desc: "SOPs & outreach prep",
-  },
-  {
-    href: "/documents",
-    label: "Documents",
-    icon: "solar:folder-with-files-bold",
-    desc: "Resumes & CVs",
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: "solar:settings-bold",
-    desc: "Preferences & interests",
-  },
+type NavItem = { href: string; label: string; icon: ComponentType<LucideProps> };
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/chat", label: "Agent Chat", icon: MessageSquare },
+  { href: "/shortlist", label: "Shortlist", icon: Star },
+  { href: "/tracker", label: "App Tracker", icon: Calendar },
+  { href: "/drafts", label: "Drafts", icon: FileText },
+  { href: "/documents", label: "Documents", icon: Folder },
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const displayName = user?.displayName ?? user?.email ?? "User";
-  const avatarLetter = displayName.charAt(0).toUpperCase();
+  const initials =
+    displayName
+      .split(/\s+/)
+      .map((w) => w.charAt(0))
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "U";
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
   const dragging = useRef(false);
@@ -102,10 +95,9 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="relative flex-shrink-0 flex flex-col h-screen overflow-hidden"
+      className="relative flex-shrink-0 flex flex-col h-screen overflow-hidden bg-paper-2 font-space"
       style={{
         width,
-        background: "#F7F0E3",
         borderRight: "2px solid #0D0D0D",
         transition: isDragging ? "none" : "width 200ms ease-out",
       }}
@@ -168,16 +160,13 @@ export default function Sidebar() {
       {/* Nav */}
       <nav className="shrink-0 py-2 overflow-x-hidden">
         {!collapsed && (
-          <div className="px-4 mb-1">
-            <span
-              className="text-[10px] font-semibold uppercase tracking-widest font-space"
-              style={{ color: "#9CA3AF" }}
-            >
+          <div className="px-4 mb-2 mt-1">
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
               Navigation
             </span>
           </div>
         )}
-        {NAV_ITEMS.map(({ href, label, icon }) => {
+        {NAV_ITEMS.map(({ href, label, icon: NavIcon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -185,32 +174,16 @@ export default function Sidebar() {
               href={href}
               title={collapsed ? label : undefined}
               className={clsx(
-                "flex items-center gap-2.5 mx-2 px-3 py-1.5 mb-0.5 bouncy",
-                collapsed && "justify-center"
-              )}
-              style={
+                "flex items-center gap-3 mx-2 px-3 py-2.5 mb-1 border-2 transition-colors",
+                collapsed && "justify-center",
                 active
-                  ? {
-                      background: "#0D0D0D",
-                      color: "#FFFFFF",
-                      border: "2px solid #0D0D0D",
-                      outline: "none",
-                      borderRadius: "4px",
-                    }
-                  : { color: "#5A5A5A", border: "2px solid transparent" }
-              }
-              onMouseEnter={(e) => {
-                if (!active) (e.currentTarget as HTMLElement).style.background = "#EDE6D3";
-              }}
-              onMouseLeave={(e) => {
-                if (!active) (e.currentTarget as HTMLElement).style.background = "";
-              }}
+                  ? "bg-ink text-paper border-ink"
+                  : "border-transparent text-ink hover:border-ink hover:bg-paper"
+              )}
             >
-              <Icon icon={icon} width={16} className="flex-shrink-0" />
+              <NavIcon className="size-4 shrink-0" strokeWidth={2.25} />
               {!collapsed && (
-                <span className="text-[13px] font-semibold font-space leading-tight truncate">
-                  {label}
-                </span>
+                <span className="text-sm font-semibold leading-tight truncate">{label}</span>
               )}
             </Link>
           );
@@ -226,66 +199,38 @@ export default function Sidebar() {
       {/* Footer */}
       <div
         className={clsx(
-          "p-3 flex items-center flex-shrink-0 gap-2",
-          collapsed ? "justify-center" : "justify-between"
+          "p-3 flex items-center flex-shrink-0 gap-3 bg-paper",
+          collapsed ? "justify-center" : ""
         )}
         style={{ borderTop: "2px solid #0D0D0D" }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {user?.photoURL ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={user.photoURL}
-              alt={displayName}
-              referrerPolicy="no-referrer"
-              className="w-7 h-7 flex-shrink-0 object-cover"
-              style={{ border: "2px solid #0D0D0D", borderRadius: "4px" }}
-            />
-          ) : (
-            <div
-              className="w-7 h-7 flex-shrink-0 flex items-center justify-center text-xs font-bold"
-              style={{
-                background: "#E8472A",
-                color: "#FFFFFF",
-                border: "2px solid #0D0D0D",
-                borderRadius: "4px",
-              }}
-            >
-              {avatarLetter}
-            </div>
-          )}
-          {!collapsed && (
-            <div className="min-w-0">
-              <div
-                className="text-xs font-semibold truncate font-space"
-                style={{ color: "#0D0D0D" }}
-              >
-                {displayName}
-              </div>
-              <div className="text-xs truncate font-dm" style={{ color: "#9CA3AF" }}>
-                {user?.email ?? ""}
-              </div>
-            </div>
-          )}
-        </div>
+        {user?.photoURL ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={user.photoURL}
+            alt={displayName}
+            referrerPolicy="no-referrer"
+            className="size-9 flex-shrink-0 object-cover border-2 border-ink"
+          />
+        ) : (
+          <div className="size-9 flex-shrink-0 grid place-items-center text-sm font-bold bg-accent-teal border-2 border-ink text-ink">
+            {initials}
+          </div>
+        )}
         {!collapsed && (
-          <Link
-            href="/settings"
-            className="p-1.5 bouncy"
-            style={{ color: "#9CA3AF", border: "1.5px solid transparent", borderRadius: "4px" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#EDE6D3";
-              e.currentTarget.style.color = "#0D0D0D";
-              e.currentTarget.style.border = "1.5px solid #0D0D0D";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "";
-              e.currentTarget.style.color = "#9CA3AF";
-              e.currentTarget.style.border = "1.5px solid transparent";
-            }}
-          >
-            <Icon icon="solar:settings-bold" width={14} />
-          </Link>
+          <>
+            <div className="leading-tight flex-1 min-w-0">
+              <div className="text-sm font-bold truncate text-ink">{displayName}</div>
+              <div className="text-xs truncate text-muted-foreground">{user?.email ?? ""}</div>
+            </div>
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              className="size-8 grid place-items-center border-2 border-ink text-ink hover:bg-ink hover:text-paper transition-colors"
+            >
+              <SettingsIcon className="size-4" />
+            </Link>
+          </>
         )}
       </div>
 

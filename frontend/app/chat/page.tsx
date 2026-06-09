@@ -5,12 +5,32 @@ import { flushSync } from "react-dom";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
+import {
+  MessageSquare,
+  Link2,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  ShieldQuestion,
+  Rocket,
+  Sparkles,
+  Brain,
+  ChevronDown,
+  GraduationCap,
+  Search,
+  Star,
+  Calendar,
+  FileText,
+} from "lucide-react";
 import clsx from "clsx";
+import { StatusPill } from "@/components/Neo";
+import { Skeleton } from "@/components/Skeleton";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAgent } from "@/components/AgentProvider";
 import type { Message, BaseEvent } from "../../lib/ag-ui";
 import { useChatSessions } from "@/context/ChatSessionsContext";
+import type { Session } from "@/lib/api";
 import MarkdownCanvas from "@/components/MarkdownCanvas";
 import EmailCanvas from "@/components/EmailCanvas";
 
@@ -870,127 +890,67 @@ function AgentWorkCard({
   }, [phase.status]);
   const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   return (
-    <div
-      className="msg-enter"
-      style={{
-        border: "2px solid #0D0D0D",
-        boxShadow: "3px 3px 0 #0D0D0D",
-        borderRadius: "4px",
-        overflow: "hidden",
-      }}
-    >
+    <div className="msg-enter neo-card overflow-hidden">
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
-        style={{ background: "#E8472A", borderBottom: "2px solid #0D0D0D" }}
+        className="flex items-center gap-3 px-5 py-3 cursor-pointer select-none bg-accent-orange text-white border-b-2 border-ink"
         onClick={onToggle}
       >
-        <div className="min-w-0">
-          <span className="text-sm font-bold font-space" style={{ color: "#FFFFFF" }}>
-            Agent · {phase.label}
-          </span>
+        <Brain className="size-5 shrink-0" strokeWidth={2.5} />
+        <div className="min-w-0 flex-1">
+          <span className="font-bold text-base">Agent · {phase.label}</span>
           {collapsed && phase.status === "running" && lastActiveTool && (
-            <div
-              className="text-[11px] font-dm truncate"
-              style={{ color: "rgba(255,255,255,0.85)" }}
-            >
-              {getToolDescription(lastActiveTool).emoji} {getToolDescription(lastActiveTool).label}…
+            <div className="text-[11px] truncate text-white/85">
+              {getToolDescription(lastActiveTool).label}…
             </div>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {phase.status === "running" && (
-            <span
-              className="text-[10px] font-bold font-space px-2 py-0.5"
-              style={{
-                background: "#4ECDC4",
-                color: "#0D0D0D",
-                border: "1.5px solid #0D0D0D",
-                borderRadius: "4px",
-              }}
-            >
-              Running
-            </span>
-          )}
-          {phase.status === "done" && (
-            <span
-              className="text-[10px] font-bold font-space px-2 py-0.5"
-              style={{
-                background: "rgba(255,255,255,0.2)",
-                color: "#FFFFFF",
-                border: "1.5px solid rgba(255,255,255,0.4)",
-                borderRadius: "4px",
-              }}
-            >
-              Done
-            </span>
-          )}
-          <Icon
-            icon="solar:alt-arrow-down-bold"
-            width={12}
-            className={clsx("transition-transform duration-150", collapsed && "-rotate-90")}
-            style={{ color: "rgba(255,255,255,0.7)" }}
-          />
+          {phase.status === "running" && <StatusPill tone="teal">Running</StatusPill>}
+          {phase.status === "done" && <StatusPill tone="teal">Done</StatusPill>}
+          <span className="size-7 grid place-items-center border-2 border-paper">
+            <ChevronDown
+              className={clsx(
+                "size-4 transition-transform duration-150",
+                collapsed && "-rotate-90"
+              )}
+            />
+          </span>
         </div>
       </div>
       {!collapsed && (
         <>
-          <div className="grid grid-cols-3" style={{ borderBottom: "2px solid #0D0D0D" }}>
-            <div
-              className="px-3 py-2"
-              style={{ background: "#F7F0E3", borderRight: "1.5px solid #0D0D0D" }}
-            >
-              <p
-                className="text-[9px] font-bold uppercase tracking-widest font-space"
-                style={{ color: "#9CA3AF" }}
-              >
-                Steps Done
-              </p>
-              <p className="text-lg font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>
+          <div className="grid grid-cols-3 divide-x-2 divide-ink border-b-2 border-ink bg-paper">
+            <div className="p-4">
+              <div className="text-[10px] tracking-[0.18em] font-bold text-muted-foreground">
+                STEPS DONE
+              </div>
+              <div className="mt-1 text-2xl font-bold font-mono">
                 {doneCount}/{steps.length}
-              </p>
+              </div>
             </div>
-            <div
-              className="px-3 py-2"
-              style={{
-                background: runningStep ? "#FFF0ED" : "#F7F0E3",
-                borderRight: "1.5px solid #0D0D0D",
-                outline: runningStep ? "2px solid #E8472A" : undefined,
-                outlineOffset: "-2px",
-              }}
-            >
-              <p
-                className="text-[9px] font-bold uppercase tracking-widest font-space"
-                style={{ color: "#9CA3AF" }}
-              >
-                Active Tool
-              </p>
-              <p className="text-xs font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>
+            <div className={clsx("p-4", runningStep && "bg-accent-yellow/40")}>
+              <div className="text-[10px] tracking-[0.18em] font-bold text-muted-foreground">
+                ACTIVE TOOL
+              </div>
+              <div className="mt-1 text-sm font-bold font-mono truncate">
                 {lastActiveTool ? getToolDescription(lastActiveTool).label : "—"}
-              </p>
+              </div>
             </div>
-            <div className="px-3 py-2" style={{ background: "#F7F0E3" }}>
-              <p
-                className="text-[9px] font-bold uppercase tracking-widest font-space"
-                style={{ color: "#9CA3AF" }}
-              >
-                Elapsed
-              </p>
-              <p className="text-lg font-bold font-mono mt-0.5" style={{ color: "#0D0D0D" }}>
-                {elapsedStr}
-              </p>
+            <div className="p-4">
+              <div className="text-[10px] tracking-[0.18em] font-bold text-muted-foreground">
+                ELAPSED
+              </div>
+              <div className="mt-1 text-2xl font-bold font-mono">{elapsedStr}</div>
             </div>
           </div>
-          <div style={{ background: "#FFFFFF" }}>
+          <div className="bg-paper-2">
             {steps.map((step, i) => (
               <StepCard key={step.id} step={step} number={i + 1} />
             ))}
           </div>
           {/* Thought process — live, edge-faded reasoning feed kept below the steps. */}
-          <div
-            className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest font-space"
-            style={{ background: "#F7F0E3", borderTop: "2px solid #0D0D0D", color: "#9CA3AF" }}
-          >
-            Thought process
+          <div className="px-4 py-2 text-[10px] tracking-[0.18em] font-bold text-muted-foreground bg-paper border-t-2 border-ink">
+            THOUGHT PROCESS
           </div>
           <ReasoningFeed lines={lines} reasoning={phase.reasoning} running={running} />
         </>
@@ -1013,34 +973,18 @@ function ApprovalGate({
   const resolvedView = item.resolved || expired;
   return (
     <div className="msg-enter w-full max-w-xl">
-      <div
-        className="overflow-hidden"
-        style={{
-          background: "#FFFFFF",
-          border: "2px solid #0D0D0D",
-          boxShadow: "3px 3px 0 #0D0D0D",
-          borderRadius: "8px",
-        }}
-      >
+      <div className="neo-card overflow-hidden">
         {/* Permission header */}
-        <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#0D0D0D" }}>
-          <Icon icon="solar:shield-keyhole-bold" width={14} style={{ color: "#E8472A" }} />
-          <span
-            className="text-[10px] font-bold uppercase tracking-widest font-space"
-            style={{ color: "#FFFFFF" }}
-          >
-            Permission required
-          </span>
+        <div className="flex items-center gap-3 px-5 py-3 bg-accent-yellow border-b-2 border-ink">
+          <ShieldCheck className="size-5 shrink-0" strokeWidth={2.5} />
+          <span className="font-bold flex-1">Approval requested</span>
+          {!resolvedView && <StatusPill tone="ink">PENDING</StatusPill>}
         </div>
 
         {/* Body */}
-        <div className="px-4 py-3">
-          <p className="font-bold font-space text-sm mb-1" style={{ color: "#0D0D0D" }}>
-            {item.title}
-          </p>
-          <p className="text-xs font-dm leading-relaxed" style={{ color: "#5A5A5A" }}>
-            {item.description}
-          </p>
+        <div className="px-5 py-4">
+          <p className="font-bold text-sm mb-1">{item.title}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">{item.description}</p>
           {item.items && item.items.length > 0 && !item.email && (
             <ul className="space-y-1 mt-2">
               {item.items.map((it, i) => (
@@ -1172,37 +1116,22 @@ function PermissionOption({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-3 px-3 py-2.5 text-left bouncy w-full"
-      style={{
-        background: primary ? "#4ECDC4" : "#FFFFFF",
-        border: `1.5px solid ${primary ? "#0D0D0D" : "#C8C0AF"}`,
-        borderRadius: "8px",
-      }}
-      onMouseEnter={(e) => {
-        if (!primary) e.currentTarget.style.background = "#F7F0E3";
-      }}
-      onMouseLeave={(e) => {
-        if (!primary) e.currentTarget.style.background = "#FFFFFF";
-      }}
+      className={clsx(
+        "flex items-center gap-3 px-4 py-3 text-left w-full border-2 border-ink transition-colors",
+        primary ? "bg-accent-teal text-ink" : "bg-paper-2 hover:bg-paper",
+        muted && "text-muted-foreground"
+      )}
     >
       <Icon
         icon={icon}
         width={16}
         className="shrink-0"
-        style={{ color: muted ? "#9CA3AF" : primary ? "#0D0D0D" : "#E8472A" }}
+        style={{ color: muted ? "#9C948A" : primary ? "#1D1A16" : "#E8472A" }}
       />
       <span className="flex flex-col min-w-0">
-        <span
-          className="text-sm font-semibold font-space leading-tight"
-          style={{ color: muted ? "#9CA3AF" : "#0D0D0D" }}
-        >
-          {label}
-        </span>
+        <span className="text-sm font-bold leading-tight">{label}</span>
         {description && (
-          <span
-            className="text-[11px] font-dm leading-tight mt-0.5"
-            style={{ color: primary ? "rgba(13,13,13,0.65)" : "#9CA3AF" }}
-          >
+          <span className="text-[11px] leading-tight mt-0.5 text-muted-foreground">
             {description}
           </span>
         )}
@@ -1570,31 +1499,19 @@ function MessageBubble({
         )}
       <div className={clsx("flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
         {!isUser && (
-          <div
-            className="w-7 h-7 shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5"
-            style={{
-              background: "#EDE6D3",
-              color: "#5A5A5A",
-              border: "2px solid #0D0D0D",
-              borderRadius: "50%",
-            }}
-          >
-            <span className="text-xs leading-none">🎓</span>
+          <div className="size-9 shrink-0 grid place-items-center bg-accent-yellow border-2 border-ink neo-shadow-sm mt-0.5">
+            <Sparkles className="size-4" strokeWidth={2.5} />
           </div>
         )}
         <div className={clsx("flex flex-col gap-1 max-w-[88%]", isUser && "items-end")}>
           <div
             ref={boxRef}
             onPointerDown={spawnRipple}
-            className="relative overflow-hidden px-5 py-3 text-[15px] font-dm leading-7"
-            style={{
-              background: isUser ? "#0D0D0D" : "#FFFFFF",
-              color: isUser ? "#fff" : "#0D0D0D",
-              border: "2px solid #0D0D0D",
-              boxShadow: "3px 3px 0 #0D0D0D",
-              borderRadius: "8px",
-              minHeight: isStreaming ? "100px" : "auto",
-            }}
+            className={clsx(
+              "relative overflow-hidden px-5 py-3 text-[15px] leading-7 border-2 border-ink neo-shadow",
+              isUser ? "bg-ink text-paper font-medium" : "bg-paper-2 text-ink"
+            )}
+            style={{ minHeight: isStreaming ? "100px" : "auto" }}
           >
             {ripples.map((r) => (
               <span
@@ -1632,12 +1549,51 @@ function MessageBubble({
   );
 }
 
+// ── Session header (black branded bar above the stream) ───────────────────────
+
+function SessionHeader({ session }: { session: Session }) {
+  const [groupName, setGroupName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    import("@/lib/api")
+      .then(({ groupsApi }) => (session.group_id ? groupsApi.list() : null))
+      .then((r) => {
+        if (!alive) return;
+        setGroupName(r?.data.find((g) => g.id === session.group_id)?.name ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [session.group_id]);
+
+  return (
+    <div className="shrink-0 relative flex items-center gap-4 px-6 py-4 bg-ink text-paper border-b-2 border-ink font-space">
+      <div className="size-9 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+        <MessageSquare className="size-5 text-paper" strokeWidth={2.5} />
+      </div>
+      <div className="min-w-0">
+        <h1 className="text-xl font-bold tracking-tight truncate leading-tight">{session.title}</h1>
+        <p className="text-xs truncate mt-0.5 text-paper/70">
+          Active session{groupName ? ` · ${groupName} group` : ""}
+        </p>
+      </div>
+      <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-accent-orange" />
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
   const [stream, setStream] = useState<ChatItem[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [launching, setLaunching] = useState(false);
+  const [flyPos, setFlyPos] = useState<{ x: number; y: number } | null>(null);
+  const sendBtnRef = useRef<HTMLButtonElement>(null);
   const [urls, setUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -1758,6 +1714,8 @@ export default function ChatPage() {
     }
 
     threadId.current = activeSessionId;
+    setStream([]);
+    setMessagesLoading(true);
     import("../../lib/api").then(({ sessionsApi, hitlApi }) =>
       sessionsApi
         .listMessages(activeSessionId)
@@ -1803,7 +1761,16 @@ export default function ChatPage() {
             // messages still load fine, so degrade silently.
           }
           blocks.sort((a, b) => a.ts - b.ts);
-          const items = blocks.flatMap((b) => b.items);
+          // Dedupe by id — a resolved gate's result card can be rebuilt by both
+          // the message replay and the HITL restore, which would collide on key.
+          const seenIds = new Set<string>();
+          const items = blocks
+            .flatMap((b) => b.items)
+            .filter((it) => {
+              if (seenIds.has(it.id)) return false;
+              seenIds.add(it.id);
+              return true;
+            });
           setStream(items);
           // Restored runs are already finished → collapse their activity cards.
           setCollapsedPhases(new Set(items.filter((i) => i.type === "phase").map((i) => i.id)));
@@ -1811,8 +1778,12 @@ export default function ChatPage() {
           // Re-surface a pending HITL gate if this session paused awaiting input.
           // eslint-disable-next-line react-hooks/immutability
           checkHITL();
+          setMessagesLoading(false);
         })
-        .catch((err) => console.error("[chat] load session messages error", err))
+        .catch((err) => {
+          console.error("[chat] load session messages error", err);
+          setMessagesLoading(false);
+        })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
@@ -2280,92 +2251,102 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: "#F7F0E3" }}>
-      {/* Session title bar */}
-      {activeSession && (
-        <div
-          className="shrink-0 flex items-center gap-2 px-4 py-2"
-          style={{ borderBottom: "1.5px solid #E0D8CA", background: "#F7F0E3" }}
-        >
-          <span className="text-sm font-space font-semibold truncate" style={{ color: "#0D0D0D" }}>
-            {activeSession.title}
-          </span>
-        </div>
-      )}
+      {/* Session header */}
+      {activeSession && <SessionHeader session={activeSession} />}
 
       {/* Stream */}
       <div className="flex-1 overflow-y-auto py-6">
         <div className="max-w-3xl mx-auto px-4 space-y-1">
-          {stream.length === 0 && (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center py-6">
-              <div
-                className="w-12 h-12 flex items-center justify-center mb-4"
-                style={{
-                  background: "#E8472A",
-                  border: "2px solid #0D0D0D",
-                  boxShadow: "3px 3px 0 #0D0D0D",
-                  borderRadius: "50%",
-                }}
-              >
-                <Icon icon="solar:diploma-bold" width={22} style={{ color: "#FFFFFF" }} />
+          {messagesLoading && (
+            <div className="flex flex-col gap-6 py-2">
+              <div className="flex justify-end">
+                <Skeleton className="h-11 w-2/5 border-2 border-ink" />
               </div>
-              <h2 className="font-bold font-space text-lg mb-1" style={{ color: "#0D0D0D" }}>
-                Grad Paddy is ready
-              </h2>
-              <p className="text-sm font-dm mb-6 max-w-md mx-auto" style={{ color: "#5A5A5A" }}>
+              <div className="flex gap-3">
+                <Skeleton className="size-9 shrink-0 border-2 border-ink" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <Skeleton className="h-3 w-11/12" />
+                  <Skeleton className="h-3 w-4/5" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Skeleton className="h-10 w-1/3 border-2 border-ink" />
+              </div>
+              <div className="flex gap-3">
+                <Skeleton className="size-9 shrink-0 border-2 border-ink" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <Skeleton className="h-3 w-5/6" />
+                  <Skeleton className="h-3 w-3/4" />
+                </div>
+              </div>
+            </div>
+          )}
+          {!messagesLoading && stream.length === 0 && (
+            <div className="flex flex-col items-center justify-center min-h-[70vh] text-center py-10 max-w-2xl mx-auto">
+              {/* Hero mark */}
+              <div className="relative mb-6">
+                <div className="size-16 grid place-items-center bg-accent-orange border-2 border-ink neo-shadow text-paper">
+                  <GraduationCap className="size-8" strokeWidth={2.5} />
+                </div>
+                <div className="absolute -top-2 -right-2 size-6 grid place-items-center bg-accent-yellow border-2 border-ink">
+                  <Sparkles className="size-3.5" strokeWidth={2.5} />
+                </div>
+              </div>
+              <h2 className="font-bold text-3xl tracking-tight mb-2">Grad Paddy is ready</h2>
+              <p className="text-sm text-muted-foreground mb-8 max-w-md mx-auto leading-relaxed">
                 Your AI co-pilot for grad school — research faculty, build a shortlist, track
                 applications, and draft outreach, all from one chat.
               </p>
 
-              {/* Workflow path */}
-              <div className="w-full max-w-lg mb-6">
-                <p
-                  className="text-[10px] font-semibold uppercase tracking-widest font-space mb-2 text-left"
-                  style={{ color: "#9CA3AF" }}
-                >
+              {/* How it works */}
+              <div className="w-full mb-8">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3 text-left">
                   How it works
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     {
-                      icon: "solar:magnifer-bold",
+                      Icon: Search,
                       label: "Research",
                       desc: "Find faculty & programs",
+                      cls: "bg-accent-orange text-paper",
                     },
-                    { icon: "solar:star-bold", label: "Shortlist", desc: "Save the best fits" },
-                    { icon: "solar:calendar-bold", label: "Track", desc: "Manage deadlines" },
-                    { icon: "solar:document-text-bold", label: "Draft", desc: "SOPs & outreach" },
+                    {
+                      Icon: Star,
+                      label: "Shortlist",
+                      desc: "Save the best fits",
+                      cls: "bg-accent-yellow text-ink",
+                    },
+                    {
+                      Icon: Calendar,
+                      label: "Track",
+                      desc: "Manage deadlines",
+                      cls: "bg-accent-teal text-ink",
+                    },
+                    {
+                      Icon: FileText,
+                      label: "Draft",
+                      desc: "SOPs & outreach",
+                      cls: "bg-ink text-paper",
+                    },
                   ].map((step, i) => (
                     <div
                       key={step.label}
-                      className="flex flex-col items-center text-center px-2 py-3"
-                      style={{
-                        background: "#FFFFFF",
-                        border: "2px solid #0D0D0D",
-                        boxShadow: "2px 2px 0 #0D0D0D",
-                        borderRadius: "4px",
-                      }}
+                      className="neo-card neo-hover p-4 flex flex-col items-center text-center"
                     >
                       <div
-                        className="w-7 h-7 flex items-center justify-center mb-1.5"
-                        style={{
-                          background: "#F7F0E3",
-                          border: "1.5px solid #0D0D0D",
-                          borderRadius: "50%",
-                          color: "#E8472A",
-                        }}
+                        className={clsx(
+                          "size-10 grid place-items-center border-2 border-ink mb-2",
+                          step.cls
+                        )}
                       >
-                        <Icon icon={step.icon} width={14} />
+                        <step.Icon className="size-5" strokeWidth={2.5} />
                       </div>
-                      <span
-                        className="text-xs font-bold font-space leading-none mb-0.5"
-                        style={{ color: "#0D0D0D" }}
-                      >
+                      <span className="text-sm font-bold leading-none mb-1">
                         {i + 1}. {step.label}
                       </span>
-                      <span
-                        className="text-[10px] font-dm leading-tight"
-                        style={{ color: "#9CA3AF" }}
-                      >
+                      <span className="text-[11px] text-muted-foreground leading-tight">
                         {step.desc}
                       </span>
                     </div>
@@ -2374,34 +2355,27 @@ export default function ChatPage() {
               </div>
 
               {/* Try asking */}
-              <div className="w-full max-w-lg">
-                <p
-                  className="text-[10px] font-semibold uppercase tracking-widest font-space mb-2 text-left"
-                  style={{ color: "#9CA3AF" }}
-                >
+              <div className="w-full">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3 text-left">
                   Try asking
                 </p>
-                <div className="flex flex-wrap gap-2 justify-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
-                    "Find NLP professors at MIT and Stanford",
-                    "Draft an SOP for CMU LTI",
-                    "Who is hiring in ML systems?",
-                  ].map((prompt) => (
+                    { Icon: Search, text: "Find NLP professors at MIT and Stanford" },
+                    { Icon: FileText, text: "Draft an SOP for CMU LTI" },
+                    { Icon: Star, text: "Who is hiring in ML systems?" },
+                    { Icon: Calendar, text: "What deadlines do I have this month?" },
+                  ].map((p) => (
                     <button
-                      key={prompt}
+                      key={p.text}
                       onClick={() => {
-                        setInput(prompt);
+                        setInput(p.text);
                         textareaRef.current?.focus();
                       }}
-                      className="text-xs font-dm px-3 py-1.5 bouncy"
-                      style={{
-                        background: "#FFFFFF",
-                        border: "1.5px solid #0D0D0D",
-                        borderRadius: "4px",
-                        color: "#5A5A5A",
-                      }}
+                      className="text-left p-4 bg-paper-2 border-2 border-ink neo-shadow-sm neo-hover text-sm font-medium flex items-center gap-3"
                     >
-                      {prompt}
+                      <p.Icon className="size-4 text-accent-orange shrink-0" strokeWidth={2.5} />
+                      {p.text}
                     </button>
                   ))}
                 </div>
@@ -2568,14 +2542,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div
-          className="bg-white overflow-hidden"
-          style={{
-            border: "2px solid #0D0D0D",
-            boxShadow: "4px 4px 0 #0D0D0D",
-            borderRadius: "18px",
-          }}
-        >
+        <div className="bg-paper-2 border-2 border-ink neo-shadow overflow-hidden">
           <textarea
             ref={textareaRef}
             value={input}
@@ -2587,90 +2554,107 @@ export default function ChatPage() {
               }
             }}
             placeholder={
-              inputBlocked ? "Type to queue — sends when agent finishes..." : "Ask Grad Paddy..."
+              inputBlocked ? "Type to queue — sends when agent finishes..." : "Ask Grad Paddy…"
             }
             rows={2}
-            className="w-full px-4 pt-3.5 pb-1 text-sm font-dm bg-transparent resize-none outline-none"
-            style={{ color: "#0D0D0D" }}
+            className="w-full px-5 py-4 text-[15px] bg-transparent resize-none outline-none text-ink placeholder:text-muted-foreground"
           />
-          <div className="flex items-center justify-between px-3 pb-3">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2 px-3 py-2 border-t-2 border-ink">
+            <button
+              onClick={() => setShowUrlInput(!showUrlInput)}
+              title="Add URL"
+              className={clsx(
+                "size-8 grid place-items-center border-2 border-ink transition-colors",
+                showUrlInput ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"
+              )}
+            >
+              <Link2 className="size-4" />
+            </button>
+            <button
+              onClick={() => setShowEvents((v) => !v)}
+              title={showEvents ? "Hide agent events" : "Show agent events"}
+              className={clsx(
+                "size-8 grid place-items-center border-2 border-ink transition-colors",
+                showEvents ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"
+              )}
+            >
+              {showEvents ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+            </button>
+            <button
+              onClick={() => toggleAutoApprove(!autoApprove)}
+              title={
+                autoApprove
+                  ? "Agent acts without asking — click to require approval"
+                  : "Agent asks before changes — click to always allow"
+              }
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-1.5 border-2 border-ink text-xs font-bold transition-colors",
+                autoApprove ? "bg-accent-teal text-ink" : "bg-paper-2 hover:bg-paper"
+              )}
+            >
+              {autoApprove ? (
+                <ShieldCheck className="size-3.5" />
+              ) : (
+                <ShieldQuestion className="size-3.5" />
+              )}
+              {autoApprove ? "Always allow" : "Ask before changes"}
+            </button>
+            <div className="ml-auto">
               <button
-                onClick={() => setShowUrlInput(!showUrlInput)}
-                className="p-2 bouncy"
-                style={{
-                  border: "1.5px solid #0D0D0D",
-                  background: showUrlInput ? "#0D0D0D" : "#F7F0E3",
-                  color: showUrlInput ? "#fff" : "#9CA3AF",
-                  borderRadius: "4px",
+                ref={sendBtnRef}
+                onClick={() => {
+                  if (!inputBlocked && (input.trim() || urls.length > 0)) {
+                    const el = sendBtnRef.current;
+                    if (el) {
+                      const r = el.getBoundingClientRect();
+                      setFlyPos({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+                    }
+                    setLaunching(true);
+                    setTimeout(() => {
+                      setLaunching(false);
+                      setFlyPos(null);
+                    }, 950);
+                  }
+                  send();
                 }}
-                title="Add URL"
+                disabled={!input.trim() && urls.length === 0}
+                className={clsx(
+                  "rocket-btn relative inline-flex items-center gap-2 font-bold border-2 border-ink neo-shadow-sm px-3.5 py-2 text-sm bg-accent-orange text-white transition-transform active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed",
+                  launching && "launching"
+                )}
               >
-                <Icon icon="solar:link-bold" width={14} />
-              </button>
-              <button
-                onClick={() => setShowEvents((v) => !v)}
-                className="p-2 bouncy"
-                style={{
-                  border: "1.5px solid #0D0D0D",
-                  background: "#F7F0E3",
-                  color: showEvents ? "#0D0D0D" : "#B0A898",
-                  borderRadius: "4px",
-                }}
-                title={showEvents ? "Hide agent events" : "Show agent events"}
-              >
-                <Icon icon={showEvents ? "solar:eye-bold" : "solar:eye-closed-bold"} width={14} />
-              </button>
-              <button
-                onClick={() => toggleAutoApprove(!autoApprove)}
-                className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold font-space bouncy"
-                style={{
-                  border: "1.5px solid #0D0D0D",
-                  background: autoApprove ? "#4ECDC4" : "#F7F0E3",
-                  color: autoApprove ? "#0D0D0D" : "#5A5A5A",
-                  borderRadius: "4px",
-                }}
-                title={
-                  autoApprove
-                    ? "Agent acts without asking — click to require approval"
-                    : "Agent asks before changes — click to always allow"
-                }
-              >
-                <Icon
-                  icon={autoApprove ? "solar:shield-check-bold" : "solar:shield-keyhole-bold"}
-                  width={14}
-                />
-                {autoApprove ? "Always allow" : "Ask before changes"}
+                <span className="relative inline-flex items-center">
+                  <span className="rocket-flame absolute top-1/2 right-full mr-1 -translate-y-1/2 pointer-events-none" />
+                  {inputBlocked ? (
+                    <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                  ) : (
+                    <Rocket className="rocket-ico size-4" />
+                  )}
+                </span>
+                {inputBlocked ? "Queue" : "Send"}
               </button>
             </div>
-            <button
-              onClick={send}
-              disabled={!input.trim() && urls.length === 0}
-              className={clsx(
-                "flex items-center gap-1.5 btn-sm font-space font-semibold text-xs bouncy",
-                input.trim() || urls.length > 0 ? "btn-coral" : "btn-cream"
-              )}
-              style={
-                !(input.trim() || urls.length > 0)
-                  ? { color: "#B0A898", cursor: "not-allowed" }
-                  : undefined
-              }
-            >
-              {inputBlocked ? (
-                <>
-                  <Icon icon="solar:spinner-bold" width={13} className="animate-spin" />
-                  Queue
-                </>
-              ) : (
-                <>
-                  <Icon icon="solar:arrow-right-up-bold" width={13} />
-                  Send
-                </>
-              )}
-            </button>
           </div>
         </div>
       </div>
+
+      {/* Real rocket that flies off-screen on launch */}
+      {flyPos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed z-[100] pointer-events-none rocket-fly"
+            style={{ left: flyPos.x, top: flyPos.y }}
+          >
+            <span className="rocket-launch-flame" />
+            <Rocket
+              className="size-7 text-accent-orange"
+              strokeWidth={2.5}
+              style={{ filter: "drop-shadow(2px 2px 0 #1d1a16)" }}
+            />
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
