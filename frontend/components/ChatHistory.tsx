@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
+import { ChevronDown, Plus, Star, Folder, Trash2, MoreVertical } from "lucide-react";
 import clsx from "clsx";
 import { useChatSessions } from "@/context/ChatSessionsContext";
 import { SidebarSkeleton } from "@/components/Skeleton";
@@ -70,17 +71,23 @@ export default function ChatHistory({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [panelOpen, setPanelOpen] = useState(true);
   const [height, setHeight] = useState(340);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
     const startY = e.clientY;
     const startH = height;
+    // Cap growth to the flex spacer above us + our current height = all the free
+    // space between the nav and the footer. Growing past this collapses the
+    // spacer and pushes the profile footer off-screen, so clamp to it.
+    const spacer = rootRef.current?.previousElementSibling as HTMLElement | null;
+    const maxH = Math.max(140, (spacer?.offsetHeight ?? 0) + startH);
     document.body.style.userSelect = "none";
     document.body.style.cursor = "row-resize";
     function move(ev: MouseEvent) {
       // Drag up grows the panel.
       const next = startH + (startY - ev.clientY);
-      setHeight(Math.min(Math.max(140, next), window.innerHeight * 0.75));
+      setHeight(Math.min(Math.max(140, next), maxH));
     }
     function up() {
       document.removeEventListener("mousemove", move);
@@ -265,10 +272,14 @@ export default function ChatHistory({
 
   return (
     <div
-      className={clsx("flex flex-col", fill ? "flex-1 min-h-0" : "flex-shrink-0")}
+      ref={rootRef}
+      className={clsx("flex flex-col min-h-0", fill ? "flex-1" : "shrink")}
       style={{
         borderTop: "2px solid #0D0D0D",
-        height: !fill && panelOpen ? height : undefined,
+        // Preferred height when open, but allowed to shrink (min-h-0 + shrink) so
+        // a short viewport collapses the list's scroll area instead of pushing
+        // the profile footer off-screen.
+        flexBasis: !fill && panelOpen ? height : undefined,
       }}
     >
       {/* Resize handle (drag to adjust height) — desktop only */}
@@ -285,52 +296,26 @@ export default function ChatHistory({
       <div className="flex items-center justify-between gap-1 px-2 py-1.5 flex-shrink-0">
         <button
           onClick={() => setPanelOpen((v) => !v)}
-          className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1.5 bouncy"
-          style={{ borderRadius: "6px", color: "#5A5A5A" }}
+          className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 transition-colors hover:bg-paper"
           title={panelOpen ? "Collapse chats" : "Expand chats"}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#EDE6D3")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "")}
         >
-          <span
-            className="flex items-center justify-center w-4 h-4 shrink-0"
-            style={{ border: "1.5px solid #0D0D0D", borderRadius: "4px", background: "#FFFFFF" }}
-          >
-            <Icon
-              icon="solar:alt-arrow-down-bold"
-              width={11}
-              className={clsx("transition-transform duration-150", !panelOpen && "-rotate-90")}
-              style={{ color: "#0D0D0D" }}
-            />
-          </span>
-          <span
-            className="text-[11px] font-bold uppercase tracking-widest font-space"
-            style={{ color: "#0D0D0D" }}
-          >
-            Chats
-          </span>
-          <span
-            className="text-[10px] font-mono px-1.5 rounded-full"
-            style={{ background: "#FFFFFF", border: "1px solid #C8C0AF", color: "#9CA3AF" }}
-          >
+          <ChevronDown
+            strokeWidth={2.5}
+            className={clsx(
+              "size-4 shrink-0 text-ink transition-transform duration-150",
+              !panelOpen && "-rotate-90"
+            )}
+          />
+          <span className="text-sm font-bold uppercase tracking-wide text-ink">Chats</span>
+          <span className="text-[11px] font-mono px-1.5 py-0.5 border-2 border-ink text-ink">
             {sessions.length}
           </span>
         </button>
         <button
           onClick={() => newChat(null)}
-          className="bouncy flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space"
-          style={{ color: "#9CA3AF", borderRadius: "4px", border: "1.5px solid transparent" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#EDE6D3";
-            e.currentTarget.style.color = "#0D0D0D";
-            e.currentTarget.style.border = "1.5px solid #0D0D0D";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "";
-            e.currentTarget.style.color = "#9CA3AF";
-            e.currentTarget.style.border = "1.5px solid transparent";
-          }}
+          className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-accent-orange hover:underline"
         >
-          <Icon icon="solar:add-circle-bold" width={11} />
+          <Plus className="size-3.5" />
           New Chat
         </button>
       </div>
@@ -340,13 +325,13 @@ export default function ChatHistory({
           {sessionsLoading ? (
             <SidebarSkeleton />
           ) : sessions.length === 0 && groups.length === 0 ? (
-            <p className="text-[11px] font-dm text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
+            <p className="text-[11px] text-center py-4 px-4" style={{ color: "#9CA3AF" }}>
               No chats yet
             </p>
           ) : (
             <>
               {starred.length > 0 && (
-                <Section label="Starred" icon="solar:star-bold">
+                <Section label="Starred" accent>
                   {starred.map(renderRow)}
                 </Section>
               )}
@@ -354,10 +339,7 @@ export default function ChatHistory({
               {groups.length > 0 && (
                 <div className="pt-1">
                   <div className="px-4 pt-2 pb-1">
-                    <span
-                      className="text-[10px] font-semibold uppercase tracking-widest font-space"
-                      style={{ color: "#9CA3AF" }}
-                    >
+                    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                       Groups
                     </span>
                   </div>
@@ -376,10 +358,7 @@ export default function ChatHistory({
                         {items.length > 0 ? (
                           items.map(renderRow)
                         ) : (
-                          <p
-                            className="text-[11px] font-dm px-4 py-1.5"
-                            style={{ color: "#B0A898" }}
-                          >
+                          <p className="text-[11px] px-4 py-1.5" style={{ color: "#B0A898" }}>
                             No chats yet
                           </p>
                         )}
@@ -460,35 +439,34 @@ export default function ChatHistory({
 
 function Section({
   label,
-  icon,
+  accent,
   onDelete,
   children,
 }: {
   label: string;
-  icon?: string;
+  accent?: boolean;
   onDelete?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <div className="mt-1">
       <div className="group/section flex items-center justify-between px-4 pt-2 pb-1">
         <span
-          className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest font-space truncate"
-          style={{ color: "#B0A898" }}
+          className={clsx(
+            "flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] truncate",
+            accent ? "text-accent-orange" : "text-muted-foreground"
+          )}
         >
-          {icon && <Icon icon={icon} width={11} style={{ color: "#E8472A" }} />}
+          {accent && <Star className="size-3 shrink-0 fill-current" />}
           {label}
         </span>
         {onDelete && (
           <button
             onClick={onDelete}
             title="Delete group"
-            className="shrink-0 opacity-0 group-hover/section:opacity-100 transition-opacity p-0.5 bouncy"
-            style={{ color: "#B0A898", borderRadius: "4px" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#E8472A")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+            className="shrink-0 opacity-0 group-hover/section:opacity-100 transition-opacity p-0.5 text-muted-foreground hover:text-accent-orange"
           >
-            <Icon icon="solar:trash-bin-trash-bold" width={12} />
+            <Trash2 className="size-3" />
           </button>
         )}
       </div>
@@ -519,33 +497,19 @@ function GroupFolder({
   return (
     <div>
       <div
-        className="group/folder flex items-center gap-1.5 px-4 py-1 cursor-pointer select-none"
+        className="group/folder flex items-center gap-2 px-4 py-1.5 cursor-pointer select-none transition-colors hover:bg-paper"
         onClick={onToggle}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "#EDE6D3")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
       >
-        <Icon
-          icon="solar:alt-arrow-down-bold"
-          width={11}
-          className={clsx("shrink-0 transition-transform duration-150", !open && "-rotate-90")}
-          style={{ color: "#B0A898" }}
+        <ChevronDown
+          strokeWidth={2.5}
+          className={clsx(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
+            !open && "-rotate-90"
+          )}
         />
-        <Icon
-          icon="solar:folder-bold"
-          width={12}
-          className="shrink-0"
-          style={{ color: "#E8472A" }}
-        />
-        <span
-          className="flex-1 min-w-0 text-[12px] font-semibold font-space truncate"
-          style={{ color: "#0D0D0D" }}
-        >
-          {group.name}
-        </span>
-        <span
-          className="text-[10px] font-mono shrink-0 group-hover/folder:hidden"
-          style={{ color: "#B0A898" }}
-        >
+        <Folder className="size-4 shrink-0 text-accent-orange" />
+        <span className="flex-1 min-w-0 text-sm font-bold truncate text-ink">{group.name}</span>
+        <span className="text-[11px] font-mono shrink-0 px-1.5 border-2 border-ink text-ink group-hover/folder:hidden">
           {count}
         </span>
         <button
@@ -554,12 +518,9 @@ function GroupFolder({
             onNewChat();
           }}
           title="New chat in this group"
-          className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity p-0.5 bouncy"
-          style={{ color: "#B0A898", borderRadius: "4px" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#0D0D0D")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+          className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity p-0.5 text-muted-foreground hover:text-ink"
         >
-          <Icon icon="solar:add-circle-bold" width={13} />
+          <Plus className="size-3.5" />
         </button>
         <button
           onClick={(e) => {
@@ -567,15 +528,12 @@ function GroupFolder({
             onDelete();
           }}
           title="Delete group"
-          className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity p-0.5 bouncy"
-          style={{ color: "#B0A898", borderRadius: "4px" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#E8472A")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+          className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity p-0.5 text-muted-foreground hover:text-accent-orange"
         >
-          <Icon icon="solar:trash-bin-trash-bold" width={12} />
+          <Trash2 className="size-3.5" />
         </button>
       </div>
-      {open && children}
+      {open && <div className="ml-4 border-l-2 border-cream-dark">{children}</div>}
     </div>
   );
 }
@@ -628,36 +586,21 @@ function Row({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onSelect();
       }}
-      className="group flex items-center gap-2 px-4 py-1.5 bouncy w-full text-left cursor-pointer"
-      style={{
-        borderLeft: `3px solid ${active ? "#E8472A" : "transparent"}`,
-        background: active ? "#EDE6D3" : "transparent",
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = "#EDE6D3";
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = "";
-      }}
+      className={clsx(
+        "group flex items-center gap-2 px-4 py-1.5 w-full text-left cursor-pointer border-l-2 transition-colors",
+        active ? "bg-accent-yellow border-accent-orange" : "border-transparent hover:bg-paper"
+      )}
     >
       {session.starred && (
-        <Icon icon="solar:star-bold" width={11} className="shrink-0" style={{ color: "#E8472A" }} />
+        <Star className="size-3.5 shrink-0 fill-accent-orange text-accent-orange" />
       )}
-      <span
-        className="flex-1 min-w-0 text-[12px] font-dm truncate"
-        style={{ color: active ? "#0D0D0D" : "#5A5A5A" }}
-      >
-        {session.title}
-      </span>
+      <span className="flex-1 min-w-0 text-xs font-medium truncate text-ink">{session.title}</span>
       <button
         onClick={onMenu}
         title="Options"
-        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 bouncy"
-        style={{ color: "#B0A898", borderRadius: "4px" }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#0D0D0D")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#B0A898")}
+        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-ink"
       >
-        <Icon icon="solar:menu-dots-bold" width={15} />
+        <MoreVertical className="size-4" />
       </button>
     </div>
   );
@@ -689,7 +632,7 @@ function ContextMenu({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [onClose]);
 
-  const item = "w-full flex items-center gap-2 px-3 py-2 text-xs font-dm text-left bouncy";
+  const item = "w-full flex items-center gap-2 px-3 py-2 text-xs font-space text-left bouncy";
   const width = 184;
   const left = Math.max(8, Math.min(state.x - width, window.innerWidth - width - 8));
   const top = Math.min(state.y + 4, window.innerHeight - 180);

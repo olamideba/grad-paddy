@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Icon } from "@iconify/react";
+import { Folder, UploadCloud, FileText, Eye, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import type { CV } from "../../lib/api";
 import ConfirmModal from "@/components/ConfirmModal";
 import { SkeletonCardGrid } from "@/components/Skeleton";
+import { NeoButton } from "@/components/Neo";
 
 const ACCEPT = ".pdf,.doc,.docx";
 
@@ -20,11 +21,6 @@ function timeAgo(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
   return `${Math.floor(mins / 1440)}d ago`;
-}
-
-function fileIcon(contentType: string): string {
-  if (contentType.includes("pdf")) return "solar:file-text-bold";
-  return "solar:document-bold";
 }
 
 export default function DocumentsPage() {
@@ -114,166 +110,129 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#F7F0E3" }}>
-      {/* Header — black */}
-      <div
-        className="px-4 sm:px-6 py-4 shrink-0"
-        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1
-              className="text-sm font-bold font-space flex items-center gap-2"
-              style={{ color: "#FFFFFF" }}
-            >
-              <Icon icon="solar:folder-with-files-bold" width={15} style={{ color: "#E8472A" }} />
-              Documents
-            </h1>
-            <p
-              className="text-xs font-dm mt-0.5 truncate"
-              style={{ color: "rgba(255,255,255,0.45)" }}
-            >
-              {loading ? "Loading…" : `${cvs.length} resume${cvs.length === 1 ? "" : "s"}`}
-            </p>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <input
-              ref={fileRef}
-              type="file"
-              accept={ACCEPT}
-              onChange={handleFile}
-              className="hidden"
-            />
-            <button
-              className="btn-coral btn-sm"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-              ) : (
-                <Icon icon="solar:upload-bold" width={14} />
-              )}
-              <span className="text-sm hidden sm:inline">
-                {uploading ? "Uploading…" : "Upload CV"}
-              </span>
-            </button>
-          </div>
+    <div className="flex flex-col h-full overflow-hidden bg-paper font-space">
+      {/* Header — black branded bar */}
+      <div className="px-6 py-4 shrink-0 relative flex items-center gap-4 bg-ink text-paper border-b-2 border-ink">
+        <div className="size-9 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+          <Folder className="size-5 text-paper" strokeWidth={2.5} />
         </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight leading-tight">Documents</h1>
+          <p className="text-xs mt-0.5 truncate text-paper/70">
+            {loading ? "Loading…" : `${cvs.length} resume${cvs.length === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <input ref={fileRef} type="file" accept={ACCEPT} onChange={handleFile} className="hidden" />
+        <NeoButton
+          variant="primary"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="shrink-0"
+        >
+          {uploading ? (
+            <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+          ) : (
+            <UploadCloud className="size-4" />
+          )}
+          <span className="hidden sm:inline">{uploading ? "Uploading…" : "Upload CV"}</span>
+        </NeoButton>
+        <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-accent-orange" />
       </div>
 
       {error && (
-        <div
-          className="px-4 sm:px-6 py-2 shrink-0 text-xs font-dm flex items-center gap-2"
-          style={{ background: "#FFF0ED", borderBottom: "2px solid #E8472A", color: "#E8472A" }}
-        >
-          <Icon icon="solar:danger-triangle-bold" width={14} />
+        <div className="px-6 py-2 shrink-0 text-xs flex items-center gap-2 bg-[#FFF0ED] border-b-2 border-accent-orange text-accent-orange">
+          <AlertTriangle className="size-3.5" strokeWidth={2.5} />
           {error}
         </div>
       )}
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Dropzone */}
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="neo-card p-8 border-dashed text-center bg-paper-2 w-full block hover:bg-paper transition-colors"
+        >
+          <div className="mx-auto size-14 bg-accent-yellow border-2 border-ink grid place-items-center mb-3">
+            <UploadCloud className="size-6" strokeWidth={2.5} />
+          </div>
+          <div className="font-bold text-lg">Drop a PDF or DOCX here</div>
+          <div className="text-sm text-muted-foreground mt-1">
+            Or click upload — agents will use your latest CV automatically.
+          </div>
+        </button>
+
         {loading ? (
           <SkeletonCardGrid
             count={6}
-            gridClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            gridClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
           />
         ) : cvs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <Icon
-              icon="solar:folder-with-files-bold"
-              width={36}
-              style={{ color: "#B0A898" }}
-              className="mb-3"
-            />
-            <p className="font-semibold font-space" style={{ color: "#5A5A5A" }}>
-              No resumes yet
-            </p>
-            <p className="text-sm font-dm mt-1 mb-4" style={{ color: "#9CA3AF" }}>
-              Upload a PDF or Word resume to attach it to your applications.
-            </p>
-            <button className="btn-coral btn-sm" onClick={() => fileRef.current?.click()}>
-              <Icon icon="solar:upload-bold" width={14} />
-              Upload CV
-            </button>
-          </div>
+          <p className="text-center text-sm text-muted-foreground py-4">
+            No resumes yet — upload one to attach it to your applications.
+          </p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cvs.map((cv) => {
-              return (
-                <div key={cv.id} className="card-brutal flex flex-col p-4">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="w-9 h-9 flex items-center justify-center shrink-0"
-                      style={{
-                        background: "#4ECDC4",
-                        border: "2px solid #0D0D0D",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      <Icon
-                        icon={fileIcon(cv.content_type)}
-                        width={18}
-                        style={{ color: "#0D0D0D" }}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {cvs.map((cv) => (
+              <article key={cv.id} className="neo-card overflow-hidden">
+                <div className="p-4 flex gap-3">
+                  <div className="size-12 bg-accent-teal border-2 border-ink grid place-items-center shrink-0">
+                    <FileText className="size-5" strokeWidth={2.5} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {renamingId === cv.id ? (
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onBlur={() => commitRename(cv)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename(cv);
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                        className="input-brutal w-full text-sm py-1"
                       />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      {renamingId === cv.id ? (
-                        <input
-                          autoFocus
-                          value={renameDraft}
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          onBlur={() => commitRename(cv)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") commitRename(cv);
-                            if (e.key === "Escape") setRenamingId(null);
-                          }}
-                          className="input-brutal w-full text-sm py-1"
-                        />
-                      ) : (
-                        <div
-                          className="text-sm font-bold font-space truncate"
-                          style={{ color: "#0D0D0D" }}
-                          title={cv.title}
-                        >
-                          {cv.title}
-                        </div>
-                      )}
-                      <div className="text-xs font-dm mt-0.5 truncate" style={{ color: "#9CA3AF" }}>
-                        {cv.filename} · {formatSize(cv.size)}
+                    ) : (
+                      <div className="font-bold truncate" title={cv.title}>
+                        {cv.title}
                       </div>
+                    )}
+                    <div className="text-xs text-muted-foreground font-mono truncate">
+                      {cv.filename} · {formatSize(cv.size)}
                     </div>
-                  </div>
-
-                  <div className="mt-3 text-[11px] font-dm" style={{ color: "#B0A898" }}>
-                    {timeAgo(cv.updated_at)}
-                  </div>
-
-                  <div
-                    className="flex items-center gap-1 mt-3 pt-3"
-                    style={{ borderTop: "1px solid #EDE6D3" }}
-                  >
-                    <CardAction
-                      icon={busyId === cv.id ? "svg-spinners:ring-resize" : "solar:eye-bold"}
-                      label="Open"
-                      onClick={() => openCv(cv)}
-                    />
-                    <CardAction
-                      icon="solar:pen-bold"
-                      label="Rename"
-                      onClick={() => startRename(cv)}
-                    />
-                    <CardAction
-                      icon="solar:trash-bin-trash-bold"
-                      label="Delete"
-                      onClick={() => setConfirmDelete(cv)}
-                      danger
-                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {timeAgo(cv.updated_at)}
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+                <div className="grid grid-cols-3 border-t-2 border-ink divide-x-2 divide-ink">
+                  <button
+                    onClick={() => openCv(cv)}
+                    className="py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-paper transition-colors"
+                  >
+                    {busyId === cv.id ? (
+                      <span className="size-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                    ) : (
+                      <Eye className="size-3.5" />
+                    )}{" "}
+                    Open
+                  </button>
+                  <button
+                    onClick={() => startRename(cv)}
+                    className="py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-paper transition-colors"
+                  >
+                    <Pencil className="size-3.5" /> Rename
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(cv)}
+                    className="py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 text-accent-orange hover:bg-accent-orange hover:text-white transition-colors"
+                  >
+                    <Trash2 className="size-3.5" /> Delete
+                  </button>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </div>
@@ -288,40 +247,5 @@ export default function DocumentsPage() {
         />
       )}
     </div>
-  );
-}
-
-function CardAction({
-  icon,
-  label,
-  onClick,
-  danger,
-  accent,
-}: {
-  icon: string;
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-  accent?: boolean;
-}) {
-  const color = danger ? "#E8472A" : accent ? "#0D0D0D" : "#5A5A5A";
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold font-space bouncy"
-      style={{ color, border: "1.5px solid transparent", borderRadius: "4px" }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = danger ? "#FFF0ED" : "#EDE6D3";
-        e.currentTarget.style.border = `1.5px solid ${danger ? "#E8472A" : "#0D0D0D"}`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "";
-        e.currentTarget.style.border = "1.5px solid transparent";
-      }}
-    >
-      <Icon icon={icon} width={13} />
-      <span className="hidden lg:inline">{label}</span>
-    </button>
   );
 }

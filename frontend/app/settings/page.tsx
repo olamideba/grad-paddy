@@ -1,9 +1,87 @@
 "use client";
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import type { ReactNode } from "react";
 import { Icon } from "@iconify/react";
+import clsx from "clsx";
+import {
+  Settings as SettingsIcon,
+  ShieldCheck,
+  AlertTriangle,
+  Cpu,
+  Building2,
+  Globe,
+  Link2,
+  LogOut,
+  Save,
+  Check,
+  RefreshCw,
+} from "lucide-react";
 import { getCountryDataList, getEmojiFlag } from "countries-list";
 import { useAuth } from "@/context/AuthContext";
+import { NeoButton, StatusPill } from "@/components/Neo";
+
+/* ── Neobrutalist section + toggle helpers ── */
+function Section({
+  title,
+  Icon: SecIcon,
+  tone = "ink",
+  children,
+}: {
+  title: string;
+  Icon: typeof SettingsIcon;
+  tone?: "ink" | "teal" | "orange";
+  children: ReactNode;
+}) {
+  const bg = tone === "teal" ? "bg-accent-teal" : tone === "orange" ? "bg-accent-orange" : "bg-ink";
+  const fg = tone === "teal" ? "text-ink" : "text-paper";
+  return (
+    <section className="neo-card">
+      <div className="px-5 py-3 border-b-2 border-ink bg-paper flex items-center gap-2.5">
+        <div className={`size-7 border-2 border-ink grid place-items-center ${bg} ${fg}`}>
+          <SecIcon className="size-3.5" strokeWidth={2.5} />
+        </div>
+        <h2 className="text-xs tracking-[0.18em] font-bold uppercase">{title}</h2>
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-[11px] tracking-[0.18em] font-bold text-muted-foreground mb-1.5 uppercase">
+      {children}
+    </div>
+  );
+}
+
+function Toggle({
+  on,
+  setOn,
+  labelOn,
+  labelOff,
+}: {
+  on: boolean;
+  setOn: (b: boolean) => void;
+  labelOn: string;
+  labelOff: string;
+}) {
+  return (
+    <button onClick={() => setOn(!on)} className="flex border-2 border-ink neo-shadow-sm w-fit">
+      <span
+        className={`px-4 py-2 text-sm font-bold border-r-2 border-ink ${on ? "bg-accent-teal text-ink" : "bg-paper-2"}`}
+      >
+        {labelOn}
+      </span>
+      <span
+        className={`px-4 py-2 text-sm font-bold ${!on ? "bg-accent-orange text-white" : "bg-paper-2"}`}
+      >
+        {labelOff}
+      </span>
+    </button>
+  );
+}
 
 /* ── Country data ── */
 const ALL_COUNTRIES = getCountryDataList()
@@ -566,262 +644,157 @@ export default function SettingsPage() {
   }
 
   return (
-    <div style={{ background: "#F7F0E3" }}>
-      {/* Header */}
-      <div
-        className="px-4 sm:px-6 py-4 sticky top-0 z-10 flex items-center justify-between gap-4"
-        style={{ background: "#0D0D0D", borderBottom: "2px solid #E8472A" }}
-      >
-        <div className="min-w-0">
-          <h1
-            className="text-sm font-bold font-space flex items-center gap-2"
-            style={{ color: "#FFFFFF" }}
-          >
-            <Icon icon="solar:settings-bold" width={15} style={{ color: "#E8472A" }} />
-            Preferences
-          </h1>
-          <p
-            className="text-xs font-dm mt-0.5 truncate"
-            style={{ color: "rgba(255,255,255,0.45)" }}
-          >
-            Grad Paddy uses these to personalise search and SOP generation
+    <div className="flex flex-col h-full overflow-hidden bg-paper font-space">
+      {/* Header — black branded bar */}
+      <div className="px-6 py-4 shrink-0 relative flex items-center gap-4 bg-ink text-paper border-b-2 border-ink">
+        <div className="size-9 grid place-items-center shrink-0 bg-accent-orange border-2 border-paper">
+          <SettingsIcon className="size-5 text-paper" strokeWidth={2.5} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight leading-tight">Settings</h1>
+          <p className="text-xs mt-0.5 truncate text-paper/70">
+            Preferences · integrations · personalisation
           </p>
         </div>
-        <button
-          onClick={signOut}
-          className="bouncy flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold font-space flex-shrink-0"
-          style={{
-            background: "rgba(232,71,42,0.15)",
-            color: "#E8472A",
-            border: "1.5px solid #E8472A",
-            borderRadius: "4px",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#E8472A";
-            e.currentTarget.style.color = "#FFFFFF";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(232,71,42,0.15)";
-            e.currentTarget.style.color = "#E8472A";
-          }}
-        >
-          <Icon icon="solar:logout-2-bold" width={13} />
-          Sign out
-        </button>
+        <NeoButton variant="danger" onClick={signOut} className="shrink-0">
+          <LogOut className="size-4" /> <span className="hidden sm:inline">Sign out</span>
+        </NeoButton>
+        <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-accent-orange" />
       </div>
 
       {/* Content */}
-      <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto space-y-6">
-          {/* Agent approval */}
-          <div
-            className="p-5"
-            style={{
-              background: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              boxShadow: "4px 4px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <div
-                    className="w-7 h-7 flex items-center justify-center"
-                    style={{
-                      background: "#0D0D0D",
-                      border: "2px solid #0D0D0D",
-                      borderRadius: "4px",
-                    }}
-                  >
-                    <Icon icon="solar:shield-check-bold" width={13} style={{ color: "#FFFFFF" }} />
-                  </div>
-                  <span className="font-bold font-space text-sm" style={{ color: "#0D0D0D" }}>
-                    Always allow actions
-                  </span>
-                </div>
-                <p className="text-xs font-dm" style={{ color: "#9CA3AF" }}>
-                  When off, the agent asks you to approve before any change. When on, it acts
-                  without asking.
-                </p>
-              </div>
-              <button
-                onClick={() => toggleAutoApprove(!autoApprove)}
-                role="switch"
-                aria-checked={autoApprove}
-                className="relative shrink-0 bouncy"
-                style={{
-                  width: 44,
-                  height: 24,
-                  borderRadius: 999,
-                  border: "2px solid #0D0D0D",
-                  background: autoApprove ? "#4ECDC4" : "#EDE6D3",
-                }}
-              >
-                <span
-                  className="absolute top-1/2"
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 999,
-                    background: "#0D0D0D",
-                    transform: "translateY(-50%)",
-                    left: autoApprove ? 22 : 2,
-                    transition: "left 150ms ease-out",
-                  }}
-                />
-              </button>
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {loadError && (
+            <div className="bg-accent-yellow/40 border-2 border-ink p-3 text-sm flex items-center gap-2">
+              <AlertTriangle className="size-4 shrink-0" strokeWidth={2.5} />
+              {loadError}
             </div>
-          </div>
+          )}
 
-          {/* Connected accounts */}
-          <div
-            className="p-5"
-            style={{
-              background: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              boxShadow: "4px 4px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <div
-                className="w-7 h-7 flex items-center justify-center"
-                style={{ background: "#4ECDC4", border: "2px solid #0D0D0D", borderRadius: "4px" }}
-              >
-                <Icon icon="solar:link-circle-bold" width={13} style={{ color: "#0D0D0D" }} />
-              </div>
-              <h2 className="text-sm font-bold font-space" style={{ color: "#0D0D0D" }}>
-                Connected accounts
-              </h2>
-            </div>
-            <p className="text-xs font-dm mb-3" style={{ color: "#9CA3AF" }}>
-              Connect Google to add application deadlines to your Calendar and send recommender /
-              outreach emails from your Gmail. Separate from sign-in — grants Calendar & Gmail
-              permissions.
-            </p>
-
-            {googleNotice === "connected" && (
-              <p
-                className="text-xs font-dm mb-2 flex items-center gap-1.5"
-                style={{ color: "#0D9268" }}
-              >
-                <Icon icon="solar:check-circle-bold" width={13} />
-                Google connected.
-              </p>
-            )}
-            {googleNotice === "error" && (
-              <p
-                className="text-xs font-dm mb-2 flex items-center gap-1.5"
-                style={{ color: "#E8472A" }}
-              >
-                <Icon icon="solar:danger-triangle-bold" width={13} />
-                Couldn&apos;t connect Google. Try again.
-              </p>
-            )}
-
-            <div
-              className="flex items-center justify-between gap-3 p-3"
-              style={{ background: "#F7F0E3", border: "1.5px solid #C8C0AF", borderRadius: "4px" }}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Icon icon="logos:google-icon" width={18} className="shrink-0" />
+          {/* Autonomy */}
+          <Section title="Autonomy" Icon={ShieldCheck} tone="ink">
+            <div className="space-y-3">
+              <div className="flex items-center gap-4">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold font-space" style={{ color: "#0D0D0D" }}>
-                    Google (Calendar & Gmail)
+                  <div className="font-bold">Auto-approve agent actions</div>
+                  <div className="text-sm text-muted-foreground">
+                    When off, the agent asks before any change. When on, it acts without asking.
                   </div>
-                  <div className="text-xs font-dm truncate" style={{ color: "#9CA3AF" }}>
+                </div>
+                <div className="ml-auto shrink-0">
+                  <Toggle
+                    on={autoApprove}
+                    setOn={(v) => {
+                      toggleAutoApprove(v);
+                    }}
+                    labelOn="ON"
+                    labelOff="OFF"
+                  />
+                </div>
+              </div>
+              <div className="bg-accent-yellow/40 border-2 border-ink p-3 flex items-start gap-3 text-sm">
+                <AlertTriangle className="size-4 mt-0.5 shrink-0" strokeWidth={2.5} />
+                <span>
+                  <span className="font-bold">Sending emails always asks first</span> — even with
+                  auto-approve on. Sending is irreversible.
+                </span>
+              </div>
+            </div>
+          </Section>
+
+          {/* Integrations */}
+          <Section title="Integrations" Icon={Link2} tone="teal">
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Connect Google to add application deadlines to your Calendar and send recommender /
+                outreach emails from your Gmail. Separate from sign-in.
+              </p>
+
+              {googleNotice === "connected" && (
+                <p className="text-sm flex items-center gap-1.5 text-[#0D9268]">
+                  <Check className="size-4" /> Google connected.
+                </p>
+              )}
+              {googleNotice === "error" && (
+                <p className="text-sm flex items-center gap-1.5 text-accent-orange">
+                  <AlertTriangle className="size-4" /> Couldn&apos;t connect Google. Try again.
+                </p>
+              )}
+
+              <div className="border-2 border-ink p-4 neo-shadow-sm flex items-center gap-3">
+                <Icon icon="logos:google-icon" width={22} className="shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold">Google · Calendar &amp; Gmail</h3>
+                    {google?.connected && (
+                      <StatusPill tone="teal">
+                        <Check className="size-3 mr-1" /> Connected
+                      </StatusPill>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
                     {google === null
                       ? "Checking…"
                       : google.connected
-                        ? `Connected${google.email ? ` · ${google.email}` : ""}`
+                        ? (google.email ?? "Connected")
                         : "Not connected"}
                   </div>
                 </div>
+                {google?.connected ? (
+                  <NeoButton
+                    size="sm"
+                    variant="default"
+                    onClick={disconnectGoogle}
+                    disabled={googleBusy}
+                    className="shrink-0"
+                  >
+                    {googleBusy ? "…" : "Disconnect"}
+                  </NeoButton>
+                ) : (
+                  <NeoButton
+                    size="sm"
+                    variant="primary"
+                    onClick={connectGoogle}
+                    disabled={googleBusy}
+                    className="shrink-0"
+                  >
+                    {googleBusy ? "…" : "Connect Google"}
+                  </NeoButton>
+                )}
               </div>
-              {google?.connected ? (
-                <button
-                  onClick={disconnectGoogle}
-                  disabled={googleBusy}
-                  className="btn-white btn-sm text-xs shrink-0"
-                  style={{ color: "#E8472A", borderColor: "#E8472A" }}
-                >
-                  {googleBusy ? "…" : "Disconnect"}
-                </button>
-              ) : (
-                <button
-                  onClick={connectGoogle}
-                  disabled={googleBusy}
-                  className="btn-coral btn-sm text-xs shrink-0"
-                >
-                  {googleBusy ? (
-                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                  ) : (
-                    <Icon icon="solar:link-circle-bold" width={13} />
-                  )}
-                  Connect
-                </button>
-              )}
-            </div>
 
-            {/* Reminder cadence */}
-            <div className="mt-4 pt-4" style={{ borderTop: "1.5px solid #EDE6D3" }}>
-              <div className="text-xs font-bold font-space mb-1" style={{ color: "#0D0D0D" }}>
-                Deadline reminders
-              </div>
-              <p className="text-xs font-dm mb-2" style={{ color: "#9CA3AF" }}>
-                Days before each deadline to send a Google Calendar reminder. Applied when you add a
-                deadline to your calendar.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {[1, 3, 7, 14, 28].map((d) => {
-                  const on = reminderOffsets.includes(d);
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() =>
-                        setReminderOffsets((prev) =>
-                          on ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => b - a)
-                        )
-                      }
-                      className="px-3 py-1 text-xs font-semibold font-space bouncy"
-                      style={{
-                        background: on ? "#0D0D0D" : "#FFFFFF",
-                        color: on ? "#FFFFFF" : "#5A5A5A",
-                        border: "1.5px solid #0D0D0D",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      {d} {d === 1 ? "day" : "days"}
-                    </button>
-                  );
-                })}
+              {/* Reminder cadence */}
+              <div>
+                <SectionLabel>Deadline reminders (days before)</SectionLabel>
+                <div className="flex flex-wrap gap-2">
+                  {[1, 3, 7, 14, 28].map((d) => {
+                    const on = reminderOffsets.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() =>
+                          setReminderOffsets((prev) =>
+                            on ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => b - a)
+                          )
+                        }
+                        className={clsx(
+                          "px-3 py-1.5 border-2 border-ink font-mono text-sm font-bold transition-colors",
+                          on ? "bg-ink text-paper" : "bg-paper-2 hover:bg-paper"
+                        )}
+                      >
+                        {d}d
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          </Section>
 
           {/* Research Interests */}
-          <div
-            className="p-5"
-            style={{
-              background: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              boxShadow: "4px 4px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <div
-                className="w-7 h-7 flex items-center justify-center"
-                style={{ background: "#E8472A", border: "2px solid #0D0D0D", borderRadius: "4px" }}
-              >
-                <Icon icon="solar:cpu-bolt-bold" width={13} style={{ color: "#FFFFFF" }} />
-              </div>
-              <h2 className="text-sm font-bold font-space" style={{ color: "#0D0D0D" }}>
-                Research Interests
-              </h2>
-            </div>
+          <Section title="Research Interests" Icon={Cpu} tone="orange">
             <TagInput
               label="Your research areas"
               placeholder="Type an interest and press Enter..."
@@ -830,73 +803,32 @@ export default function SettingsPage() {
               onRemove={(v) => setInterests((p) => p.filter((x) => x !== v))}
               suggestions={SUGGESTED_INTERESTS}
             />
-          </div>
+          </Section>
 
           {/* Universities */}
-          <div
-            className="p-5"
-            style={{
-              background: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              boxShadow: "4px 4px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <div
-                className="w-7 h-7 flex items-center justify-center"
-                style={{ background: "#4ECDC4", border: "2px solid #0D0D0D", borderRadius: "4px" }}
-              >
-                <Icon icon="solar:buildings-bold" width={13} style={{ color: "#0D0D0D" }} />
-              </div>
-              <h2 className="text-sm font-bold font-space" style={{ color: "#0D0D0D" }}>
-                Universities of Interest
-              </h2>
-            </div>
+          <Section title="Universities of Interest" Icon={Building2} tone="teal">
             <UniversityPicker
               selected={universities}
               onAdd={(v) => setUniversities((p) => [...p, v])}
               onRemove={(v) => setUniversities((p) => p.filter((x) => x !== v))}
             />
-          </div>
+          </Section>
 
           {/* Countries */}
-          <div
-            className="p-5"
-            style={{
-              background: "#FFFFFF",
-              border: "2px solid #0D0D0D",
-              boxShadow: "4px 4px 0 #0D0D0D",
-              borderRadius: "4px",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <div
-                className="w-7 h-7 flex items-center justify-center"
-                style={{ background: "#0D0D0D", border: "2px solid #0D0D0D", borderRadius: "4px" }}
-              >
-                <Icon icon="solar:global-bold" width={13} style={{ color: "#FFFFFF" }} />
-              </div>
-              <h2 className="text-sm font-bold font-space" style={{ color: "#0D0D0D" }}>
-                Countries of Interest
-              </h2>
-            </div>
+          <Section title="Countries of Interest" Icon={Globe} tone="ink">
             <CountryPicker
               selected={countries}
               onAdd={(v) => setCountries((p) => [...p, v])}
               onRemove={(v) => setCountries((p) => p.filter((x) => x !== v))}
             />
-          </div>
+          </Section>
 
           {/* Footer: legal + hackathon */}
-          <div
-            className="pt-2 pb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-dm"
-            style={{ color: "#9CA3AF" }}
-          >
-            <a href="/privacy" className="underline" style={{ color: "#5A5A5A" }}>
+          <div className="pt-2 pb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <a href="/privacy" className="underline">
               Privacy Policy
             </a>
-            <a href="/terms" className="underline" style={{ color: "#5A5A5A" }}>
+            <a href="/terms" className="underline">
               Terms of Service
             </a>
             <span>
@@ -905,8 +837,7 @@ export default function SettingsPage() {
                 href="https://rapid-agent.devpost.com/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline"
-                style={{ color: "#E8472A" }}
+                className="underline text-accent-orange"
               >
                 RapidAgent Hackathon
               </a>{" "}
@@ -916,40 +847,22 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {loadError && (
-        <div className="sticky bottom-0 px-6 py-3" style={{ background: "#E8472A" }}>
-          <p className="text-xs font-dm text-white">{loadError}</p>
-        </div>
-      )}
-
       {/* Sticky save bar */}
       {(isDirty || saved) && (
-        <div
-          className="sticky bottom-0 px-4 sm:px-6 py-3 flex items-center justify-between gap-4"
-          style={{ background: "#0D0D0D", borderTop: "2px solid #E8472A" }}
-        >
-          <p className="text-xs font-dm" style={{ color: "rgba(255,255,255,0.5)" }}>
+        <div className="shrink-0 px-6 py-3 flex items-center justify-between gap-4 bg-ink text-paper border-t-2 border-accent-orange">
+          <p className="text-xs text-paper/60">
             {saved ? "Preferences saved." : "You have unsaved changes."}
           </p>
-          <button
-            onClick={save}
-            disabled={saving}
-            className={saved ? "btn-teal btn-sm" : "btn-coral btn-sm"}
-          >
-            <Icon
-              icon={
-                saving
-                  ? "solar:refresh-bold"
-                  : saved
-                    ? "solar:check-circle-bold"
-                    : "solar:floppy-disk-bold"
-              }
-              width={14}
-            />
-            <span className="text-sm">
-              {saving ? "Saving…" : saved ? "Saved!" : "Save changes"}
-            </span>
-          </button>
+          <NeoButton variant={saved ? "teal" : "primary"} onClick={save} disabled={saving}>
+            {saving ? (
+              <RefreshCw className="size-4 animate-spin" />
+            ) : saved ? (
+              <Check className="size-4" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            {saving ? "Saving…" : saved ? "Saved!" : "Save changes"}
+          </NeoButton>
         </div>
       )}
     </div>
