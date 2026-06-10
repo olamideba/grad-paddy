@@ -80,7 +80,6 @@ class FacultyService:
             prefs = await UserService.get_preferences(user_id) or {}
             profile = {**profile, **prefs}
             universities = profile.get("target_universities", [])
-            print(f"DEBUG universities filter: {universities}")
 
             # Embed the search query
             vector = await FacultyService.embed(query)
@@ -145,7 +144,6 @@ class FacultyService:
                 params={"query": faculty_name, "fields": "name,papers.title,papers.year,papers.abstract,papers.citationCount,papers.externalIds"},
                 timeout=10,
             )
-            print(f"DEBUG SS status: {resp.status_code}")
             if resp.status_code == 429:
                 logger.info("Semantic Scholar rate limited, falling back to Google Scholar")
                 return await FacultyService.fetch_google_scholar(faculty_name, limit)
@@ -170,12 +168,9 @@ class FacultyService:
         import asyncio
         from scholarly import scholarly
 
-        print("DEBUG inside fetch_google_scholar")
         def _fetch():
-            print("DEBUG calling scholarly.search_author")
             search_query = scholarly.search_author(faculty_name)
             author = next(search_query, None)
-            print(f"DEBUG author found: {author}")
             if not author:
                 return []
             author = scholarly.fill(author, sections=['publications'])

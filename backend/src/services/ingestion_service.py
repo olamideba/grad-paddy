@@ -22,7 +22,7 @@ class IngestionService:
     @staticmethod
     async def ingest_url(
         url:      str,
-        url_type: str,
+        url_type: str
     ) -> dict:
         """
         Scrape a URL and index its content into Elasticsearch.
@@ -41,9 +41,8 @@ class IngestionService:
         logger.info(f"ingest_url called: {url} ({url_type})")
 
         try:
-            # ── Step 1: Scrape ────────────────────────────────────────────────
             logger.info(f"Scraping {url}...")
-            items = await _scrape_single_url(url, url_type)
+            items = await IngestionService._scrape_single_url(url, url_type)
 
             if not items:
                 return {
@@ -54,9 +53,8 @@ class IngestionService:
                 }
             logger.info(f"Scraped {len(items)} items from {url}")
 
-            # ── Step 2: Chunk + embed + index ─────────────────────────────────
             logger.info("Indexing into Elasticsearch...")
-            result = await _index_items(items)
+            result = await IngestionService._index_items(items)
 
             return {
                 "status":         "complete",
@@ -104,13 +102,13 @@ class IngestionService:
                 # Check grad-programs index
                 prog_resp = await es.count(
                     index=settings.PROGRAM_ES_INDEX,
-                    body={"query": {"term": {"source_url": url}}},
+                    body={"query": {"prefix": {"source_url": url}}},
                 )
 
                 # Check faculty-profiles index
                 fac_resp = await es.count(
                     index=settings.FACULTY_ES_INDEX,
-                    body={"query": {"term": {"source_url": url}}},
+                    body={"query": {"prefix": {"source_url": url}}},
                 )
 
                 total = prog_resp["count"] + fac_resp["count"]
@@ -130,66 +128,65 @@ class IngestionService:
 
     @staticmethod
     async def _scrape_single_url(url: str, url_type: str) -> list:
-        """Run Scrapy spider for a single URL, return collected items."""
+        import json
+        import subprocess
+        import tempfile
+        import os
 
-        def _run_scrapy():
-            import scrapy.crawler as crawler_module
-            from scrapy.utils.project import get_project_settings
-            from src.scraper.grad_scraper.spiders.grad_program_spider import GradProgramSpider
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+        tmp.write(url + "\n")
+        tmp.close()
+        tmp_path = tmp.name
 
-            collected_items = []
+        # Output file for scraped items
+        output_file = tempfile.NamedTemporaryFile(
+            suffix=".json", delete=False
+        )
+        output_file.close()
+        output_path = output_file.name
 
-            # Write URL to temp file
-            tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".txt", delete=False
-            )
-            tmp.write(url + "\n")
-            tmp.close()
-            tmp_path = tmp.name
-
-            # Override settings — collect items in memory, skip ES pipeline
-            settings = get_project_settings()
-            settings.set("ITEM_PIPELINES", {
-                "src.scraper.grad_scraper.pipelines.cleaning.CleaningPipeline": 100,
-            })
-            settings.set("LOG_LEVEL", "WARNING")  # reduce noise
-            settings.set("CLOSESPIDER_ITEMCOUNT", 0)  # no limit
-
-            # Collect items via custom pipeline
-            class _CollectorPipeline:
-                def process_item(self, item, spider):
-                    collected_items.append(dict(item))
-                    return item
-
-            settings.set("ITEM_PIPELINES", {
-                "src.scraper.grad_scraper.pipelines.cleaning.CleaningPipeline": 100,
-                "__main__._CollectorPipeline": 200,
-            })
-
-            process = crawler_module.CrawlerProcess(settings)
-
+        try:
             if url_type == "faculty":
-                process.crawl(
-                    GradProgramSpider,
-                    program_urls_file="/dev/null",
-                    faculty_urls_file=tmp_path,
-                )
+                args = [
+                    "scrapy", "crawl", "grad_program",
+                    "-a", f"faculty_urls_file={tmp_path}",
+                    "-a", "program_urls_file=/dev/null",
+                    "-o", output_path,
+                ]
             else:
-                process.crawl(
-                    GradProgramSpider,
-                    program_urls_file=tmp_path,
-                    faculty_urls_file="/dev/null",
-                )
+                args = [
+                    "scrapy", "crawl", "grad_program",
+                    "-a", f"program_urls_file={tmp_path}",
+                    "-a", "faculty_urls_file=/dev/null",
+                    "-o", output_path,
+                ]
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                cwd=os.path.abspath("/app/src/scraper"), 
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-            process.start()
+            stdout, stderr = await proc.communicate()
 
-            # Cleanup temp file
-            import os
+            if proc.returncode != 0:
+                logger.error(f"Scrapy process failed: {stderr.decode()}")
+                return []
+
+            # Read scraped items from output file
+            with open(output_path, "r") as f:
+                items = json.load(f)
+
+            return items
+
+        except Exception as e:
+            logger.error(f"_scrape_single_url failed: {e}")
+            return []
+
+        finally:
             os.unlink(tmp_path)
-
-            return collected_items
-
-        return await asyncio.to_thread(_run_scrapy)
+            if os.path.exists(output_path):
+                os.unlink(output_path)
 
 
     @staticmethod
@@ -240,3 +237,49 @@ class IngestionService:
             }
 
         return await asyncio.to_thread(_run_indexing)
+    
+    @staticmethod
+    async def ingest_url_background(url: str, url_type: str, user_id: str) -> dict:
+        """Start ingestion as a background task, persist job to Firestore."""
+        from src.repositories.ingestion_repo import IngestionRepository
+
+        job = await IngestionRepository.create_job(user_id, url, url_type)
+        job_id = job["id"]
+
+        asyncio.create_task(
+            IngestionService._run_ingestion(job_id, url, url_type, user_id)
+        )
+
+        return {
+            "status":  "started",
+            "job_id":  job_id,
+            "message": f"Ingestion started in the background. Job ID: {job_id}",
+        }
+
+    @staticmethod
+    async def _run_ingestion(job_id: str, url: str, url_type: str, user_id: str):
+        """Background task — updates Firestore when done."""
+        from src.repositories.ingestion_repo import IngestionRepository
+        try:
+            result = await IngestionService.ingest_url(url, url_type)
+
+
+            check = await IngestionService.check_url_indexed(url)
+            chunks_indexed = check.get("chunks", 0)
+
+            await IngestionRepository.complete_job(
+                user_id, job_id, chunks_indexed
+            )
+            logger.info(f"Background ingestion complete: {job_id}")
+        except Exception as e:
+            await IngestionRepository.fail_job(user_id, job_id, str(e))
+            logger.error(f"Background ingestion failed: {job_id} — {e}")
+
+    @staticmethod
+    async def get_ingestion_status(user_id: str, job_id: str) -> dict:
+        """Check job status from Firestore."""
+        from src.repositories.ingestion_repo import IngestionRepository
+        job = await IngestionRepository.get_job(user_id, job_id)
+        if not job:
+            return {"status": "not_found", "job_id": job_id}
+        return job

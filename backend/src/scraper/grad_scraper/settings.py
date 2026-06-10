@@ -1,14 +1,11 @@
-from src.core.config import get_settings
+import os
+from dotenv import load_dotenv
 
-settings = get_settings()
+load_dotenv(dotenv_path="/app/.env")
 
 BOT_NAME = "grad_scraper"
 SPIDER_MODULES = ["grad_scraper.spiders"]
 NEWSPIDER_MODULE = "grad_scraper.spiders"
-
-# PROGRAM_URLS_FILE = settings.PROGRAM_URLS_FILE
-# FACULTY_URLS_FILE = settings.FACULTY_URLS_FILE
-
 
 DOWNLOAD_HANDLERS = {
     "http":  "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
@@ -23,19 +20,17 @@ PLAYWRIGHT_LAUNCH_OPTIONS = {
 }
 
 
-PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30_000   # ms
+PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30_000 
 
-DOWNLOAD_DELAY         = float(settings.DOWNLOAD_DELAY)
-CONCURRENT_REQUESTS    = int(settings.CONCURRENT_REQUESTS)
+DOWNLOAD_DELAY         = float(os.getenv("DOWNLOAD_DELAY", "1"))
+CONCURRENT_REQUESTS    = int(os.getenv("CONCURRENT_REQUESTS", "4"))
 CONCURRENT_REQUESTS_PER_DOMAIN = 2
 AUTOTHROTTLE_ENABLED   = True
 AUTOTHROTTLE_START_DELAY   = 2
 AUTOTHROTTLE_MAX_DELAY     = 10
 AUTOTHROTTLE_TARGET_CONCURRENCY = 2.0
 RANDOMIZE_DOWNLOAD_DELAY = True
-
 ROBOTSTXT_OBEY = True
-
 RETRY_ENABLED  = True
 RETRY_TIMES    = 3
 RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
@@ -63,7 +58,7 @@ ITEM_PIPELINES = {
     "grad_scraper.pipelines.json_backup.JsonBackupPipeline":    400,
 }
 
-LOG_LEVEL  = settings.LOG_LEVEL
+LOG_LEVEL  = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
 
 FEEDS = {

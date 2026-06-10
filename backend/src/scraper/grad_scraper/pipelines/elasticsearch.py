@@ -1,13 +1,22 @@
 import logging
 import numpy as np
+import os
+from dotenv import load_dotenv
 from datetime import datetime, timezone
-
 from itemadapter import ItemAdapter
-from src.core.config import get_settings
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
+load_dotenv(dotenv_path="/app/.env")
 
+class _S:
+    GOOGLE_CLOUD_PROJECT  = os.getenv("GOOGLE_CLOUD_PROJECT")
+    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
+    EMBEDDING_MODEL       = os.getenv("EMBEDDING_MODEL")
+    PROGRAM_ES_INDEX      = os.getenv("PROGRAM_ES_INDEX")
+    ES_URL                = os.getenv("ES_URL")
+    ELASTIC_API_KEY       = os.getenv("ELASTIC_API_KEY")
+
+settings = _S()
 
 def _get_splitter():
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -25,12 +34,16 @@ def _get_embedding_fn():
     from google import genai
     from google.genai import types
 
+    model = settings.EMBEDDING_MODEL
+    if not model:
+        raise RuntimeError(
+            "EMBEDDING_MODEL env var is not set — cannot initialize embedding function"
+        )
     client = genai.Client(
         vertexai=True,
         project=settings.GOOGLE_CLOUD_PROJECT,
         location=settings.GOOGLE_CLOUD_LOCATION,
     )
-    model = settings.EMBEDDING_MODEL
     dims  = 768
 
     def embed(texts: list[str]) -> list[list[float]]:
@@ -117,36 +130,27 @@ class ElasticsearchPipeline:
         return cls()
 
     def open_spider(self, spider):
-        print("DEBUG: open_spider start")
-        print("DEBUG: importing elasticsearch")
         from elasticsearch import Elasticsearch
-        print("DEBUG: getting env vars")
 
         es_url   = settings.ES_URL    
         api_key  = settings.ELASTIC_API_KEY
-        print(f"DEBUG: es_url={es_url[:30] if es_url else None}")
 
         if not es_url or not api_key:
             raise RuntimeError(
                 "Serverless Elasticsearch requires ES_URL and ELASTIC_API_KEY in .env"
             )
-        print("DEBUG: creating ES client")
         
         self.es = Elasticsearch(es_url, api_key=api_key)
         self.splitter = _get_splitter()
-        self.embed_fn = None  # ← lazy
-        self.dims     = None  # ← lazy
-        print("DEBUG: calling es.info()")
+        self.embed_fn = None  
+        self.dims     = None  
 
-        # Serverless: es.info() succeeds but returns no 'version' dict
         try:
             self.es.info()
             logger.info(f"Connected to Elasticsearch Serverless at {es_url}")
         except Exception as e:
             logger.error(f"Cannot connect to Elasticsearch: {e}")
             raise
-        print("DEBUG: open_spider done")
-
 
     def close_spider(self, spider):
         if self.es:
@@ -154,7 +158,6 @@ class ElasticsearchPipeline:
 
 
     def _ensure_index(self):
-        # Serverless does not support es.indices.exists() — use get_mapping instead
         try:
             self.es.indices.get_mapping(index=self.index)
             logger.info(f"Index '{self.index}' already exists")
@@ -162,66 +165,81 @@ class ElasticsearchPipeline:
             self.es.indices.create(index=self.index, body=_build_mapping(self.dims))
             logger.info(f"Created index '{self.index}' with {self.dims}-dim vectors")
 
+
     def process_item(self, item, spider):
+        from grad_scraper.items.faculty_profile import FacultyProfileItem
+        
+        # Route faculty items to faculty pipeline only
+        if isinstance(item, FacultyProfileItem):
+            return item
+
         adapter = ItemAdapter(item)
         if self.embed_fn is None:
             self.embed_fn, self.dims = _get_embedding_fn()
             self._ensure_index()
 
-        metadata = {
-            "university":     adapter.get("university", ""),
-            "program":        adapter.get("program", ""),
-            "source_url":     adapter.get("source_url", ""),
-            "deadline":       adapter.get("deadline", ""),
-            "deadline_type":  adapter.get("deadline_type", ""),
-            "semesters":      adapter.get("semesters", ""),
-            "application_fee":  adapter.get("application_fee", ""),
-            "scraped_at":     adapter.get("scraped_at", datetime.now(timezone.utc).isoformat()),
-        }
+        source_url = adapter.get("source_url", "")
+        university = adapter.get("university", "")
 
-        raw_html = adapter.get("raw_html", "")
+        # ── Get clean text ────────────────────────────────────────────────
+        raw_html   = adapter.get("raw_html", "")
         clean_text = _clean_html(raw_html) if raw_html else ""
 
         if not clean_text:
             clean_text = " ".join(filter(None, [
-            adapter.get("program_description", ""),
-            adapter.get("research_focus", ""),
-            adapter.get("funding", ""),
-            adapter.get("requirements", ""),
-        ]))
+                adapter.get("program_description", ""),
+                adapter.get("research_focus", ""),
+                adapter.get("funding", ""),
+                adapter.get("requirements", ""),
+            ]))
 
         if not clean_text:
-            logger.warning(f"No content to chunk for {metadata['source_url']}")
+            logger.warning(f"No content to chunk for {source_url}")
             return item
-        
+
+        # ── Minimal metadata ──────────────────────────────────────────────
+        metadata = {
+            "university":  university,
+            "source_url":  source_url,
+            "url_type":    "program",
+            "scraped_at":  adapter.get("scraped_at", datetime.now(timezone.utc).isoformat()),
+            # keep these only if they exist — don't store empty strings
+            **({"program":  adapter.get("program")}  if adapter.get("program")  else {}),
+            **({"deadline": adapter.get("deadline")} if adapter.get("deadline") else {}),
+        }
+
         chunks     = self.splitter.split_text(clean_text)
-        logger.debug(f"{metadata['program']}: {len(chunks)} chunks from cleaned HTML")
-        embeddings = self.embed_fn(chunks)
+        logger.info(f"Chunking {source_url} → {len(chunks)} chunks")
+        try:
+            embeddings = self.embed_fn(chunks)
+            logger.info(f"Embedded {len(embeddings)} chunks for {source_url}")
+        except Exception as e:
+            logger.error(f"Embedding failed for {source_url}: {e}")
+            return item
 
-        operations = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            doc = {
-                **metadata,
-                "text": chunk,
-                "chunk_index": i,
-                "embedding": embedding,
-            }
-            operations.append({"index": {"_index": self.index}})
-            operations.append(doc)
+        try:
+            operations = []
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                doc = {
+                    **metadata,
+                    "text":        chunk,
+                    "chunk_index": i,
+                    "embedding":   embedding,
+                }
+                operations.append({"index": {"_index": self.index}})
+                operations.append(doc)
 
-        if operations:
-            resp = self.es.bulk(operations=operations)
-            if resp.get("errors"):
-                # Log the first error detail to help diagnose
-                for item_resp in resp.get("items", []):
-                    op = item_resp.get("index", {})
-                    if op.get("error"):
-                        logger.warning(f"Bulk error: {op['error']}")
-                        break
-            else:
-                logger.info(
-                    f"Indexed {len(chunks)} chunks for "
-                    f"{metadata['university']} — {metadata['program']}"
-                )
+            if operations:
+                resp = self.es.bulk(operations=operations)
+                if resp.get("errors"):
+                    for item_resp in resp.get("items", []):
+                        op = item_resp.get("index", {})
+                        if op.get("error"):
+                            logger.warning(f"Bulk error: {op['error']}")
+                            break
+                else:
+                    logger.info(f"Indexed {len(chunks)} chunks for {university} — {source_url}")
+        except Exception as e:
+            logger.error(f"Indexing failed for {source_url}: {e}")
 
         return item

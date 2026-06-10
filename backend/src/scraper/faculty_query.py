@@ -45,7 +45,6 @@ def search_faculty(query: str, top_k: int = 5, min_fit: int = 0, university: str
 
 def print_results(hits: list):
     if not hits:
-        print("No faculty found.")
         return
 
     for i, hit in enumerate(hits, 1):

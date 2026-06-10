@@ -3,8 +3,6 @@ from pydantic import Field
 from functools import lru_cache
 from pathlib import Path
 
-# _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
-# print("Looking for .env at:", _ENV_FILE, "| exists:", _ENV_FILE.exists())
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -53,10 +51,11 @@ class Settings(BaseSettings):
             "platform.core.execute_esql,"
             "platform.core.get_document_by_id,"
             "platform.core.create_visualization,"
-            "find_faculty_by_research1,"
-            "find_faculty_by_research_and_schools1,"
-            "find_universities_by_program1,"
-            "check_program_deadlines_and_application_fees1"
+            "find_faculty_by_research,"
+            "find_faculty_by_research_and_schools,"
+            "find_universities_by_program,"
+            "check_program_deadlines_and_application_fees,"
+            "find_faculty_by_university"
         )
     )
     ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
@@ -74,6 +73,7 @@ class Settings(BaseSettings):
     COLLECTION_INTEGRATIONS: str = Field(default="integrations")
     COLLECTION_OAUTH_STATES: str = Field(default="oauth_states")
     COLLECTION_EMAILS: str = Field(default="emails")
+    COLLECTION_INGESTION_JOBS: str = Field(default="ingestion_jobs")
 
     # Named document keys (single documents, not collections)
     DOC_PROFILE: str = Field(default="profile")
