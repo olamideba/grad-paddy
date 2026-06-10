@@ -107,7 +107,6 @@ def hybrid_search(es, index, query_text, top_k=5):
 
 def print_results(hits):
     if not hits:
-        print("No results found.")
         return
     for i, hit in enumerate(hits, 1):
         src = hit["_source"]

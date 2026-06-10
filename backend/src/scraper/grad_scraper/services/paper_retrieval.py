@@ -1,19 +1,23 @@
 import logging
 import asyncio
 import httpx
-from src.core.config import get_settings
+import os
+from dotenv import load_dotenv
+load_dotenv(dotenv_path="/app/.env")
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
+class _S:
+    SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+    GEMINI_ENABLED           = os.getenv("GEMINI_ENABLED", "false")
+    GOOGLE_CLOUD_PROJECT     = os.getenv("GOOGLE_CLOUD_PROJECT")
+    GOOGLE_CLOUD_LOCATION    = os.getenv("GOOGLE_CLOUD_LOCATION")
+    GEMINI_MODEL             = os.getenv("GEMINI_MODEL")
+
+settings = _S()
 
 async def _fetch_from_google_scholar(faculty_name: str, limit: int = 5) -> list:
     try:
         from scholarly import scholarly, ProxyGenerator
-
-        # Optional: use free proxies to avoid blocks
-        # pg = ProxyGenerator()
-        # pg.FreeProxies()
-        # scholarly.use_proxy(pg)
 
         def _search():
             results = []

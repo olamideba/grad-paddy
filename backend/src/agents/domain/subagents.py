@@ -6,7 +6,7 @@ from src.agents.domain.chains import (
     build_sop_translation_chain,
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
-from src.services.ingestion_service import IngestionService
+from src.agents.tools import SCRAPER_TOOLS
 
 
 def build_faculty_discovery_agent() -> LlmAgent:
@@ -121,10 +121,12 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
         instruction=(
             "You are the data ingestion specialist for the grad-paddy system. "
             "Your job is to take a URL from the user and get it into the database.\n\n"
+            "Use the tools to execute the job"
 
             "Always follow this exact sequence:\n"
             "1. Call check_url_indexed(url) first\n"
             "   - If already indexed: Do NOT re-ingest.\n"
+            "   - If already indexed: inform the user that the the data exists in the database and what they would like to know from the data.\n"
             "   - If not indexed: proceed to step 2\n\n"
 
             "2. Determine url_type:\n"
@@ -133,22 +135,20 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
             "   - 'program' if the URL contains programs/, /graduate-programs/, "
             "     or /graduate-admissions/"
 
-
             "3. Call ingest_url(url, url_type, user_id)\n"
-            "   - Wait for completion\n"
-            "   - Report back: how many chunks were indexed, "
-            "     what programs or faculty were found\n\n"
+            "   - It returns immediately with a job_id\n"
+            "   - Tell the user: 'Ingestion is running in the background. "
+            "     I'll notify you when it's done."
 
-            "4. If ingest_url returns status='failed':\n"
-            "   - Tell the user what went wrong\n"
-            "   - Suggest checking the URL is publicly accessible\n\n"
-
+            "4. If the user asks for a status update, call check_ingestion_status(job_id)\n"
+            "   - running: tell them it's still in progress\n"
+            "   - complete: tell them how many chunks were indexed\n"
+            "   - failed: tell them what went wrong\n\n"
+             
+            "NEVER include the job id in your response"
             "Be concise. The user just wants to know it worked.\n"
         ),
-        tools=[
-            IngestionService.check_url_indexed,
-            IngestionService.ingest_url,
-        ],
+        tools=SCRAPER_TOOLS
     )
 
 def build_research_narrative_framing_agent() -> SequentialAgent:

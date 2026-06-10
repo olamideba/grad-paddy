@@ -477,4 +477,3 @@ class TestFullFlow:
         assert isinstance(fit_score, int)
         assert 0 <= fit_score <= 100
         assert len(angles) >= 1
-        print("\n✅ Full flow passed")

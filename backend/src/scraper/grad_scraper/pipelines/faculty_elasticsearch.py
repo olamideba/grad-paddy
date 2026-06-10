@@ -1,16 +1,22 @@
 import logging
 import numpy as np
+import os
+from dotenv import load_dotenv
 from datetime import datetime, timezone
 
-
 from itemadapter import ItemAdapter
-from src.core.config import get_settings
 from grad_scraper.items.faculty_profile import FacultyProfileItem
 from grad_scraper.pipelines.elasticsearch import _get_splitter, _get_embedding_fn
 
-settings=get_settings()
+load_dotenv(dotenv_path="/app/.env")
 logger = logging.getLogger(__name__)
 
+class _S:
+    FACULTY_ES_INDEX = os.getenv("FACULTY_ES_INDEX")
+    ES_URL           = os.getenv("ES_URL")
+    ELASTIC_API_KEY  = os.getenv("ELASTIC_API_KEY")
+
+settings = _S()
 FACULTY_INDEX = settings.FACULTY_ES_INDEX
 
 
@@ -94,7 +100,9 @@ class FacultyElasticsearchPipeline:
             )
             logger.info(f"Created faculty index '{self.index}' with {self.dims}-dim vectors")
 
+
     def process_item(self, item, spider):
+        from grad_scraper.items.faculty_profile import FacultyProfileItem
         if not isinstance(item, FacultyProfileItem):
             return item
 
@@ -102,67 +110,71 @@ class FacultyElasticsearchPipeline:
             self.embed_fn, self.dims = _get_embedding_fn()
             self._ensure_index()
 
-
         adapter = ItemAdapter(item)
 
-        metadata = {
-            "name":           adapter.get("name", ""),
-            "title":          adapter.get("title", ""),
-            "university":     adapter.get("university", ""),
-            "email":          adapter.get("email", ""),
-            "papers":         adapter.get("papers", []),
-            "research_areas": adapter.get("research_areas", ""),
-            "paper_keywords": adapter.get("paper_keywords", []),
-            "source_url":     adapter.get("source_url", ""),
-            "fit_score":      adapter.get("fit_score", 0),
-            "scraped_at":     adapter.get("scraped_at", ""),
-        }
-
-        bio            = adapter.get("bio", "")
+        name           = adapter.get("name", "")
+        email          = adapter.get("email", "")
         research_areas = adapter.get("research_areas", "")
-        papers         = adapter.get("papers", [])
+        bio            = adapter.get("bio", "")
+        university     = adapter.get("university", "")
+        source_url     = adapter.get("source_url", "")
 
-        papers_text = "\n".join([
-            f"{p.get('title', '')} ({p.get('year', '')}): {p.get('abstract', '')}"
-            for p in papers
-            if p.get("title")
-        ])
-
-        full_content = " ".join(filter(None, [
-            f"Professor {metadata['name']} at {metadata['university']}.",
-            f"Research areas: {research_areas}.",
+        # ── Build content to chunk ────────────────────────────────────────
+        content = " ".join(filter(None, [
+            f"{name} is a faculty member at {university}." if name else "",
+            f"Research areas: {research_areas}."           if research_areas else "",
             bio,
-            papers_text,
         ]))
 
-        chunks = self.splitter.split_text(full_content)
-        logger.debug(f"  {metadata['name']}: {len(chunks)} chunks")
+        if not content:
+            logger.warning(f"No content to chunk for {source_url}")
+            return item
 
-        embeddings = self.embed_fn(chunks)
+        # ── Metadata attached to every chunk ─────────────────────────────
+        metadata = {
+            "name":           name,
+            "email":          email,
+            "research_areas": research_areas,
+            "university":     university,
+            "source_url":     source_url,
+            "url_type":       "faculty",
+            "scraped_at":     adapter.get("scraped_at", datetime.now(timezone.utc).isoformat()),
+        }
 
-        operations = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            doc = {
-                **metadata,
-                "text":        chunk,
-                "chunk_index": i,
-                "embedding":   embedding,
-            }
-            operations.append({"index": {"_index": self.index}})
-            operations.append(doc)
+        chunks     = self.splitter.split_text(content)
+        logger.info(f"Chunking {name} @ {university} → {len(chunks)} chunks")
+        try:
+            embeddings = self.embed_fn(chunks)
+            logger.info(f"Embedded {len(embeddings)} chunks for {name}")
+        except Exception as e:
+            logger.error(f"Embedding failed for {name}: {e}")
+            return item
 
-        if operations:
-            resp = self.es.bulk(operations=operations)
-            if resp.get("errors"):
-                for item_resp in resp.get("items", []):
-                    op = item_resp.get("index", {})
-                    if op.get("error"):
-                        logger.warning(f"Bulk error: {op['error']}")
-                        break
-            else:
-                logger.info(
-                    f"Indexed {len(chunks)} chunks for "
-                    f"{metadata['name']} @ {metadata['university']} "
-                    f"(fit={metadata['fit_score']})"
-                )
+        try:
+            operations = []
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                doc = {
+                    **metadata,
+                    "text":        chunk,
+                    "chunk_index": i,
+                    "embedding":   embedding,
+                }
+                operations.append({"index": {"_index": self.index}})
+                operations.append(doc)
+
+            if operations:
+                resp = self.es.bulk(operations=operations)
+                if resp.get("errors"):
+                    for item_resp in resp.get("items", []):
+                        op = item_resp.get("index", {})
+                        if op.get("error"):
+                            logger.warning(f"Bulk error: {op['error']}")
+                            break
+                else:
+                    logger.info(
+                        f"Indexed {len(chunks)} chunks for {name} @ {university}"
+                    )
+        except Exception as e:
+            logger.error(f"Indexing failed for {name}: {e}")
+
         return item

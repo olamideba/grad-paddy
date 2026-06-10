@@ -9,12 +9,31 @@ from urllib.parse import urljoin, urlparse
 
 import scrapy
 from scrapy_playwright.page import PageMethod
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
-from src.core.config import get_settings
 from grad_scraper.items.grad_program import GradProgramItem
 from grad_scraper.items.faculty_profile import FacultyProfileItem
 
-settings = get_settings()
+import os
+from dotenv import load_dotenv
+load_dotenv(dotenv_path="/app/.env")
+
+class _S:
+    GOOGLE_CLOUD_PROJECT  = os.getenv("GOOGLE_CLOUD_PROJECT")
+    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
+    GEMINI_MODEL          = os.getenv("GEMINI_MODEL")
+    GEMINI_ENABLED        = os.getenv("GEMINI_ENABLED", "false")
+
+settings = _S()
+
+# Initialize vertex ai
+vertexai.init(
+    project=settings.GOOGLE_CLOUD_PROJECT,
+    location=settings.GOOGLE_CLOUD_LOCATION,
+)
+_gemini_model = GenerativeModel(settings.GEMINI_MODEL)
+
 logger = logging.getLogger(__name__)
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
@@ -66,8 +85,6 @@ class GradProgramSpider(scrapy.Spider):
         )
 
     async def _gemini_extract(self, response):
-        import vertexai
-        from vertexai.generative_models import GenerativeModel
         raw = response.css(
             "main *::text, article *::text, .content *::text, body *::text"
         ).getall()
@@ -100,24 +117,22 @@ class GradProgramSpider(scrapy.Spider):
         Page content:{page_text}"""
 
         try:
-            vertexai.init(
-                project=settings.GOOGLE_CLOUD_PROJECT,
-                location=settings.GOOGLE_CLOUD_LOCATION,
+            result = await asyncio.wait_for(
+                asyncio.to_thread(_gemini_model.generate_content, prompt),
+                timeout=30.0 
             )
-            model  = GenerativeModel(settings.GEMINI_MODEL)
-            result = await asyncio.to_thread(model.generate_content, prompt)
             raw    = result.text.strip()
             raw    = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             return json.loads(raw)
+        except asyncio.TimeoutError:
+            logger.warning(f"Gemini timed out for {response.url}")
+            return {}
         except Exception as e:
             logger.warning(f"Gemini extraction failed for {response.url}: {e}")
             return {}
 
 
     async def start(self):
-        print("DEBUG: start_requests called")
-        print(f"DEBUG: faculty_urls_file = {self.faculty_urls_file}")
-        print(f"DEBUG: exists = {self.faculty_urls_file.exists()}")
         if self.program_urls_file.exists():
             with open(self.program_urls_file) as f:
                 program_urls = [
@@ -142,7 +157,7 @@ class GradProgramSpider(scrapy.Spider):
                     url,
                     callback=self.parse_entry_point,
                     meta_extra={"is_faculty_directory": True}, 
-                    use_playwright=False
+                    use_playwright=True
                 )
         else:
             logger.warning(f"Faculty URLs file not found: {self.faculty_urls_file}")
@@ -155,9 +170,9 @@ class GradProgramSpider(scrapy.Spider):
                 "playwright_page_methods": [
                     PageMethod("route", "**/*google-analytics*", lambda route, _: route.abort()),
                     PageMethod("route", "**/*gtag*", lambda route, _: route.abort()),
-                    PageMethod("wait_for_load_state", "domcontentloaded"), 
+                    PageMethod("wait_for_load_state", "networkidle"), 
                     PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                    PageMethod("wait_for_timeout", 1500),
+                    PageMethod("wait_for_timeout", 3000),
                 ],
             }
         else:
@@ -184,19 +199,29 @@ class GradProgramSpider(scrapy.Spider):
             if is_faculty_page:
                 logger.info(f"Faculty directory at {response.url}")
                 faculty_links = self.find_faculty_links(response)
-                for link_info in faculty_links:
-                    url = link_info["url"] if isinstance(link_info, dict) else link_info
-                    yield self._make_request(
-                        url,
-                        callback=self.parse_faculty_page,
-                        meta_extra={"parent_item": {
-                            "university":             self._infer_university(response.url),
-                            "prefill_name":           link_info.get("name", ""),
-                            "prefill_title":          link_info.get("title", ""),
-                            "prefill_research_areas": link_info.get("research_areas", ""),
-                            "prefill_email":          link_info.get("email", ""),
-                        }}
+
+                if faculty_links:
+                    for link_info in faculty_links:
+                        url = link_info["url"] if isinstance(link_info, dict) else link_info
+                        yield self._make_request(
+                            url,
+                            callback=self.parse_faculty_page,
+                            meta_extra={"parent_item": {
+                                "university":             self._infer_university(response.url),
+                                "prefill_name":           link_info.get("name", ""),
+                                "prefill_title":          link_info.get("title", ""),
+                                "prefill_research_areas": link_info.get("research_areas", ""),
+                                "prefill_email":          link_info.get("email", ""),
+                            }}
+                        )
+                else:
+                    logger.warning(
+                    f"No faculty links found at {response.url} "
+                    f"— falling back to full page chunking"
                     )
+                    for item in self._scrape_full_page_as_chunks(response):
+                        yield item
+
                 return 
 
             program_links = self._detect_program_links(response)
@@ -227,11 +252,6 @@ class GradProgramSpider(scrapy.Spider):
 
 
     def _detect_program_links(self, response):
-        """
-        Finds program links on an index page.
-        Tries three patterns in order: table → list → broad href match.
-        Also captures deadline from the same row when available.
-        """
         links = []
         base  = response.url
 
@@ -248,14 +268,47 @@ class GradProgramSpider(scrapy.Spider):
                         "deadline": deadline,
                     })
             if links:
-                logger.info(f"OGE-style table found — {len(links)} programs with deadlines")
+                logger.info(f"Pattern 1 (OGE table) — found {len(links)} programs")
                 return links
 
+        card_selectors = [
+            ".program-card", ".degree-card", ".program-item",
+            ".degree-item", ".program-listing", ".degree-listing",
+            "[class*='program-card']", "[class*='degree-card']",
+            "[class*='program-item']", "[class*='degree-item']",
+            "article.program", "article.degree",
+            "li.program", "li.degree",
+            ".views-row",
+        ]
+        for selector in card_selectors:
+            cards = response.css(selector)
+            if len(cards) >= 3:
+                for card in cards:
+                    href = card.css("a::attr(href)").get("")
+                    name = card.css(
+                        "h2::text, h3::text, h4::text, h5::text, "
+                        ".title::text, .program-title::text, a::text"
+                    ).get("").strip()
+                    deadline = card.css(
+                        ".deadline::text, [class*='deadline']::text"
+                    ).get("").strip()
+                    if href and name:
+                        full = urljoin(base, href)
+                        if urlparse(full).netloc == urlparse(base).netloc:
+                            links.append({
+                                "url":      full,
+                                "name":     name,
+                                "deadline": deadline,
+                            })
+                if links:
+                    logger.info(f"Pattern 2 (program cards via '{selector}') — found {len(links)} programs")
+                    return links
 
         for table in response.css("table"):
             headers = [h.lower() for h in table.css("th::text").getall()]
-            has_program_col = any(kw in " ".join(headers) for kw in ["program", "degree", "major"])
-
+            has_program_col = any(
+                kw in " ".join(headers) for kw in ["program", "degree", "major"]
+            )
             if has_program_col:
                 deadline_col_idx = next(
                     (i for i, h in enumerate(headers) if "deadline" in h), None
@@ -273,21 +326,33 @@ class GradProgramSpider(scrapy.Spider):
                             "name":     name,
                             "deadline": deadline,
                         })
-        if links:
-            return links
+                if links:
+                    logger.info(f"Pattern 3 (table) — found {len(links)} programs")
+                    return links
 
+        SAFE_NON_PROGRAM = [
+            "/funding/", "/financial", "/contact", "/news", "/events",
+            "/staff", "/forms", "/handbook", "/calendar", "/visit",
+            "/diversity", "/housing", "/visa", "/health", "/career",
+            "/alumni", "/giving", "/admission-process", "/community",
+            "/policies", "/policy", "/faq",
+        ]
         for li in response.css("li"):
             href = li.css("a::attr(href)").get("")
             name = li.css("a::text").get("").strip()
             if (
-                href and name 
+                href and name
                 and any(kw in href.lower() for kw in PROGRAM_URL_KEYWORDS)
-                and not any(kw in href.lower() for kw in NON_PROGRAM_URL_KEYWORDS)
+                and not any(kw in href.lower() for kw in SAFE_NON_PROGRAM)
             ):
-                links.append({"url": urljoin(base, href), "name": name, "deadline": ""})
+                links.append({
+                    "url":      urljoin(base, href),
+                    "name":     name,
+                    "deadline": "",
+                })
         if links:
+            logger.info(f"Pattern 4 (list items) — found {len(links)} programs")
             return links
-
 
         seen = set()
         for a in response.css("a"):
@@ -298,14 +363,21 @@ class GradProgramSpider(scrapy.Spider):
                 full not in seen
                 and urlparse(full).netloc == urlparse(base).netloc
                 and any(kw in href.lower() for kw in PROGRAM_URL_KEYWORDS)
-                and not any(kw in href.lower() for kw in NON_PROGRAM_URL_KEYWORDS)
+                and not any(kw in href.lower() for kw in SAFE_NON_PROGRAM)
                 and len(name) > 4
             ):
                 seen.add(full)
-                links.append({"url": full, "name": name, "deadline": ""})
+                links.append({
+                    "url":      full,
+                    "name":     name,
+                    "deadline": "",
+                })
+        if links:
+            logger.info(f"Pattern 5 (broad href) — found {len(links)} programs")
+            return links
 
-        return links
-
+        logger.warning(f"No program links found at {base} — page may need inspection")
+        return []
 
 
     async def parse_program_page(self, response):
@@ -397,7 +469,6 @@ class GradProgramSpider(scrapy.Spider):
             item["fit_score"]          = 0
             item["fit_reasoning"]      = ""
             item["conversation_angles"] = []
-            print(f"DEBUG: yielding item for {response.url}")
             yield item
         finally:
             if page:
@@ -624,6 +695,25 @@ class GradProgramSpider(scrapy.Spider):
         links = []
         base = response.url
 
+        cards = response.css("div.teaser.teaser--small")
+        if cards:
+            for card in cards:
+                href  = card.css("h2.teaser__title a::attr(href)").get("")
+                name  = card.css("h2.teaser__title a::text").get("").strip()
+                title = card.css("h3.teaser__subtitle::text, h3.teaser__subtitle div::text").get("").strip()
+                email = card.css("a[href^='mailto']::attr(href)").get("").replace("mailto:", "")
+                if href and name:
+                    links.append({
+                        "url":            urljoin(base, href),
+                        "name":           name,
+                        "title":          title,
+                        "research_areas": "",
+                        "email":          email,
+                    })
+            if links:
+                logger.info(f"Pattern 0 (Steinhardt teaser cards) — found {len(links)} faculty")
+                return links
+
         cards = response.css("div.people-entry")
         if cards:
             for card in cards:
@@ -640,17 +730,93 @@ class GradProgramSpider(scrapy.Spider):
                         "research_areas": ", ".join(areas),
                         "email":          email,
                     })
-            logger.info(f"MIT EECS people page — found {len(links)} faculty")
+            logger.info(f"Pattern 1 (MIT EECS) — found {len(links)} faculty")
             return links
 
+        card_selectors = [
+            ".faculty-card", ".person-card", ".faculty-member",
+            ".faculty-item", ".people-card", ".staff-card",
+            "[class*='faculty']", "[class*='people']", "[class*='person']",
+            "article.faculty", "li.faculty", "div.views-row",
+        ]
+        for selector in card_selectors:
+            cards = response.css(selector)
+            if len(cards) >= 3:  # at least 3 results = likely a real list
+                for card in cards:
+                    href  = card.css("a::attr(href)").get("")
+                    name  = card.css(
+                        "h2::text, h3::text, h4::text, h5::text, "
+                        ".name::text, strong::text, a::text"
+                    ).get("").strip()
+                    title = card.css(
+                        ".title::text, .position::text, .role::text, em::text"
+                    ).get("").strip()
+                    areas = ", ".join(
+                        card.css(".research::text, .interests::text, .areas::text").getall()
+                    )
+                    email = card.css(
+                        "a[href^='mailto']::attr(href)"
+                    ).get("").replace("mailto:", "")
+                    if href and name:
+                        links.append({
+                            "url":            urljoin(base, href),
+                            "name":           name,
+                            "title":          title,
+                            "research_areas": areas,
+                            "email":          email,
+                        })
+                if links:
+                    logger.info(f"Pattern 2 (generic cards via '{selector}') — found {len(links)} faculty")
+                    return links
+
+        for table in response.css("table"):
+            headers = [h.lower() for h in table.css("th::text").getall()]
+            if any(kw in " ".join(headers) for kw in ["name", "faculty", "professor"]):
+                for row in table.css("tbody tr"):
+                    href  = row.css("a::attr(href)").get("")
+                    name  = row.css("a::text, td:first-child::text").get("").strip()
+                    title = row.css("td:nth-child(2)::text").get("").strip()
+                    if name:
+                        links.append({
+                            "url":            urljoin(base, href) if href else "",
+                            "name":           name,
+                            "title":          title,
+                            "research_areas": "",
+                            "email":          "",
+                        })
+                if links:
+                    logger.info(f"Pattern 3 (table) — found {len(links)} faculty")
+                    return links
+
+        FACULTY_PROFILE_KEYWORDS = [
+            "/faculty/", "/people/", "/person/", "/profile/",
+            "/staff/", "/professors/", "/directory/",
+        ]
+        seen = set()
         for a in response.css("a"):
-            text = a.css("::text").get("").lower()
             href = a.attrib.get("href", "")
-            if any(kw in text or kw in href.lower() for kw in ["faculty", "people", "professors", "staff"]):
-                full = urljoin(response.url, href)
-                if urlparse(full).netloc == urlparse(response.url).netloc:
-                    links.append(full)
-        return list(dict.fromkeys(links))
+            name = a.css("::text").get("").strip()
+            full = urljoin(base, href)
+            if (
+                full not in seen
+                and urlparse(full).netloc == urlparse(base).netloc
+                and any(kw in href.lower() for kw in FACULTY_PROFILE_KEYWORDS)
+                and len(name) > 3
+            ):
+                seen.add(full)
+                links.append({
+                    "url":            full,
+                    "name":           name,
+                    "title":          "",
+                    "research_areas": "",
+                    "email":          "",
+                })
+        if links:
+            logger.info(f"Pattern 4 (href keywords) — found {len(links)} faculty")
+            return links
+
+        logger.warning(f"No faculty links found at {base} — page may need inspection")
+        return []
 
 
     def extract_semesters(self, response):
@@ -729,6 +895,44 @@ class GradProgramSpider(scrapy.Spider):
             else:
                 items.append(li)
         return items[:20]
+    
+
+    def _scrape_full_page_as_chunks(self, response) -> list:
+        """
+        Fallback: extract all page text and pass it as bio
+        so FacultyElasticsearchPipeline can chunk and embed it.
+        """
+        from grad_scraper.items.faculty_profile import FacultyProfileItem
+
+        # Extract all meaningful text from the page
+        raw_texts = response.css(
+            "main *::text, article *::text, .content *::text, body *::text"
+        ).getall()
+        page_text = " ".join(t.strip() for t in raw_texts if t.strip())
+        page_text = re.sub(r"\s+", " ", page_text).strip()
+
+        if not page_text:
+            logger.warning(f"Full page fallback: no text found at {response.url}")
+            return []
+
+        item = FacultyProfileItem()
+        item["name"]                = self._infer_university(response.url) + " Faculty Directory"
+        item["title"]               = ""
+        item["email"]               = ""
+        item["research_areas"]      = ""
+        item["bio"]                 = page_text  # ← pipeline chunks this
+        item["source_url"]          = response.url
+        item["university"]          = self._infer_university(response.url)
+        item["program"]             = ""
+        item["scraped_at"]          = datetime.now(timezone.utc).isoformat()
+        item["papers"]              = []
+        item["paper_keywords"]      = []
+        item["fit_score"]           = 0
+        item["fit_reasoning"]       = ""
+        item["conversation_angles"] = []
+
+        logger.info(f"Full page fallback — {len(page_text)} chars passed to pipeline for {response.url}")
+        return [item]
 
     def handle_error(self, failure):
         logger.error(f"Request failed: {failure.request.url} — {failure.value}")
