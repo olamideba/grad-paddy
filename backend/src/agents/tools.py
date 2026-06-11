@@ -1,5 +1,6 @@
 import json
 import httpx
+import logging
 
 from google.adk.tools import FunctionTool, LongRunningFunctionTool, ToolContext
 
@@ -31,6 +32,9 @@ from src.services.ingestion_service import IngestionService
 from src.services.faculty_service import FacultyService
 from src.scraper.grad_scraper.pipelines.elasticsearch import _get_embedding_fn
 from src.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+
 try:
     embed_fn, _ = _get_embedding_fn()
 except Exception as e:

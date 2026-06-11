@@ -1682,12 +1682,20 @@ export default function ChatPage() {
   // named tool step takes over the label). Random start so repeat turns vary.
   useEffect(() => {
     if (!isAgentRunning) return;
-    setThinkingIdx(Math.floor(Math.random() * THINKING_MESSAGES.length));
+    // Random start so repeat turns vary; deferred to a callback so we don't
+    // call setState synchronously inside the effect body.
+    const start = setTimeout(
+      () => setThinkingIdx(Math.floor(Math.random() * THINKING_MESSAGES.length)),
+      0
+    );
     const id = setInterval(
       () => setThinkingIdx((i) => (i + 1) % THINKING_MESSAGES.length),
       2600
     );
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(start);
+      clearInterval(id);
+    };
   }, [isAgentRunning]);
 
   useEffect(() => {
