@@ -18,7 +18,6 @@ import {
   Check,
   ChevronDown,
   Copy,
-  GraduationCap,
   Search,
   Star,
   Calendar,
@@ -26,6 +25,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { StatusPill } from "@/components/Neo";
+import { LogoGlyph } from "@/components/Logo";
 import { Skeleton } from "@/components/Skeleton";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -2473,7 +2473,7 @@ export default function ChatPage() {
               {/* Hero mark */}
               <div className="relative mb-6">
                 <div className="size-16 grid place-items-center bg-accent-orange border-2 border-ink neo-shadow text-paper">
-                  <GraduationCap className="size-8" strokeWidth={2.5} />
+                  <LogoGlyph size={32} />
                 </div>
                 <div className="absolute -top-2 -right-2 size-6 grid place-items-center bg-accent-yellow border-2 border-ink">
                   <Sparkles className="size-3.5" strokeWidth={2.5} />

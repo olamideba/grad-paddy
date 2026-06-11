@@ -46,6 +46,16 @@ def _response(data: object, message: str = "") -> dict[str, object]:
     return {"success": True, "data": data, "message": message}
 
 
+def _tool_error(error_code: str, message: str) -> dict[str, object]:
+    """Sanitized failure payload returned to the LLM.
+
+    Never put raw upstream errors (status bodies, exception text, stack
+    traces) in here — anything in this payload lands in the model context
+    and can be relayed to the end user.
+    """
+    return {"success": False, "error_code": error_code, "message": message}
+
+
 # ── Account ───────────────────────────────────────────────────────────────────
 
 
@@ -1425,52 +1435,72 @@ ingest_url = FunctionTool(ingest_url)
 check_ingestion_status = FunctionTool(check_ingestion_status)
 
 # ── Hybrid Search ───────────────────────────────────────────────────────────────
-async def hybrid_faculty_search(research_query: str, tool_context: ToolContext) -> dict:
-    settings = get_settings()
-    query_vector = embed_fn([research_query])[0]
+_SEARCH_UNAVAILABLE_MESSAGE = (
+    "The search service is temporarily unavailable due to an internal issue. "
+    "Apologize briefly, suggest the user try again later, and do not retry, "
+    "speculate about, or disclose any technical cause."
+)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.ES_URL}/faculty-profiles/_search",
-            headers={
-                "Authorization": f"ApiKey {settings.ELASTIC_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "query": {"match": {"text": research_query}},
-                "knn": {
-                    "field": "embedding", 
-                    "query_vector": query_vector,
-                    "num_candidates": 20,
-                    "k": 5,
+
+async def _hybrid_search(index: str, query: str, success_message: str) -> dict:
+    """Run a hybrid (text + kNN) search against an Elasticsearch index.
+
+    All failure modes are logged in full server-side and collapsed into a
+    sanitized error payload for the model — raw Elasticsearch errors must
+    never reach the LLM context.
+    """
+    if embed_fn is None:
+        logger.error("Hybrid search on %s unavailable: embedding function not initialized", index)
+        return _tool_error("SEARCH_UNAVAILABLE", _SEARCH_UNAVAILABLE_MESSAGE)
+
+    try:
+        query_vector = embed_fn([query])[0]
+    except Exception:
+        logger.exception("Hybrid search on %s failed: could not embed query", index)
+        return _tool_error("SEARCH_UNAVAILABLE", _SEARCH_UNAVAILABLE_MESSAGE)
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{settings.ES_URL}/{index}/_search",
+                headers={
+                    "Authorization": f"ApiKey {settings.ELASTIC_API_KEY}",
+                    "Content-Type": "application/json",
                 },
-            }
+                json={
+                    "query": {"match": {"text": query}},
+                    "knn": {
+                        "field": "embedding",
+                        "query_vector": query_vector,
+                        "num_candidates": 20,
+                        "k": 5,
+                    },
+                },
+            )
+    except httpx.HTTPError:
+        logger.exception("Hybrid search request to %s failed", index)
+        return _tool_error("SEARCH_UNAVAILABLE", _SEARCH_UNAVAILABLE_MESSAGE)
+
+    if response.status_code != 200:
+        logger.error(
+            "Hybrid search on %s returned %s: %s", index, response.status_code, response.text
         )
-        return _response(response.json(), "Faculty search completed successfully")
+        return _tool_error("SEARCH_UNAVAILABLE", _SEARCH_UNAVAILABLE_MESSAGE)
+
+    return _response(response.json(), success_message)
+
+
+async def hybrid_faculty_search(research_query: str, tool_context: ToolContext) -> dict:
+    return await _hybrid_search(
+        "faculty-profiles", research_query, "Faculty search completed successfully"
+    )
 
 
 async def hybrid_program_search(program_query: str, tool_context: ToolContext) -> dict:
-    settings = get_settings()
-    query_vector = embed_fn([program_query])[0]
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.ES_URL}/grad-programs/_search", 
-            headers={
-                "Authorization": f"ApiKey {settings.ELASTIC_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "query": {"match": {"text": program_query}},
-                "knn": {
-                    "field": "embedding",  
-                    "query_vector": query_vector,
-                    "num_candidates": 20,
-                    "k": 5,
-                },
-            }
-        )
-        return _response(response.json(), "Program search completed successfully")
+    return await _hybrid_search(
+        "grad-programs", program_query, "Program search completed successfully"
+    )
 
 hybrid_faculty_search = FunctionTool(hybrid_faculty_search)
 hybrid_program_search = FunctionTool(hybrid_program_search)
