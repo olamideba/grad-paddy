@@ -43,6 +43,7 @@ class Settings(BaseSettings):
             "create_draft",
             "update_draft_content",
             "upsert_preferences",
+            "ingest_url",
         ]
     )
 
