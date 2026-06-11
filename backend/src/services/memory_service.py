@@ -22,17 +22,54 @@ NOT through an Elastic Agent Builder MCP round-trip.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from elasticsearch import NotFoundError
+from google import genai
+from google.genai import types
 
 from src.core.config import get_settings
 from src.repositories.elastic_repo import get_es
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Allowed tags — kept in sync with the save_memory tool docstring so extracted
+# facts carry the same taxonomy as agent-saved ones.
+_MEMORY_TAGS = (
+    "research_interests",
+    "academic_background",
+    "application_goals",
+    "target_programs",
+    "target_faculty",
+    "preferences",
+    "sop_strategy",
+    "outreach_strategy",
+    "constraints",
+)
+
+_EXTRACTION_PROMPT = (
+    "You extract durable, cross-session facts about a graduate-school applicant "
+    "from a single conversation turn. Return ONLY a JSON array (possibly empty).\n"
+    "Each element: {{\"fact\": <third-person statement>, \"tags\": [<one or more "
+    "of: {tags}>]}}.\n"
+    "Save ONLY genuinely durable facts the user has confirmed about themselves: "
+    "research interests, academic background, target programs/universities/faculty, "
+    "application strategy, SOP framing, funding/timeline constraints, stated "
+    "preferences, or explicit 'remember this' instructions.\n"
+    "Do NOT save: transient chit-chat, questions, tool outputs, things the "
+    "assistant said, or anything the user has not confirmed as their own goal or "
+    "preference. When in doubt, omit. Write facts in third person, e.g. "
+    "'User is targeting NLP PhD programs with a focus on healthcare AI.'\n\n"
+    "USER MESSAGE:\n{user_text}\n\n"
+    "ASSISTANT REPLY (context only — do not extract facts about the assistant):\n"
+    "{assistant_text}\n"
+)
 
 # `fact_semantic` is a semantic_text field: Elasticsearch embeds it on ingest
 # (and embeds queries on search) using the Vertex inference endpoint referenced
@@ -239,3 +276,83 @@ class MemoryService:
             return {"status": "deleted", "id": memory_id}
         except NotFoundError:
             return {"status": "error", "message": "Memory not found"}
+
+    @staticmethod
+    async def extract_and_save(
+        user_id: str,
+        user_text: str,
+        assistant_text: str = "",
+        session_id: str = "",
+    ) -> int:
+        """Extract durable user facts from one turn and persist them.
+
+        This runs OFF the agent's tool-decision loop (fired from the root
+        after_agent_callback) so memory writes never compete with the app's
+        CRUD/HITL tools for the model's attention. A single cheap flash-lite
+        call distils the turn into atomic facts; save_memory dedups each one,
+        so re-running on paraphrased turns is safe.
+
+        Returns the number of facts persisted. Best-effort: any failure is
+        swallowed (logged) because memory is non-critical to the user's turn.
+        """
+        if not user_text or len(user_text.strip()) < 12:
+            return 0
+
+        try:
+            client = genai.Client(
+                vertexai=True,
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GOOGLE_CLOUD_LOCATION,
+            )
+            prompt = _EXTRACTION_PROMPT.format(
+                tags=", ".join(_MEMORY_TAGS),
+                user_text=user_text.strip()[:4000],
+                assistant_text=(assistant_text or "").strip()[:2000],
+            )
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    response_mime_type="application/json",
+                ),
+            )
+            facts = MemoryService._parse_facts(response.text or "")
+        except Exception as exc:
+            logger.warning("Memory extraction failed for user %s: %s", user_id, exc)
+            return 0
+
+        saved = 0
+        for item in facts:
+            fact = str(item.get("fact", "")).strip()
+            if not fact:
+                continue
+            tags = [t for t in item.get("tags", []) if t in _MEMORY_TAGS]
+            try:
+                await MemoryService.save_memory(
+                    user_id=user_id,
+                    fact=fact,
+                    tags=tags or ["preferences"],
+                    session_id=session_id,
+                    source="auto_extracted",
+                )
+                saved += 1
+            except Exception as exc:
+                logger.warning("Memory save failed for user %s: %s", user_id, exc)
+        if saved:
+            logger.info("Auto-extracted %d memories for user %s", saved, user_id)
+        return saved
+
+    @staticmethod
+    def _parse_facts(raw: str) -> list[dict[str, object]]:
+        """Parse the extraction model's JSON array, tolerating code fences."""
+        text = raw.strip()
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return []
+        return [f for f in parsed if isinstance(f, dict)] if isinstance(parsed, list) else []

@@ -32,17 +32,27 @@ class Settings(BaseSettings):
     ADK_LOG_PROMPT_CONTENT: bool = Field(default=True)
 
     # HITL Settings
+    # Names MUST match the tool function names exactly — the HITL callback keys
+    # off `tool.name`. Email tools are intentionally excluded: create_email only
+    # makes a 'draft' (the email gate is opened separately) and send_email runs
+    # post-approval from the canvas.
     SENSITIVE_TOOLS: list[str] = Field(
         default=[
+            "update_profile",
+            "update_preferences",
             "add_shortlist_faculty",
             "update_shortlist_faculty",
+            "update_shortlist_outreach_status",
             "delete_shortlist_faculty",
             "create_application",
             "update_application",
+            "add_application_recommender",
+            "update_application_recommender_status",
             "delete_application",
             "create_draft",
             "update_draft_content",
-            "upsert_preferences",
+            "update_draft_status",
+            "delete_draft",
             "ingest_url",
         ]
     )
