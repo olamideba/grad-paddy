@@ -149,45 +149,40 @@ class FacultyService:
             return []
 
     @staticmethod
-    async def fetch_google_scholar(faculty_name: str, limit: int) -> list:
-        from scholarly import scholarly
-
-        def _fetch():
-            try:
-                search_query = scholarly.search_author(faculty_name)
-                author = next(search_query, None)
-                if not author:
-                    return []
-                author = scholarly.fill(author, sections=['publications'])
-                papers = author.get('publications', [])[:limit]
-                return [{
-                    "title":     p['bib'].get('title', ''),
-                    "year":      p['bib'].get('pub_year'),
-                    "citations": p.get('num_citations', 0),
-                    "abstract":  p['bib'].get('abstract', '')[:600],
-                    "url":       f"https://scholar.google.com/scholar?q={p['bib'].get('title', '').replace(' ', '+')}",
-                    "source":    "google_scholar",
-                } for p in papers]
-            except Exception as ex:
-                logger.error(f"Scholarly inner execution error: {ex}")
-                return []
-
-        try:
-            return await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(None, _fetch),
-                timeout=15.0  # cap the scraper at 15s
+    async def fetch_openalex(faculty_name: str, limit: int) -> list:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.openalex.org/authors",
+                params={"search": faculty_name, "per_page": 1},
+                timeout=8.0,
             )
-        except asyncio.TimeoutError:
-            logger.warning(f"Google Scholar scraping timed out for {faculty_name}")
-            return []
+            authors = resp.json().get("results", [])
+            if not authors:
+                return []
+            
+            author_id = authors[0]["id"].split("/")[-1]
+            works = await client.get(
+                f"https://api.openalex.org/works",
+                params={"filter": f"author.id:{author_id}", "per_page": limit, "sort": "cited_by_count:desc"},
+                timeout=8.0,
+            )
+            return [{
+                "title":     w.get("title", ""),
+                "year":      w.get("publication_year"),
+                "citations": w.get("cited_by_count", 0),
+                "abstract":  (w.get("abstract") or "")[:600],
+                "url":       w.get("doi", ""),
+                "source":    "openalex",
+            } for w in works.json().get("results", [])]
+
 
     @staticmethod
     async def get_faculty_papers(faculty_name: str, limit: int = 5) -> dict:
         papers = await FacultyService.fetch_semantic_scholar(faculty_name, limit)
 
         if not papers:
-            logger.info(f"Falling back to Google Scholar scraping lookup pipeline for {faculty_name}")
-            papers = await FacultyService.fetch_google_scholar(faculty_name, limit)
+            logger.info(f"Falling back to OpenAlex lookup for {faculty_name}")
+            papers = await FacultyService.fetch_openalex(faculty_name, limit)
 
         return {
             "name":   faculty_name,

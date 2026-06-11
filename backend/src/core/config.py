@@ -123,6 +123,7 @@ class Settings(BaseSettings):
     DOWNLOAD_DELAY: int = Field(default=2)
     CONCURRENT_REQUESTS: int = Field(default=4)
     LOG_LEVEL: str = Field(default="INFO")
+    OPENALEX_API_KEY: str = Field(default="")
 
 
 @lru_cache
