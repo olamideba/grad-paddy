@@ -73,9 +73,7 @@ class Settings(BaseSettings):
             "find_faculty_by_research_and_schools,"
             "find_universities_by_program,"
             "check_program_deadlines_and_application_fees,"
-            "find_faculty_by_university"
-            # "hybrid_faculty_search,"
-            # "hybrid_program_search"
+            "find_faculty_by_university,"
         )
     )
 
