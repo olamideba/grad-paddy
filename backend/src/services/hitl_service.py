@@ -83,17 +83,20 @@ class HITLService:
         except KeyError as e:
             raise ValueError("HITL record not found") from e
 
-        # Persist the artifact deterministically on approval. The proposed values
-        # are already in the HITL payload (and the user's edits in `response`), so
-        # we save them here rather than relying on the agent to re-enter its final
-        # sub-agent and call the write tool on resume (that resume is unreliable,
-        # which left approved writes unsaved). Only CREATE is handled here; updates
-        # and deletes stay with the agent (deterministic destructive ops are risky).
+        # Apply the approved change deterministically, server-side. The proposed
+        # values are already in the HITL payload (and the human's edits in
+        # `response`), so we execute the write here — for create, update, AND
+        # delete — rather than relying on the agent to re-call the write tool on
+        # resume (that re-call is blocked by the safety callback and is
+        # unreliable, which left approved writes unsaved). This is the single
+        # persistence path for the single approval gate.
         if newly_resolved and decision == "approved":
             try:
-                await HITLService._persist_artifact(user_id, record, response)
+                await HITLService._apply_change(user_id, record, response)
             except Exception as exc:  # noqa: BLE001
-                logger.error("Failed to persist approved artifact for HITL %s: %s", hitl_id, exc)
+                logger.error(
+                    "Failed to apply approved change for HITL %s: %s", hitl_id, exc, exc_info=True
+                )
 
         return record, newly_resolved
 
@@ -108,29 +111,86 @@ class HITLService:
         return {k: v for k, v in payload.items() if k not in control}
 
     @staticmethod
-    async def _persist_artifact(user_id: str, record: dict, response: dict | None) -> None:
-        """Persist the approved artifact (draft / shortlist faculty / tracker app)."""
+    async def _apply_change(user_id: str, record: dict, response: dict | None) -> None:
+        """Apply one approved change (create / update / delete) for one entity.
+
+        Single persistence path for the single approval gate. Deterministic and
+        server-side: it reads the proposed values from the HITL payload, lets the
+        human's review-card edits (`response`) win over them, and calls the owning
+        service. There are deliberately NO silent field guards — if a service
+        rejects the data it raises, and resolve_hitl logs it loudly (a write that
+        looked approved but did nothing was the bug this replaces).
+
+        Emails are intentionally not handled here: the email gate only reviews a
+        draft, and send happens from the UI canvas.
+        """
         if record.get("artifact_id"):
-            return  # already persisted — don't duplicate
+            return  # create already persisted — don't duplicate
 
         payload = record.get("payload") or {}
         entity = str(payload.get("entity") or "").lower()
         action = str(payload.get("action") or "create").lower()
+        ref_id = str(payload.get("ref_id") or "").strip()
+        hitl_id = record.get("id")
+
+        # Proposed fields, with the human's review-card edits layered on top.
+        fields = HITLService._payload_fields(payload)
+        if isinstance(response, dict) and isinstance(response.get("fields"), dict):
+            fields = {**fields, **response["fields"]}
+
+        # Long-form draft text: prefer the human's edit, fall back to payload.
+        content = ""
+        if isinstance(response, dict):
+            content = str(response.get("content") or "").strip()
+        if not content:
+            content = str(payload.get("content") or "").strip()
+
+        def _require_ref() -> bool:
+            if not ref_id:
+                logger.error("HITL %s %s on '%s' missing ref_id — skipped", hitl_id, action, entity)
+                return False
+            return True
+
         artifact_id: str | None = None
 
-        # ── Drafts (entity + content) ──
-        mapping = _DRAFT_ENTITIES.get(entity)
-        if mapping:
-            draft_type, default_title = mapping
-            content = ""
-            if isinstance(response, dict):
-                content = str(response.get("content") or "").strip()
-            if not content:
-                content = str(payload.get("content") or "").strip()
-            if not content:
-                return
+        # ── Email: reviewed here, sent from the UI canvas — nothing to persist ──
+        if entity == "email":
+            return
+
+        # ── Profile / preferences: update-only, keyed by user (no ref_id) ──
+        if entity == "profile":
+            from src.services.users_service import UserService
+
+            await UserService.update_profile(user_id, fields)
+            return
+        if entity in {"preferences", "prefs"}:
+            from src.services.users_service import UserService
+
+            await UserService.update_preferences(user_id, fields)
+            return
+
+        # ── Drafts ──
+        if entity in _DRAFT_ENTITIES or entity == "draft":
             from src.services.drafts_service import DraftsService
 
+            if action == "delete":
+                if _require_ref():
+                    await DraftsService.delete_draft(user_id, ref_id)
+                return
+            if action == "update":
+                if not _require_ref():
+                    return
+                if content:
+                    await DraftsService.update_content(user_id, ref_id, content)
+                status = str(fields.get("status") or "").strip()
+                if status:
+                    await DraftsService.update_status(user_id, ref_id, status)
+                return
+            # create
+            if not content:
+                logger.error("HITL %s draft create has no content — skipped", hitl_id)
+                return
+            draft_type, default_title = _DRAFT_ENTITIES.get(entity, ("outreach-prep", "Draft"))
             draft = await DraftsService.create_draft(
                 user_id,
                 {
@@ -138,9 +198,8 @@ class HITLService:
                     "title": str(payload.get("title") or default_title),
                     "content": content,
                     "ai_generated": True,
-                    # Approved through the chat HITL gate → already approved; no
-                    # need to re-approve it in the Drafts section, and it's
-                    # immediately attachable to an application.
+                    # Approved through the chat gate → already approved; no need to
+                    # re-approve in the Drafts section, and immediately attachable.
                     "status": "approved",
                     "linked_application_id": payload.get("linked_application_id"),
                     "linked_faculty_id": payload.get("linked_faculty_id"),
@@ -148,23 +207,66 @@ class HITLService:
             )
             artifact_id = draft.get("id")
 
-        # ── Shortlist faculty (create only) ──
-        elif entity in {"shortlist", "faculty"} and action == "create" and not payload.get("ref_id"):
-            fields = HITLService._payload_fields(payload)
-            if str(fields.get("name") or "").strip():
-                from src.services.shortlist_service import ShortlistService
+        # ── Shortlist faculty ──
+        elif entity in {"shortlist", "faculty"}:
+            from src.services.shortlist_service import ShortlistService
 
-                faculty = await ShortlistService.add_faculty(user_id, fields)
-                artifact_id = faculty.get("id")
+            if action == "delete":
+                if _require_ref():
+                    await ShortlistService.delete_faculty(user_id, ref_id)
+                return
+            if action == "update":
+                if not _require_ref():
+                    return
+                status = str(fields.get("outreach_status") or "").strip()
+                other = {k: v for k, v in fields.items() if k != "outreach_status"}
+                if other:
+                    await ShortlistService.update_faculty(user_id, ref_id, other)
+                if status:
+                    await ShortlistService.update_outreach_status(user_id, ref_id, status)
+                return
+            # create
+            faculty = await ShortlistService.add_faculty(user_id, fields)
+            artifact_id = faculty.get("id")
 
-        # ── Tracker application (create only) ──
-        elif entity in {"tracker", "application", "app"} and action == "create" and not payload.get("ref_id"):
-            fields = HITLService._payload_fields(payload)
-            if str(fields.get("university") or "").strip() and str(fields.get("program") or "").strip():
-                from src.services.tracker_service import TrackerService
+        # ── Tracker application ──
+        elif entity in {"tracker", "application", "app"}:
+            from src.services.tracker_service import TrackerService
 
-                app = await TrackerService.create_application(user_id, fields)
-                artifact_id = app.get("id")
+            if action == "delete":
+                if _require_ref():
+                    await TrackerService.delete_application(user_id, ref_id)
+                return
+            if action == "update":
+                if _require_ref():
+                    await TrackerService.update_application(user_id, ref_id, fields)
+                return
+            # create
+            app = await TrackerService.create_application(user_id, fields)
+            artifact_id = app.get("id")
+
+        # ── Recommender: lives on an application; ref_id IS the application id ──
+        elif entity == "recommender":
+            if not _require_ref():
+                return
+            from src.services.tracker_service import TrackerService
+
+            if action in {"update", "status"}:
+                name = str(fields.get("name") or "").strip()
+                status = str(fields.get("status") or "").strip()
+                if name and status:
+                    await TrackerService.update_recommender_status(user_id, ref_id, name, status)
+                else:
+                    logger.error("HITL %s recommender update missing name/status — skipped", hitl_id)
+            else:
+                await TrackerService.add_recommender(user_id, ref_id, fields)
+            return
+
+        else:
+            logger.error(
+                "HITL %s: unhandled entity '%s' action '%s' — not persisted", hitl_id, entity, action
+            )
+            return
 
         if artifact_id:
             try:
