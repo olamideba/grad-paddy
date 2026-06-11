@@ -1,13 +1,18 @@
 from google.adk.agents import LlmAgent
 
-from src.agents.subagents import build_account_agent, build_application_agent, build_governance_agent
+from src.agents.subagents import (
+    build_account_agent,
+    build_application_agent,
+    build_governance_agent,
+)
+from src.agents.callbacks import enforce_hitl_policy_callback
 
 
 def build_internal_app_agent() -> LlmAgent:
     """Internal application layer agent that owns app-state operations."""
     return LlmAgent(
         name="internal_app_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description=(
             "Internal application layer agent for Grad Paddy. "
             "Handles user profile, preferences, shortlist, tracker, and draft workflows."
@@ -17,6 +22,7 @@ def build_internal_app_agent() -> LlmAgent:
             build_application_agent(),
             build_governance_agent(),
         ],
+        before_tool_callback=enforce_hitl_policy_callback,
         instruction=(
             "You manage the internal application layer only.\n"
             "- Use this branch for profile, preferences, shortlist, tracker, drafts, and HITL state.\n"

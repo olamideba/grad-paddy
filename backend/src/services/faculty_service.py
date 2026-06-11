@@ -28,12 +28,6 @@ UNI_MAP = {
 }
 
 class FacultyService:
-    @staticmethod
-    def _get_genai_client() -> genai.Client:
-        global _genai_client
-        if _genai_client is None:
-            _genai_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-        return _genai_client
 
     @staticmethod
     async def embed(text: str) -> list[float]:
@@ -111,17 +105,14 @@ class FacultyService:
             es    = get_es()
             index = settings.FACULTY_ES_INDEX
 
-            try:
-                resp    = await es.search(index=index, body=body)
-                hits    = resp["hits"]["hits"]
-                seen    = {}
-                for hit in hits:
-                    name = hit["_source"].get("name", "")
-                    if name not in seen:
-                        seen[name] = hit["_source"]
-                faculty = list(seen.values())[:top_k]
-            finally:
-                await es.close()
+            resp    = await es.search(index=index, body=body)
+            hits    = resp["hits"]["hits"]
+            seen    = {}
+            for hit in hits:
+                name = hit["_source"].get("name", "")
+                if name not in seen:
+                    seen[name] = hit["_source"]
+            faculty = list(seen.values())[:top_k]
 
             return {
                 "query":        query,

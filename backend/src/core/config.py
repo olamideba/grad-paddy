@@ -4,18 +4,16 @@ from functools import lru_cache
 from pathlib import Path
 
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     GOOGLE_CLOUD_PROJECT: str = Field(default="")
     GOOGLE_CLOUD_LOCATION: str = Field(default="global")
     GOOGLE_GENAI_USE_VERTEXAI: bool = Field(default=True)
     GOOGLE_APPLICATION_CREDENTIALS: Path | None = Field(default=None)
-    GOOGLE_API_KEY: str = Field(..., description="Google API key")
 
     # Firebase Storage bucket (e.g. "<project>.appspot.com"). Required for CV uploads.
     STORAGE_BUCKET: str = Field(default="")
@@ -30,8 +28,23 @@ class Settings(BaseSettings):
     AG_UI_APP_NAME: str = Field(default="grad_paddy")
     AG_UI_USER_ID: str = Field(default="demo_user")
     AG_UI_SESSION_TIMEOUT_SECONDS: int = Field(default=3600)
-
+    ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL: bool = Field(default=True)
     ADK_LOG_PROMPT_CONTENT: bool = Field(default=True)
+
+    # HITL Settings
+    SENSITIVE_TOOLS: list[str] = Field(
+        default=[
+            "add_shortlist_faculty",
+            "update_shortlist_faculty",
+            "delete_shortlist_faculty",
+            "create_application",
+            "update_application",
+            "delete_application",
+            "create_draft",
+            "update_draft_content",
+            "upsert_preferences",
+        ]
+    )
 
     # Firestore
     FIRESTORE_DATABASE_ID: str = Field(default="grad-paddy-db")
@@ -39,7 +52,7 @@ class Settings(BaseSettings):
     # Elastic Agent Builder MCP
     ELASTIC_MCP_URL: str = Field(default="")
     ELASTIC_API_KEY: str = Field(default="")
-    ELASTIC_MCP_TIMEOUT_SECONDS: int = Field(default=30)
+    ELASTIC_MCP_TIMEOUT_SECONDS: int = Field(default=60)
     ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS: int = Field(default=300)
     ELASTIC_MCP_TOOL_FILTER: str = Field(
         default=(
@@ -81,18 +94,29 @@ class Settings(BaseSettings):
     DOC_GOOGLE_INTEGRATION: str = Field(default="google")
 
     # Elastic Search
-    ES_URL: str = Field(default="https://my-elasticsearch-project-b387b6.es.us-central1.gcp.elastic.cloud:443")
+    ES_URL: str = Field(default="")
     PROGRAM_ES_INDEX: str = Field(default="grad-programs")
     FACULTY_ES_INDEX: str = Field(default="faculty-profiles")
+    MEMORY_ES_INDEX: str = Field(default="user-memories")
+    MEMORY_TOP_K: int = Field(default=8)
+    # Dedup threshold on the `semantic` query score (~raw cosine for a dense
+    # text_embedding model, NOT normalized (1+cos)/2). Calibrated via
+    # smoke_memory.py: a paraphrase pair measured 0.905; unrelated facts score
+    # far lower. 0.88 sits just below the paraphrase score — catches restatements
+    # with margin without collapsing distinct facts. Re-measure if the embedding
+    # model / inference endpoint changes.
+    MEMORY_SIMILARITY_THRESHOLD: float = Field(default=0.88)
+    MEMORY_INFERENCE_ID: str = Field(default="googlevertexai-text_embedding-bwonmglu9c")
+    MEMORY_INFERENCE_LOCATION: str = Field(default="us-central1")
 
     EMBEDDING_MODEL: str = Field(default="text-embedding-004")
 
-    GEMINI_ENABLED: bool = Field(default=True)            
-    GEMINI_MODEL: str = Field(default="gemini-2.5-flash") 
+    GEMINI_ENABLED: bool = Field(default=True)
+    GEMINI_MODEL: str = Field(default="gemini-3.1-flash-lite")
 
     DOWNLOAD_DELAY: int = Field(default=2)
     CONCURRENT_REQUESTS: int = Field(default=4)
-    LOG_LEVEL: str = Field(default="INFO") 
+    LOG_LEVEL: str = Field(default="INFO")
 
 
 @lru_cache
