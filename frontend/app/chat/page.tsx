@@ -15,7 +15,9 @@ import {
   Rocket,
   Sparkles,
   Brain,
+  Check,
   ChevronDown,
+  Copy,
   GraduationCap,
   Search,
   Star,
@@ -278,7 +280,14 @@ type ChatItem =
       tool?: string;
       children?: { label: string; status: StepStatus; detail?: string }[];
     }
-  | { type: "phase"; id: string; label: string; status: StepStatus; reasoning?: string }
+  | {
+      type: "phase";
+      id: string;
+      label: string;
+      status: StepStatus;
+      reasoning?: string;
+      elapsedSeconds?: number;
+    }
   | {
       type: "approval";
       id: string; // hitlId
@@ -313,7 +322,11 @@ type ChatItem =
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
 // TEXT_MESSAGE_* events are skipped — the agent text item is built from the message content.
-function replayEventsToItems(events: Record<string, unknown>[], messageId: string): ChatItem[] {
+function replayEventsToItems(
+  events: Record<string, unknown>[],
+  messageId: string,
+  elapsedSeconds?: number
+): ChatItem[] {
   const items: ChatItem[] = [];
   let phaseItem: Extract<ChatItem, { type: "phase" }> | null = null;
   let reasoning = "";
@@ -358,6 +371,8 @@ function replayEventsToItems(events: Record<string, unknown>[], messageId: strin
     }
     phaseItem.reasoning = reasoning.trim();
   }
+  // Restore the run duration (derived from message timestamps on reload).
+  if (phaseItem && elapsedSeconds != null) phaseItem.elapsedSeconds = elapsedSeconds;
   return items;
 }
 
@@ -924,7 +939,9 @@ function AgentWorkCard({
     status: s.status,
   }));
 
-  const [elapsed, setElapsed] = useState(0);
+  // Seed from the restored run duration so a reloaded chat shows the real
+  // elapsed time instead of 0:00; live runs start at 0 and tick as before.
+  const [elapsed, setElapsed] = useState(() => Math.round(phase.elapsedSeconds ?? 0));
   useEffect(() => {
     if (phase.status !== "running") return;
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
@@ -1491,7 +1508,18 @@ function MessageBubble({
   const isStreaming = !isUser && streamingMessageId === item.id;
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number; size: number }[]>([]);
   const [bubbles, setBubbles] = useState<GlassBubble[]>([]);
+  const [copied, setCopied] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+
+  function copyMessage() {
+    navigator.clipboard
+      .writeText(item.content)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  }
 
   function spawnRipple(e: React.PointerEvent<HTMLDivElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -1539,7 +1567,7 @@ function MessageBubble({
           </div>,
           document.body
         )}
-      <div className={clsx("flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
+      <div className={clsx("group/msg flex gap-3 msg-enter", isUser && "flex-row-reverse")}>
         {!isUser && (
           <div className="size-9 shrink-0 grid place-items-center bg-accent-yellow border-2 border-ink neo-shadow-sm mt-0.5">
             <Sparkles className="size-4" strokeWidth={2.5} />
@@ -1579,11 +1607,43 @@ function MessageBubble({
               </span>
             )}
           </div>
+          {/* Hover-revealed action row (ChatGPT-style): time + copy icon. */}
           <div
-            className={clsx("text-[10px] font-mono text-[#B0A898]", isUser && "text-right")}
+            className={clsx(
+              "flex items-center gap-2.5 text-[11px] font-mono font-semibold text-[#6B6457]",
+              isUser && "flex-row-reverse"
+            )}
             suppressHydrationWarning
           >
-            {item.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <span>
+              {item.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+            {item.content && !isStreaming && (
+              <button
+                onClick={copyMessage}
+                aria-label="Copy message"
+                className={clsx(
+                  "group/copy relative grid place-items-center p-0.5 transition-all duration-150 hover:text-ink focus-visible:text-ink",
+                  copied
+                    ? "opacity-100"
+                    : "opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100"
+                )}
+                style={copied ? { color: "#4ECDC4" } : undefined}
+              >
+                {copied ? (
+                  <Check className="size-4" strokeWidth={3} />
+                ) : (
+                  <Copy className="size-4" strokeWidth={2.5} />
+                )}
+                {/* "copy" label on icon hover */}
+                <span
+                  className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-0.5 text-[9px] font-bold font-space opacity-0 transition-opacity group-hover/copy:opacity-100"
+                  style={{ background: "#0D0D0D", color: "#FBF7EF", borderRadius: "3px" }}
+                >
+                  {copied ? "copied" : "copy"}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1666,6 +1726,24 @@ export default function ChatPage() {
   const { setRunning } = useAgent();
   const router = useRouter();
 
+  // Restore the active session from the URL (?session=...) so a reload lands
+  // back in the same chat instead of starting a new one.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("session");
+    if (id) setActiveSessionId(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the session id in the URL so reloads (and shared links) restore this
+  // chat. replaceState avoids polluting browser history on every switch.
+  useEffect(() => {
+    window.history.replaceState(
+      null,
+      "",
+      activeSessionId ? `/chat?session=${encodeURIComponent(activeSessionId)}` : "/chat"
+    );
+  }, [activeSessionId]);
+
   const isAgentRunning = running;
   const runningStep = stream.find(
     (i): i is Extract<ChatItem, { type: "step" }> => i.type === "step" && i.status === "running"
@@ -1682,12 +1760,17 @@ export default function ChatPage() {
   // named tool step takes over the label). Random start so repeat turns vary.
   useEffect(() => {
     if (!isAgentRunning) return;
-    setThinkingIdx(Math.floor(Math.random() * THINKING_MESSAGES.length));
-    const id = setInterval(
-      () => setThinkingIdx((i) => (i + 1) % THINKING_MESSAGES.length),
-      2600
+    // Random start so repeat turns vary; deferred to a callback so we don't
+    // call setState synchronously inside the effect body.
+    const start = setTimeout(
+      () => setThinkingIdx(Math.floor(Math.random() * THINKING_MESSAGES.length)),
+      0
     );
-    return () => clearInterval(id);
+    const id = setInterval(() => setThinkingIdx((i) => (i + 1) % THINKING_MESSAGES.length), 2600);
+    return () => {
+      clearTimeout(start);
+      clearInterval(id);
+    };
   }, [isAgentRunning]);
 
   useEffect(() => {
@@ -1780,13 +1863,24 @@ export default function ChatPage() {
           // land back in the right place after reload.
           const blocks: { ts: number; items: ChatItem[] }[] = [];
           const restored: Message[] = [];
-          for (const m of res.data) {
+          // Chronological order so each assistant run can be timed against the
+          // user message that started it (run elapsed ≈ assistant ts − user ts).
+          const ordered = [...res.data].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          let lastUserTs: number | null = null;
+          for (const m of ordered) {
             if (m.role !== "user" && m.role !== "assistant") continue;
             const ts = new Date(m.created_at);
             const blk: ChatItem[] = [];
             if (m.role === "assistant" && m.ag_ui_events?.length) {
-              blk.push(...replayEventsToItems(m.ag_ui_events, m.id));
+              const elapsed =
+                lastUserTs != null
+                  ? Math.max(0, Math.round((ts.getTime() - lastUserTs) / 1000))
+                  : undefined;
+              blk.push(...replayEventsToItems(m.ag_ui_events, m.id, elapsed));
             }
+            if (m.role === "user") lastUserTs = ts.getTime();
             const hasContent = typeof m.content === "string" && m.content.trim().length > 0;
             if (m.role === "user") {
               blk.push({ type: "user", id: m.id, content: m.content, timestamp: ts });

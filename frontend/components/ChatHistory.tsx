@@ -118,7 +118,7 @@ export default function ChatHistory({
   function selectSession(id: string) {
     setPendingGroupId(null);
     setActiveSessionId(id);
-    router.push("/chat");
+    router.push(`/chat?session=${encodeURIComponent(id)}`);
     onNavigate?.();
   }
 

@@ -71,6 +71,66 @@ const TEAM: Member[] = [
   },
 ];
 
+const FLIP_CARDS = [
+  {
+    icon: Search,
+    problemTitle: "Faculty hunting",
+    problemDesc:
+      "Scanning 50+ pages for a professor who may not even be taking students this cycle.",
+    solutionTitle: "Ranked by fit",
+    solutionDesc:
+      "Agent surfaces faculty by research match, grant activity, and open-position signals — in one chat.",
+    glow: "#4ecdc4",
+  },
+  {
+    icon: Star,
+    problemTitle: "Fake funding",
+    problemDesc: "'Fully funded' that means a 20% waiver and a prayer for the rest.",
+    solutionTitle: "Real funding only",
+    solutionDesc:
+      "Filter for genuine offers — RA/TA stipends, fellowships, nationality eligibility all checked.",
+    glow: "#fbd530",
+  },
+  {
+    icon: FileText,
+    problemTitle: "Blank SOP page",
+    problemDesc:
+      "Writer's block on every application. The same weak story told a dozen different ways.",
+    solutionTitle: "Drafted for you",
+    solutionDesc:
+      "SOPs grounded in your CV and the lab's own research — tailored per application, not templated.",
+    glow: "#e8472a",
+  },
+  {
+    icon: Calendar,
+    problemTitle: "12-tab chaos",
+    problemDesc:
+      "Deadlines, portals, recommenders — scattered everywhere. One missed click ruins it.",
+    solutionTitle: "One tracker",
+    solutionDesc:
+      "Every deadline, document, and recommender in one place — synced to Google Calendar.",
+    glow: "#4ecdc4",
+  },
+  {
+    icon: MessageSquare,
+    problemTitle: "Cold email void",
+    problemDesc: "Generic outreach that gets ignored. No idea when or whether to follow up.",
+    solutionTitle: "Personal & sent",
+    solutionDesc:
+      "Drafts grounded in the professor's latest work. You approve — then the agent sends.",
+    glow: "#fbd530",
+  },
+  {
+    icon: Brain,
+    problemTitle: "Analysis paralysis",
+    problemDesc: "Comparing 40 programs for months, building spreadsheets, applying to none.",
+    solutionTitle: "Next move, clear",
+    solutionDesc:
+      "Agent reads your fit, funding odds, and deadlines — surfaces your three best next actions.",
+    glow: "#e8472a",
+  },
+];
+
 const STEPS = [
   {
     Icon: Search,
@@ -264,6 +324,7 @@ export default function Landing() {
         <Navbar cta={cta} />
         <Hero cta={cta} scrollRef={scrollRef} />
         <Demo scrollRef={scrollRef} />
+        <Problems />
         <HowItWorks />
         <Team />
         <Footer cta={cta} />
@@ -289,6 +350,9 @@ function Navbar({ cta }: { cta: string }) {
         <div className="hidden md:flex items-center gap-7 text-sm text-white/60">
           <a href="#demo" className="hover:text-white transition-colors">
             Demo
+          </a>
+          <a href="#problems" className="hover:text-white transition-colors">
+            Why it exists
           </a>
           <a href="#how" className="hover:text-white transition-colors">
             How it works
@@ -572,6 +636,110 @@ function ChatMockup() {
         </motion.div>
       )}
     </motion.div>
+  );
+}
+
+// ── Flip card ─────────────────────────────────────────────────────────────────
+function FlipCard({ card }: { card: (typeof FLIP_CARDS)[0] }) {
+  const [flipped, setFlipped] = useState(false);
+  return (
+    <div
+      className="h-60 cursor-pointer select-none"
+      style={{ perspective: "1000px" }}
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onClick={() => setFlipped((f) => !f)}
+    >
+      <div
+        className="relative w-full h-full transition-transform duration-500"
+        style={{
+          transformStyle: "preserve-3d",
+          transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+        }}
+      >
+        {/* Front — Problem */}
+        <div
+          className="absolute inset-0 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-6 flex flex-col gap-4"
+          style={{ backfaceVisibility: "hidden" }}
+        >
+          <div
+            className="size-11 grid place-items-center rounded-xl border border-white/10"
+            style={{
+              background: `radial-gradient(circle at 38% 28%, ${card.glow}35, transparent 68%)`,
+              boxShadow: `0 0 18px -4px ${card.glow}60`,
+            }}
+          >
+            <card.icon className="size-5 text-white/60" strokeWidth={2} />
+          </div>
+          <div className="flex-1 flex flex-col justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-white">{card.problemTitle}</h3>
+              <p className="mt-1.5 text-sm text-white/40 leading-relaxed">{card.problemDesc}</p>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/18">
+              Hover to solve →
+            </span>
+          </div>
+        </div>
+
+        {/* Back — Solution */}
+        <div
+          className="absolute inset-0 rounded-2xl border p-6 flex flex-col gap-4"
+          style={{
+            backfaceVisibility: "hidden",
+            transform: "rotateY(180deg)",
+            borderColor: `${card.glow}35`,
+            background: `radial-gradient(circle at 18% 18%, ${card.glow}22, transparent 58%), rgba(255,255,255,0.03)`,
+            boxShadow: `0 0 60px -12px ${card.glow}`,
+          }}
+        >
+          <div
+            className="size-11 grid place-items-center rounded-xl border"
+            style={{
+              borderColor: `${card.glow}45`,
+              background: `${card.glow}18`,
+            }}
+          >
+            <Check className="size-5" style={{ color: card.glow }} strokeWidth={2.5} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold" style={{ color: card.glow }}>
+              {card.solutionTitle}
+            </h3>
+            <p className="mt-1.5 text-sm text-white/75 leading-relaxed">{card.solutionDesc}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Problems ──────────────────────────────────────────────────────────────────
+function Problems() {
+  return (
+    <section id="problems" className="relative px-5 py-28">
+      <div className="max-w-6xl mx-auto">
+        <Reveal>
+          <div className="text-center mb-14">
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#fbd530]">
+              The problem
+            </span>
+            <h2 className="mt-3 text-3xl sm:text-5xl font-bold tracking-tight">
+              Six things that slow every applicant down
+            </h2>
+            <p className="mt-4 text-white/40 text-sm">Hover a card to see how we handle it.</p>
+          </div>
+        </Reveal>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {FLIP_CARDS.map((card, i) => (
+            <Reveal key={i} delay={i * 0.07} dir="up">
+              <FlipCard card={card} />
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

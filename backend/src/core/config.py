@@ -43,6 +43,7 @@ class Settings(BaseSettings):
             "create_draft",
             "update_draft_content",
             "upsert_preferences",
+            "ingest_url",
         ]
     )
 
@@ -63,15 +64,18 @@ class Settings(BaseSettings):
             "platform.core.generate_esql,"
             "platform.core.execute_esql,"
             "platform.core.get_document_by_id,"
-            "platform.core.create_visualization,"
+            "platform.core.create_visualization"
+        )
+    )
+    ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(
+        default=(
             "find_faculty_by_research,"
             "find_faculty_by_research_and_schools,"
             "find_universities_by_program,"
             "check_program_deadlines_and_application_fees,"
-            "find_faculty_by_university"
+            "find_faculty_by_university,"
         )
     )
-    ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
 
     # Collection names
     COLLECTION_USERS: str = Field(default="users")
@@ -117,6 +121,7 @@ class Settings(BaseSettings):
     DOWNLOAD_DELAY: int = Field(default=2)
     CONCURRENT_REQUESTS: int = Field(default=4)
     LOG_LEVEL: str = Field(default="INFO")
+    OPENALEX_API_KEY: str = Field(default="")
 
 
 @lru_cache

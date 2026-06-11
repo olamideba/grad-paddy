@@ -7,15 +7,20 @@ from src.agents.domain.chains import (
     build_sop_translation_chain,
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
+from src.agents.tools import SCRAPER_TOOLS, HYBRID_SEARCH_TOOLS, FACULTY_DEEP_DIVE_TOOLS
 from src.agents.memory_tools import MEMORY_TOOLS
 from src.agents.subagents import build_web_search_agent
 from src.services.ingestion_service import IngestionService
-from src.agents.tools import SCRAPER_TOOLS
 
+NO_LEAK_RULE = (
+    "Never mention sensitive data like the user's id and job id."
+)
 
 def build_faculty_discovery_agent() -> LlmAgent:
     """Discover, rank, and format faculty candidates from external evidence."""
+    hybrid_search_tool = HYBRID_SEARCH_TOOLS[0]
     elastic_tools = build_elastic_mcp_tools()
+    all_tools = [hybrid_search_tool] + elastic_tools
     return LlmAgent(
         name="faculty_discovery_agent",
         model="gemini-3.1-pro-preview",
@@ -24,20 +29,65 @@ def build_faculty_discovery_agent() -> LlmAgent:
         ),
         static_instruction=(
             "You are the faculty discovery specialist.\n"
-            "- Use Elastic MCP tools when available to search indexed faculty, program, paper, lab, and funding evidence.\n"
-            "- Prefer Elastic search and ES|QL evidence over unsupported recall.\n"
-            "- For now, focus on the reasoning contract: rank candidates, explain the evidence, and surface missing data clearly.\n"
+            "Tool selection rules — follow these in order:\n"
+            "- User specifies research area only → use find_faculty_by_research\n"
+            "- User specifies research area AND university → use find_faculty_by_research_and_schools\n"
+            "- User specifies university only → use find_faculty_by_university\n"
+            "- User gives a vague or natural language description (e.g. 'someone working on fairness in NLP') → use hybrid_faculty_search\n"
+            "- Never guess which tool to use — if the user input is ambiguous, ask one clarifying question before selecting.\n"
+            "Result formatting:\n"
+            "- Return a ranked list. For each candidate include: name, university, research areas, and a 1-2 sentence rationale for the match.\n"
+            "- If a field is missing from the evidence, say 'not available' — never fabricate it.\n"
+            "- If no results are found, tell the user clearly and suggest refining the search.\n"
+            "General rules:\n"
+            "- Prefer Elastic search evidence over unsupported recall.\n"
             "- Never fabricate publications, availability, or contact details.\n"
-            "- Return results in a structured ranked list with a short rationale per candidate.\n"
-            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
+            "- Never mention internal agent names, tool names, routing steps, or implementation details. Speak as one assistant.\n"
         ),
-        tools=elastic_tools,
+        tools=all_tools,
     )
 
+def build_program_deep_dive_agent() -> LlmAgent:
+    """Analyze, evaluate, and detail graduate university programs and requirements."""
+    hybrid_search_tool = HYBRID_SEARCH_TOOLS[1]
+    elastic_tools = build_elastic_mcp_tools()
+    all_tools = [hybrid_search_tool] + elastic_tools
+    
+    return LlmAgent(
+        name="program_deep_dive_agent",
+        model="gemini-3.1-pro-preview",
+        description=(
+            "Queries and synthesizes university graduate program deadlines, fees, and requirements."
+        ),
+        instruction=(
+            "You are the graduate program admissions specialist.\n"
+            "You analyze a single known faculty member in depth.\n"
+            "Tool selection rules — follow these in order:\n"
+            "- User asks about deadlines or application fees for a specific program → use check_program_deadlines_and_application_fees\n"
+            "- User asks which universities offer a specific program → use find_universities_by_program\n"
+            "- User gives a vague or natural language description (e.g. 'a funded ML program in Canada') → use hybrid_program_search\n"
+            "- Never guess which tool to use — if the user input is ambiguous, ask one clarifying question before selecting.\n"
+
+            "Result formatting:\n"
+            "- Always extract and display these fields explicitly when available: program name, university, deadline, application fee, requirements.\n"
+            "- Highlight deadlines and flag any within 60 days.\n"
+            "- If comparing multiple universities, present results in a structured side-by-side format.\n"
+            "- If a field is missing from the evidence, say 'not available' — never fabricate it.\n"
+            "- If no results are found or a tool fails, tell the user: 'I wasn't able to find that information. "
+            "Try providing the full program URL so I can look it up directly.' — never expose error messages or index names.\n"
+
+            "General rules:\n"
+            "- Never fabricate requirements, deadlines, or pricing details.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details. Speak as one assistant.\n"
+        ),
+        tools=all_tools,
+    )
 
 def build_faculty_profile_deep_dive_agent() -> LlmAgent:
     """Analyze faculty profiles, papers, and fit in depth."""
+    faculty_deep_dive_tools = FACULTY_DEEP_DIVE_TOOLS
     elastic_tools = build_elastic_mcp_tools()
+    all_tools = elastic_tools + faculty_deep_dive_tools
     return LlmAgent(
         name="faculty_profile_deep_dive_agent",
         model="gemini-3.1-pro-preview",
@@ -45,14 +95,31 @@ def build_faculty_profile_deep_dive_agent() -> LlmAgent:
             "Performs paper retrieval, fit scoring, and conversation-angle generation for a faculty profile."
         ),
         static_instruction=(
-            "You are the faculty profile deep-dive specialist.\n"
-            "- Use Elastic MCP tools when available to retrieve faculty profiles, publications, program pages, and prior user decisions.\n"
-            "- Translate papers into fit signals, research themes, and conversation angles.\n"
-            "- Distinguish evidence from inference.\n"
-            "- If the evidence is weak or conflicting, say so explicitly.\n"
-            "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
+            "You are the faculty profile deep-dive specialist. "
+            "You analyze a single known faculty member in depth.\n"
+
+            "Tool selection rules:\n"
+            "- User asks about a faculty member's publications or research history → use get_faculty_papers\n"
+            "- User asks how well a faculty member fits their profile → use score_faculty_fit\n"
+            "- User asks for outreach conversation starters or talking points → use get_conversation_angles\n"
+            "- User asks for the faculty member's profile, bio, or university page data → use find_faculty_by_research or find_faculty_by_university\n"
+            "- Never use find_universities_by_program or check_program_deadlines_and_application_fees — those are for program search, not faculty.\n"
+
+            "Sequence rules — when doing a full deep dive, always follow this order:\n"
+            "1. Fetch the faculty profile from Elastic\n"
+            "2. Call get_faculty_papers to retrieve real publications\n"
+            "3. Call score_faculty_fit using the papers and profile as context\n"
+            "4. Call get_conversation_angles using the papers and fit score as context\n"
+            "- Do not skip steps. Do not call score_faculty_fit or get_conversation_angles without first fetching papers.\n"
+
+            "Output rules:\n"
+            "- Clearly separate: research themes, fit signals, and conversation angles in your response.\n"
+            "- Label what is evidence-based vs inferred.\n"
+            "- If papers are unavailable, say so and proceed with available data only.\n"
+            "- Never fabricate publications, scores, or contact details.\n"
+            "- Never mention internal agent names, tool names, routing steps, or implementation details. Speak as one assistant.\n"
         ),
-        tools=elastic_tools,
+        tools=all_tools,
     )
 
 
@@ -130,7 +197,8 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
             "Always follow this exact sequence:\n"
             "1. Call check_url_indexed(url) first\n"
             "   - If already indexed: Do NOT re-ingest.\n"
-            "   - If already indexed: inform the user that the the data exists in the database and what they would like to know from the data.\n"
+            "   - If already indexed: inform the user that the the data exists in the database"
+            "   and ask what they would like to know about the data.\n"
             "   - If not indexed: proceed to step 2\n\n"
             "2. Determine url_type:\n"
             "   - 'faculty' if the URL contains /people/, /faculty/, /role/faculty, "
@@ -141,15 +209,14 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
             "3. Call ingest_url(url, url_type, user_id)\n"
             "   - It returns immediately with a job_id\n"
             "   - Tell the user: 'Ingestion is running in the background. "
-            "     I'll notify you when it's done."
 
             "4. If the user asks for a status update, call check_ingestion_status(job_id)\n"
             "   - running: tell them it's still in progress\n"
             "   - complete: tell them how many chunks were indexed\n"
             "   - failed: tell them what went wrong\n\n"
              
-            "NEVER include the job id in your response"
             "Be concise. The user just wants to know it worked.\n"
+            f"{NO_LEAK_RULE}"
         ),
         tools=SCRAPER_TOOLS
     )
@@ -175,6 +242,7 @@ def build_domain_orchestrator_agent() -> LlmAgent:
         ],
         sub_agents=[
             build_faculty_discovery_agent(),
+            build_program_deep_dive_agent(),
             build_faculty_profile_deep_dive_agent(),
             build_sop_translation_agent(),
             build_outreach_prep_agent(),
@@ -187,14 +255,22 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "You are the domain orchestrator for Grad Paddy.\n"
             "- Route user intent to the correct specialist agent.\n"
             "- If the request is ambiguous, ask one clarifying question before selecting a branch.\n"
-            "- Use faculty discovery for Elastic-backed finding and ranking candidates.\n"
-            "- Use faculty profile deep-dive for paper-based fit analysis and conversation angles.\n"
+            "- Use faculty_discovery_agent for broad faculty searches: when the user describes a "
+            "research domain, asks to find or rank professors, or wants a list of candidates backed "
+            "by keyword/hybrid search. Do NOT use it for per-faculty fit scores, paper analysis, "
+            "or conversation angles.\n"
+            "- Use faculty_profile_deep_dive_agent when the user explicitly focuses on a single "
+            "faculty member and wants fit scores, match reasoning, recent paper analysis, or "
+            "personalised outreach conversation angles.\n"
+            "- Use program_deep_dive_agent for anything about graduate program details: application "
+            "steps, fees, deadlines, requirements, or cross-university comparisons.\n"
             "- Use SOP translation for multi-step SOP drafting and rewriting.\n"
             "- Use outreach prep for summaries, talking points, and draft CRM notes.\n"
             "- Use application tracker for Elastic-backed deadline, readiness, and status analysis.\n"
             "- Use funding and requirement flag detection for blocking conditions and readiness checks.\n"
             "- Use research narrative framing when the user needs the story that connects their evidence to the program or faculty.\n"
-            "- Use ingestion pipeline when the user needs deep research about university programs and faculty.\n"
+            "- Use ingestion pipeline only when the user provides a URL that needs to be scraped "
+            "and indexed into the database. Do not route general research questions here.\n"
             "- For real-time or current information not in Elastic (e.g. upcoming intake dates, current application deadlines, "
             "recent faculty news), call domain_google_search_agent directly — do NOT ask the user for URLs.\n"
             "- MEMORY: After any interaction where the user reveals important information about themselves, "
@@ -204,7 +280,13 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "'User is targeting NLP programs with a focus on healthcare AI.' "
             "Use search_memory when the user references past decisions or you need background context not in this session. "
             "Use delete_memory when the user explicitly asks to forget something.\n"
-            "- Treat outward-facing actions, CRM writes, and any irreversible change as requiring explicit user confirmation.\n"
+            "- NEVER call any tool that writes, creates, or modifies data without first stopping and presenting "
+            "the user with a confirmation message showing exactly what will be written. Wait for the user to "
+            "explicitly say 'yes', 'confirm', or 'approve' before proceeding.\n"
+            "- This applies to ALL writes including: adding to shortlist, adding to tracker, saving drafts, "
+            "sending emails, and updating CRM records.\n"
+            "- If the user gives you data to save (names, emails, programs), prepare a summary of what you are "
+            "about to write and ask: 'Shall I go ahead and save this?' — do not save until confirmed.\n"
             "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
