@@ -197,6 +197,45 @@ class TestDuplicateGateSuppression:
         assert chat_mod._payload_signature({"action": "delete"}) is None
 
 
+class TestApplyBeforeResolve:
+    """resolve_hitl must apply the change BEFORE marking resolved, and must NOT
+    mark resolved (no false 'Saved') if the apply fails."""
+
+    async def test_apply_failure_leaves_gate_unresolved_and_raises(self, monkeypatch):
+        from src.services.hitl_service import HITLService as Svc
+
+        record = {"id": "h1", "status": "pending",
+                  "payload": {"entity": "tracker", "action": "delete", "ref_id": "app_1"}}
+        get = _Recorder(result=record)
+        marked = _Recorder(result=(record, True))
+        monkeypatch.setattr("src.services.hitl_service.HITLRepository.get_hitl", get)
+        monkeypatch.setattr("src.services.hitl_service.HITLRepository.resolve_hitl", marked)
+
+        async def _boom(*a, **k):
+            raise RuntimeError("service down")
+
+        monkeypatch.setattr(tracker_mod.TrackerService, "delete_application", _boom)
+
+        with pytest.raises(RuntimeError):
+            await Svc.resolve_hitl("u", "h1", "approved", None)
+        assert marked.calls == []  # never marked resolved
+
+    async def test_already_resolved_is_idempotent_no_reapply(self, monkeypatch):
+        from src.services.hitl_service import HITLService as Svc
+
+        record = {"id": "h1", "status": "approved",
+                  "payload": {"entity": "tracker", "action": "delete", "ref_id": "app_1"}}
+        monkeypatch.setattr(
+            "src.services.hitl_service.HITLRepository.get_hitl", _Recorder(result=record)
+        )
+        delete = _Recorder()
+        monkeypatch.setattr(tracker_mod.TrackerService, "delete_application", delete)
+
+        rec, newly = await Svc.resolve_hitl("u", "h1", "approved", None)
+        assert newly is False
+        assert delete.calls == []  # not re-applied
+
+
 class TestGuards:
     async def test_missing_ref_id_skips_delete(self, monkeypatch):
         rec = _Recorder()

@@ -67,38 +67,46 @@ class HITLService:
         return await HITLRepository.list_hitl_for_session(user_id, session_id)
 
     @staticmethod
+    async def cancel_pending(user_id: str, session_id: str) -> int:
+        """Abandon any unanswered gate in a session (returns count expired)."""
+        return await HITLRepository.cancel_pending_for_session(user_id, session_id)
+
+    @staticmethod
     async def resolve_hitl(
         user_id: str,
         hitl_id: str,
         decision: str,
         response: dict | None = None,
     ) -> tuple[dict, bool]:
-        """Resolve a HITL record. Returns (record, newly_resolved)."""
+        """Resolve a HITL record. Returns (record, newly_resolved).
+
+        On approval the change is applied BEFORE the record is marked resolved, so
+        "resolved" always means "actually persisted". If the write fails the gate
+        stays pending and the exception propagates to the caller — the UI must not
+        show "Saved" for a write that did not happen.
+        """
         if decision not in {"approved", "rejected"}:
             raise ValueError("decision must be 'approved' or 'rejected'")
+
+        record = await HITLRepository.get_hitl(user_id, hitl_id)
+        if not record:
+            raise ValueError("HITL record not found")
+        if record.get("status") in {"approved", "rejected", "resolved", "expired"}:
+            return record, False  # idempotent — already resolved/abandoned
+
+        # Single persistence path. Deterministic and server-side, from the payload
+        # (plus the human's edits). Raises on failure → propagates, gate stays
+        # pending, nothing is marked resolved.
+        if decision == "approved":
+            await HITLService._apply_change(user_id, record, response)
+
         try:
-            record, newly_resolved = await HITLRepository.resolve_hitl(
+            resolved, newly_resolved = await HITLRepository.resolve_hitl(
                 user_id, hitl_id, decision, response
             )
         except KeyError as e:
             raise ValueError("HITL record not found") from e
-
-        # Apply the approved change deterministically, server-side. The proposed
-        # values are already in the HITL payload (and the human's edits in
-        # `response`), so we execute the write here — for create, update, AND
-        # delete — rather than relying on the agent to re-call the write tool on
-        # resume (that re-call is blocked by the safety callback and is
-        # unreliable, which left approved writes unsaved). This is the single
-        # persistence path for the single approval gate.
-        if newly_resolved and decision == "approved":
-            try:
-                await HITLService._apply_change(user_id, record, response)
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "Failed to apply approved change for HITL %s: %s", hitl_id, exc, exc_info=True
-                )
-
-        return record, newly_resolved
+        return resolved, newly_resolved
 
     @staticmethod
     def _payload_fields(payload: dict) -> dict:
