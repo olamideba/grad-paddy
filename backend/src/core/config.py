@@ -50,15 +50,20 @@ class Settings(BaseSettings):
             "platform.core.generate_esql,"
             "platform.core.execute_esql,"
             "platform.core.get_document_by_id,"
-            "platform.core.create_visualization,"
+            "platform.core.create_visualization"
+        )
+    )
+    ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(
+        default=(
             "find_faculty_by_research,"
             "find_faculty_by_research_and_schools,"
             "find_universities_by_program,"
             "check_program_deadlines_and_application_fees,"
             "find_faculty_by_university"
+            # "hybrid_faculty_search,"
+            # "hybrid_program_search"
         )
     )
-    ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
 
     # Collection names
     COLLECTION_USERS: str = Field(default="users")

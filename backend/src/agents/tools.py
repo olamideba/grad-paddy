@@ -1,4 +1,5 @@
 import json
+import httpx
 
 from google.adk.tools import FunctionTool, LongRunningFunctionTool, ToolContext
 
@@ -27,6 +28,14 @@ from src.services.shortlist_service import ShortlistService
 from src.services.tracker_service import TrackerService
 from src.services.users_service import UserService
 from src.services.ingestion_service import IngestionService
+from src.services.faculty_service import FacultyService
+from src.scraper.grad_scraper.pipelines.elasticsearch import _get_embedding_fn
+from src.core.config import get_settings
+try:
+    embed_fn, _ = _get_embedding_fn()
+except Exception as e:
+    logger.error(f"Failed to initialize embedding function: {e}")
+    embed_fn = None
 
 
 def _response(data: object, message: str = "") -> dict[str, object]:
@@ -1411,6 +1420,128 @@ check_url = FunctionTool(check_url)
 ingest_url = FunctionTool(ingest_url)
 check_ingestion_status = FunctionTool(check_ingestion_status)
 
+# ── Hybrid Search ───────────────────────────────────────────────────────────────
+async def hybrid_faculty_search(research_query: str, tool_context: ToolContext) -> dict:
+    settings = get_settings()
+    query_vector = embed_fn([research_query])[0]
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.ES_URL}/faculty-profiles/_search",
+            headers={
+                "Authorization": f"ApiKey {settings.ELASTIC_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "query": {"match": {"text": research_query}},
+                "knn": {
+                    "field": "embedding", 
+                    "query_vector": query_vector,
+                    "num_candidates": 20,
+                    "k": 5,
+                },
+            }
+        )
+        return _response(response.json(), "Faculty search completed successfully")
+
+
+async def hybrid_program_search(program_query: str, tool_context: ToolContext) -> dict:
+    settings = get_settings()
+    query_vector = embed_fn([program_query])[0]
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.ES_URL}/graduate-programs/_search", 
+            headers={
+                "Authorization": f"ApiKey {settings.ELASTIC_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "query": {"match": {"text": program_query}},
+                "knn": {
+                    "field": "embedding",  
+                    "query_vector": query_vector,
+                    "num_candidates": 20,
+                    "k": 5,
+                },
+            }
+        )
+        return _response(response.json(), "Program search completed successfully")
+
+hybrid_faculty_search = FunctionTool(hybrid_faculty_search)
+hybrid_program_search = FunctionTool(hybrid_program_search)
+
+
+# ── Faculty deep dive helpers ──────────────────────────────────────────
+async def get_faculty_papers(faculty_name: str, limit: int = 5) -> dict:
+    """
+    Fetch recent papers and publications for a specific faculty member.
+    Use this whenever you need details on a professor's real-world publication history.
+
+    Args:
+        faculty_name: Full name of the faculty member.
+        limit: Max number of papers to retrieve (default is 5).
+    """
+    papers = await FacultyService.get_faculty_papers(faculty_name, limit)
+    return _response(papers, "Papers fetched successfully")
+
+
+async def score_faculty_fit(
+    faculty_name: str, 
+    research_areas: str, 
+    tool_context: ToolContext,
+    bio: str = "", 
+    papers_summary: str = ""
+) -> dict:
+    """
+    Scores how well a faculty member fits the currently authenticated student's profile.
+    Calculates a match score and analyzes contextual alignments.
+
+    Args:
+        faculty_name: Full name of the faculty member.
+        research_areas: Faculty's research areas as a comma-separated string.
+        bio: Optional brief summary biography of the faculty member.
+        papers_summary: Optional summary list of recent papers.
+    """
+    user_id = require_user_id(tool_context)
+    result = await FacultyService.score_faculty_fit(
+        faculty_name=faculty_name,
+        research_areas=research_areas,
+        user_id=user_id,
+        bio=bio,
+        papers_summary=papers_summary
+    )
+    return _response(result, "Fit evaluation scoring completed")
+
+
+async def get_conversation_angles(
+    faculty_name: str, 
+    research_areas: str, 
+    tool_context: ToolContext,
+    paper_titles: str = ""
+) -> dict:
+    """
+    Generates personalized, specific cold outreach conversation starters 
+    tailored directly to the student's background and the professor's verified papers.
+
+    Args:
+        faculty_name: Full name of the faculty member.
+        research_areas: Faculty's core research tracks.
+        paper_titles: Comma-separated list of recent paper titles.
+    """
+    user_id = require_user_id(tool_context)
+    result = await FacultyService.get_conversation_angles(
+        faculty_name=faculty_name,
+        research_areas=research_areas,
+        user_id=user_id,
+        paper_titles=paper_titles
+    )
+    return _response(result, "Conversation starters generated successfully")
+
+get_faculty_papers = FunctionTool(get_faculty_papers)
+score_faculty_fit = FunctionTool(score_faculty_fit)
+get_conversation_angles = FunctionTool(get_conversation_angles)
+
 # ── Tool groups ───────────────────────────────────────────────────────────────
 
 ACCOUNT_TOOLS = [
@@ -1463,7 +1594,16 @@ SCRAPER_TOOLS = [
     check_ingestion_status
 ]
 
+HYBRID_SEARCH_TOOLS = [
+    hybrid_faculty_search,
+    hybrid_program_search
+]
+
+FACULTY_DEEP_DIVE_TOOLS = [
+    get_faculty_papers, score_faculty_fit, get_conversation_angles
+]
+
 GOVERNANCE_TOOLS = [get_pending_hitl, REQUEST_HITL_TOOL]
 
-APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS + EMAIL_TOOLS + SCRAPER_TOOLS
+APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS + EMAIL_TOOLS + SCRAPER_TOOLS + HYBRID_SEARCH_TOOLS
 OPERATIONS_TOOLS = ACCOUNT_TOOLS + APPLICATION_TOOLS + GOVERNANCE_TOOLS

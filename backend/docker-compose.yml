@@ -16,8 +16,8 @@ services:
       - ELASTIC_API_KEY=${ELASTIC_API_KEY}
       - ELASTIC_MCP_TIMEOUT_SECONDS=${ELASTIC_MCP_TIMEOUT_SECONDS:-30}
       - ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS=${ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS:-300}
-      - ELASTIC_MCP_TOOL_FILTER=${ELASTIC_MCP_TOOL_FILTER:-platform.core.index_explorer,platform.core.list_indices,platform.core.get_index_mapping,platform.core.search,platform.core.generate_esql,platform.core.execute_esql,platform.core.get_document_by_id,platform.core.create_visualization,find_faculty_by_research, find_faculty_by_research_and_schools, find_universities_by_program, check_program_deadlines_and_application_fees, find_faculty_by_university}
-      - ELASTIC_MCP_EXTRA_TOOL_FILTER=${ELASTIC_MCP_EXTRA_TOOL_FILTER}
+      - ELASTIC_MCP_TOOL_FILTER=${ELASTIC_MCP_TOOL_FILTER:-platform.core.index_explorer,platform.core.list_indices,platform.core.get_index_mapping,platform.core.search,platform.core.generate_esql,platform.core.execute_esql,platform.core.get_document_by_id,platform.core.create_visualization}
+      - ELASTIC_MCP_EXTRA_TOOL_FILTER${ELASTIC_MCP_EXTRA_TOOL_FILTER:-find_faculty_by_research, find_faculty_by_research_and_schools, find_universities_by_program, check_program_deadlines_and_application_fees, find_faculty_by_university} #hybrid_faculty_search, hybrid_program_search
       - STORAGE_BUCKET=${STORAGE_BUCKET}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
