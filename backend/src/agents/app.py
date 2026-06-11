@@ -1,7 +1,7 @@
 import warnings
 
 from google.adk.agents.context_cache_config import ContextCacheConfig
-from google.adk.apps import App
+from google.adk.apps import App, ResumabilityConfig
 from google.adk.apps._configs import EventsCompactionConfig
 from google.adk.apps.llm_event_summarizer import LlmEventSummarizer
 from google.adk.models.registry import LLMRegistry
@@ -30,9 +30,15 @@ with warnings.catch_warnings():
         min_tokens=4096,
     )
 
+# HITL gates use request_hitl (a LongRunningFunctionTool) to pause a turn for
+# human approval. Resuming after approval requires ADK-native resumability:
+# without it, ag_ui_adk falls back to its deprecated fire-and-forget LRO path,
+# which doesn't reliably persist the paused function-call event, so the resume
+# fails with "No function call event found for function responses ids".
 grad_paddy_app = App(
     name="grad_paddy",
     root_agent=root_agent,
+    resumability_config=ResumabilityConfig(is_resumable=True),
     events_compaction_config=_compaction_config,
     context_cache_config=_cache_config,
 )
