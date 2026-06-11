@@ -150,7 +150,7 @@ root_agent = LlmAgent(
         "\n"
         "## Routing Rules (ACTIONABLE messages only)\n"
         "- Route internal CRUD and session updates (profile, preferences, tracker, shortlist, etc.) to the internal application agent.\n"
-        "- Route faculty discovery, deep-dive analysis, SOP translation, outreach prep, application-tracking analysis, funding flags, research framing, and deep research to the domain orchestrator.\n"
+        "- Route faculty discovery, deep-dive analysis, SOP translation, outreach prep, application-tracking analysis, funding flags, and research framing to the domain orchestrator.\n"
         "- Keep the conversation moving with the smallest safe action first, then delegate further if needed.\n"
         "- Preserve room for additional subagents and chain-based workflows.\n"
         "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
