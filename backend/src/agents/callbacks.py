@@ -7,11 +7,13 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-
-class HITLRequiredException(Exception):
-    def __init__(self, tool_name: str, arguments: dict):
-        self.tool_name = tool_name
-        self.arguments = arguments
+# Destructive / irreversible actions that must ALWAYS go through the human
+# approval gate, even when the user has turned on auto_approve. auto_approve is a
+# convenience for low-stakes writes (creates/updates); it must never silently
+# bulk-delete a user's records.
+ALWAYS_GATE_TOOLS = frozenset(
+    {"delete_application", "delete_draft", "delete_shortlist_faculty"}
+)
 
 
 def enforce_hitl_policy_callback(
@@ -19,23 +21,43 @@ def enforce_hitl_policy_callback(
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> dict | None:
-    """Programmatic chokepoint for all write actions."""
+    """Single safety chokepoint for write actions.
+
+    There is exactly ONE approval gate in the system: the request_hitl tool. The
+    agent opens it, the human approves, and the backend applies the change
+    deterministically (HITLService._apply_change). This callback does NOT open a
+    second gate — it is a passive backstop that blocks a sensitive tool from
+    being called *directly* (bypassing request_hitl). The only time a direct call
+    is allowed is under auto_approve, and even then never for destructive ops.
+
+    Returning a dict short-circuits the tool (the dict becomes its result), so a
+    blocked call surfaces as a normal tool error the agent can recover from by
+    opening the gate — it never executes the write.
+    """
     settings = get_settings()
 
     tool_name: str = getattr(tool, "name", "")
     if tool_name not in settings.SENSITIVE_TOOLS:
         return None
 
-    state = tool_context.state
-
-    if state.get("auto_approve") is True:
+    always_gate = tool_name in ALWAYS_GATE_TOOLS
+    if tool_context.state.get("auto_approve") is True and not always_gate:
         return None
 
-    approved_action_id = state.get("last_approved_hitl_id")  # TODO
-    if not approved_action_id:
-        raise HITLRequiredException(tool_name=tool_name, arguments=args)
-
-    return None
+    logger.warning(
+        "Blocked direct call to gated tool '%s' (always_gate=%s); agent must use request_hitl.",
+        tool_name,
+        always_gate,
+    )
+    return {
+        "success": False,
+        "error_code": "APPROVAL_REQUIRED",
+        "message": (
+            "This action requires human approval and is applied by the system once approved. "
+            "Do NOT call this tool directly. Open the approval gate by calling request_hitl with "
+            "the entity, action, ref_id (for update/delete), and fields/content, then stop and wait."
+        ),
+    }
 
 
 # ── Output leak guardrail ─────────────────────────────────────────────────────

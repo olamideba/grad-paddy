@@ -20,14 +20,18 @@ APPROVAL_RULE = (
     "profile, preferences, sessions, groups), you MUST first call request_hitl with kind='approval', "
     'options_json=\'[{"id":"yes","label":"Approve"},{"id":"no","label":"Reject"}]\', and a title/'
     'description stating exactly what you will change. In payload_json always include: an "entity" key '
-    '("tracker", "shortlist", or "draft"), an "action" key ("create", "update", or "delete"), and '
-    'the proposed values as a "fields" object (for a draft, put the long text in "content" instead). For '
-    'update/delete also include "ref_id" (the target id). Then WAIT for the human\'s decision.\n'
-    "CREATING a shortlist faculty, a tracker application, or a draft: do NOT call the create tool yourself. "
-    "When the human approves, the system saves the record from the payload fields (and the user's edits). "
-    'Just open the gate with complete "fields"/"content". For UPDATE or DELETE, and for any OTHER create '
-    "(profile, preferences, groups), perform the write yourself after approval using the (possibly edited) "
-    "response values; if rejected, do not write.\n"
+    '("tracker", "shortlist", "draft", "profile", "preferences", or "recommender"), an "action" key '
+    '("create", "update", or "delete"), and the proposed values as a "fields" object (for a draft, put the '
+    'long text in "content" instead). For update/delete also include "ref_id" (the target id; for a '
+    'recommender, ref_id is the application id and fields carry "name" and "status"). Then WAIT for the '
+    "human's decision.\n"
+    "For shortlist faculty, tracker applications, drafts, profile, and preferences — for CREATE, UPDATE, and "
+    "DELETE alike — do NOT call the create/update/delete tool yourself. When the human approves, the system "
+    "performs the change deterministically from the payload (entity, action, ref_id, fields/content) plus any "
+    "edits the human made in the review card. Your only job is to open the gate with a complete payload: for "
+    'create, the full "fields"/"content"; for update/delete, the "ref_id" of the target plus the changed '
+    '"fields"/"content". If rejected, do nothing. NEVER re-call the write tool after approval — the backend '
+    "already applied it, and re-calling would re-open the gate and fail.\n"
     "EMAILS: to email a professor or a recommender, first call create_email (status stays 'draft') — it "
     "returns an email id. Then call request_hitl with kind='approval', entity=\"email\", and payload_json "
     'including "ref_id" (the create_email id), "to" (the recipient address), "subject", and "content" '
@@ -35,7 +39,9 @@ APPROVAL_RULE = (
     "yourself — the human sends from the canvas with the Send via Gmail button. Always open this email gate "
     "even when auto_approve is true, because sending an email is irreversible. "
     "EXCEPTION: when auto_approve is true (current value: {auto_approve}), skip the gate and perform the "
-    "action directly yourself (including creates). Read-only actions never require approval."
+    "action directly yourself (including creates) — EXCEPT deletions (deleting an application, draft, or "
+    "shortlist faculty), which are irreversible and ALWAYS require the approval gate even under auto_approve. "
+    "Read-only actions never require approval."
 )
 
 
