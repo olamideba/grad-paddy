@@ -16,6 +16,22 @@ NO_LEAK_RULE = (
     "Never mention sensitive data like the user's id and job id."
 )
 
+# Read-only specialists must ESCALATE write intent via a real transfer, never
+# refuse in prose. A sentence about "the application layer" does nothing — only
+# calling transfer_to_agent moves control. The leaf hands up to its parent
+# (domain_orchestrator), which then transfers to its peer internal_app_agent
+# (the only branch that owns writes + the HITL gate). Both hops are
+# default-allowed in ADK (no disallow_transfer_* flags are set).
+ESCALATE_WRITE_RULE = (
+    "WRITE REQUESTS: You are READ-ONLY and have no tools to create, update, or delete saved "
+    "records. If the user asks to create, update, delete, add, remove, save, or change any saved "
+    "record (shortlist faculty, tracker application, draft, recommender, profile, or preferences) — "
+    "including as a follow-up to analysis you just gave — do NOT answer in prose, do NOT claim it "
+    "was or wasn't saved, and do NOT tell the user to make the change themselves in the interface. "
+    "Immediately call transfer_to_agent with agent_name='domain_orchestrator_agent' so the request "
+    "can be routed to the application layer that owns writes."
+)
+
 def build_faculty_discovery_agent() -> LlmAgent:
     """Discover, rank, and format faculty candidates from external evidence."""
     hybrid_search_tool = HYBRID_SEARCH_TOOLS[0]
@@ -42,6 +58,7 @@ def build_faculty_discovery_agent() -> LlmAgent:
             "General rules:\n"
             "- Prefer Elastic search evidence over unsupported recall.\n"
             "- Never fabricate publications, availability, or contact details.\n"
+            f"{ESCALATE_WRITE_RULE}\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details. Speak as one assistant.\n"
         ),
         tools=all_tools,
@@ -78,6 +95,7 @@ def build_program_deep_dive_agent() -> LlmAgent:
 
             "General rules:\n"
             "- Never fabricate requirements, deadlines, or pricing details.\n"
+            f"{ESCALATE_WRITE_RULE}\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details. Speak as one assistant.\n"
         ),
         tools=all_tools,
@@ -117,6 +135,7 @@ def build_faculty_profile_deep_dive_agent() -> LlmAgent:
             "- Label what is evidence-based vs inferred.\n"
             "- If papers are unavailable, say so and proceed with available data only.\n"
             "- Never fabricate publications, scores, or contact details.\n"
+            f"{ESCALATE_WRITE_RULE}\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details. Speak as one assistant.\n"
         ),
         tools=all_tools,
@@ -145,10 +164,8 @@ def build_application_tracker_agent() -> LlmAgent:
             "- Use Elastic MCP tools to search ALREADY-SAVED tracker evidence and run ES|QL deadline/readiness summaries.\n"
             "- Surface deadlines, stale items, missing steps, and next actions.\n"
             "- Keep weekly summaries concise and operational.\n"
-            "- You CANNOT create, update, or delete tracker records, and you have no tools to do so. If the user "
-            "asks to add or change a tracked application, do NOT attempt it and do NOT claim it was saved — say the "
-            "change will be made via the application layer and hand back.\n"
             "- Do not invent statuses; if data is incomplete, surface gaps.\n"
+            f"{ESCALATE_WRITE_RULE}\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
         tools=elastic_tools,
@@ -168,6 +185,7 @@ def build_funding_requirement_flag_detection_agent() -> LlmAgent:
             "- Detect funding constraints, missing prerequisites, deadline conflicts, and other blocking requirements.\n"
             "- Return a clear list of flags with severity and rationale.\n"
             "- Separate explicit evidence from inferred risk.\n"
+            f"{ESCALATE_WRITE_RULE}\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
         tools=elastic_tools,
@@ -283,10 +301,12 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "saved or will save a memory.\n"
             "- WRITES: You are READ-ONLY for app state. You do NOT have, and must NOT attempt, tools that create, "
             "update, or delete the user's shortlist, tracker, drafts, recommenders, emails, profile, or preferences. "
-            "When a request concludes with such a write (e.g. 'add this professor to my shortlist', 'log this program "
-            "in my tracker', 'save this draft'), do the domain reasoning first, then hand the user back so the "
-            "application layer can perform the write behind its human-approval gate. NEVER persist app data to Elastic "
-            "or anywhere else yourself, and NEVER claim a record was saved — you cannot save records.\n"
+            "When a request requires such a write (e.g. 'add this professor to my shortlist', 'log this program "
+            "in my tracker', 'remove Waterloo from my tracker', 'delete this draft'), or when one of your specialists "
+            "transfers a write request back to you, do any needed domain reasoning first, then immediately call "
+            "transfer_to_agent with agent_name='internal_app_agent' — that is the branch that owns all writes and the "
+            "human-approval gate. Do NOT answer write requests in prose, NEVER persist app data to Elastic or anywhere "
+            "else yourself, and NEVER claim a record was saved — you cannot save records.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
