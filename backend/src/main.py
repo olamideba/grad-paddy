@@ -21,6 +21,7 @@ _configure_logging()
 
 from src.api import chat, users, sessions, hitl, shortlist, tracker, drafts, groups, cvs, integrations, emails, memory
 from src.services.memory_service import MemoryService
+from src.repositories.elastic_repo import close_es
 
 
 @asynccontextmanager
@@ -33,6 +34,7 @@ async def lifespan(_: FastAPI):
             "Memory index check failed at startup (non-fatal — index may already exist): %s", exc
         )
     yield
+    await close_es()
 
 
 app = FastAPI(title="Grad Paddy Backend", lifespan=lifespan, redirect_slashes=False)

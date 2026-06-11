@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from time import perf_counter
 
 from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
@@ -13,47 +14,92 @@ from src.services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
+USER_CONTEXT_STATE_KEY = "user_context_block"
+USER_CONTEXT_LOADED_KEY = "_user_context_loaded"
 
-async def _inject_date(callback_context: CallbackContext) -> None:
+
+async def _load_user_context(callback_context: CallbackContext) -> None:
+    """Fires before the root agent runs.
+
+    Sets the date every turn, and loads the user's cross-session MEMORIES once
+    per session (cached in state via USER_CONTEXT_LOADED_KEY) — within-session
+    context is already carried by the chat history, so re-fetching each turn adds
+    only latency. The injection itself happens in _inject_user_context (no I/O).
+
+    Profile/preferences are deliberately NOT preloaded here. The agents already
+    fetch them via tools when relevant (reliably, as observed), and the Firestore
+    read is the expensive part we want OFF the time-to-first-token path. Memory is
+    injected instead because it has no reliable tool trigger, and its empty-query
+    recall is cheap over the pooled, startup-warmed Elastic connection.
+    """
     callback_context.state["current_date"] = datetime.now(timezone.utc).strftime(
         "%A, %d %B %Y"
     )
 
+    # Per-session cache: only the first turn pays the memory fetch.
+    if callback_context.state.get(USER_CONTEXT_LOADED_KEY):
+        return
 
-async def _inject_memories(
-    callback_context: CallbackContext, llm_request: LlmRequest
-) -> LlmResponse | None:
-    """Append the user's persistent memories to the system prompt.
-
-    Fires before every root-agent LLM call.  Retrieves the top-K most recently
-    updated memories from Elasticsearch and injects them as a <USER_MEMORIES>
-    block so the agent has cross-session context without the agent needing to
-    call a tool first.
-    """
     user_id = callback_context.state.get("user_id")
     if not user_id:
-        return None
+        return
+
+    started = perf_counter()
     try:
         memories = await MemoryService.search_memory(user_id=str(user_id))
-        if not memories:
-            return None
+    except Exception as exc:
+        logger.warning("Memory context load failed: %s", exc)
+        memories = []
+
+    if memories:
         facts = "\n".join(f"- {m['fact']}" for m in memories)
-        memory_block = (
+        callback_context.state[USER_CONTEXT_STATE_KEY] = (
             "\n\n<USER_MEMORIES>\n"
-            "You know the following about this user from past sessions:\n"
+            "Things learned about this user in past sessions:\n"
             f"{facts}\n"
             "</USER_MEMORIES>"
         )
-        if llm_request.config is None:
-            llm_request.config = types.GenerateContentConfig(
-                system_instruction=memory_block
-            )
-        else:
-            existing = llm_request.config.system_instruction or ""
-            llm_request.config.system_instruction = existing + memory_block
-    except Exception as exc:
-        logger.warning("Memory injection failed: %s", exc)
+    callback_context.state[USER_CONTEXT_LOADED_KEY] = True
+    logger.info(
+        "Memory context loaded in %.0f ms (%d memories)",
+        (perf_counter() - started) * 1000,
+        len(memories),
+    )
+
+
+def _inject_user_context(
+    callback_context: CallbackContext, llm_request: LlmRequest
+) -> LlmResponse | None:
+    """Append the pre-loaded user-context block to an agent's system prompt.
+
+    No I/O — reads the block that _load_user_context placed in state, so it is
+    cheap to run before every model call across the whole agent tree.
+    """
+    block = callback_context.state.get(USER_CONTEXT_STATE_KEY)
+    if not block:
+        return None
+    if llm_request.config is None:
+        llm_request.config = types.GenerateContentConfig(  # type: ignore[assignment]
+            system_instruction=block
+        )
+    else:
+        existing = llm_request.config.system_instruction or ""
+        llm_request.config.system_instruction = existing + block
     return None
+
+
+def _enable_context_injection(agent: object, _seen: set[int] | None = None) -> None:
+    """Attach _inject_user_context as the before_model callback on every LlmAgent
+    in the tree, so sub-agents (faculty discovery, SOP, etc.) are grounded too —
+    reusing the state loaded once at the root, with no extra I/O."""
+    _seen = _seen if _seen is not None else set()
+    if id(agent) in _seen:
+        return
+    _seen.add(id(agent))
+    if isinstance(agent, LlmAgent):
+        agent.before_model_callback = _inject_user_context
+    for sub in getattr(agent, "sub_agents", None) or []:
+        _enable_context_injection(sub, _seen)
 
 
 def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
@@ -79,8 +125,8 @@ root_agent = LlmAgent(
     description=(
         "Graduate school orchestrator that separates internal app-state work from domain reasoning."
     ),
-    before_agent_callback=_inject_date,
-    before_model_callback=_inject_memories,
+    before_agent_callback=_load_user_context,
+    before_model_callback=_inject_user_context,
     sub_agents=[
         build_internal_app_agent(),
         build_domain_orchestrator_agent(),
@@ -109,3 +155,4 @@ root_agent = LlmAgent(
 )
 
 _enable_thinking(root_agent)
+_enable_context_injection(root_agent)

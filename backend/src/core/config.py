@@ -69,10 +69,7 @@ class Settings(BaseSettings):
             "find_faculty_by_research1,"
             "find_faculty_by_research_and_schools1,"
             "find_universities_by_program1,"
-            "check_program_deadlines_and_application_fees1,"
-            "save_memory1,"
-            "search_memory1,"
-            "delete_memory1"
+            "check_program_deadlines_and_application_fees1"
         )
     )
     ELASTIC_MCP_EXTRA_TOOL_FILTER: str = Field(default="")
@@ -101,11 +98,16 @@ class Settings(BaseSettings):
     PROGRAM_ES_INDEX: str = Field(default="grad-programs")
     FACULTY_ES_INDEX: str = Field(default="faculty-profiles")
     MEMORY_ES_INDEX: str = Field(default="user-memories")
-    # Top-K memories to retrieve per turn for context injection / semantic search
     MEMORY_TOP_K: int = Field(default=8)
-    # Elasticsearch kNN score threshold for deduplication (0–1 normalized cosine).
-    # Scores >= this value are treated as duplicates and updated in-place.
-    MEMORY_SIMILARITY_THRESHOLD: float = Field(default=0.92)
+    # Dedup threshold on the `semantic` query score (~raw cosine for a dense
+    # text_embedding model, NOT normalized (1+cos)/2). Calibrated via
+    # smoke_memory.py: a paraphrase pair measured 0.905; unrelated facts score
+    # far lower. 0.88 sits just below the paraphrase score — catches restatements
+    # with margin without collapsing distinct facts. Re-measure if the embedding
+    # model / inference endpoint changes.
+    MEMORY_SIMILARITY_THRESHOLD: float = Field(default=0.88)
+    MEMORY_INFERENCE_ID: str = Field(default="googlevertexai-text_embedding-bwonmglu9c")
+    MEMORY_INFERENCE_LOCATION: str = Field(default="us-central1")
 
     EMBEDDING_MODEL: str = Field(default="text-embedding-004")
 

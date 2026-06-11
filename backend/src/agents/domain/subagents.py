@@ -7,6 +7,7 @@ from src.agents.domain.chains import (
     build_sop_translation_chain,
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
+from src.agents.memory_tools import MEMORY_TOOLS
 from src.agents.subagents import build_web_search_agent
 from src.services.ingestion_service import IngestionService
 
@@ -161,6 +162,7 @@ def build_domain_orchestrator_agent() -> LlmAgent:
         description="Routes domain work to the correct Grad Paddy specialist agent.",
         tools=[
             *build_elastic_mcp_tools(),
+            *MEMORY_TOOLS,
             agent_tool.AgentTool(
                 agent=build_web_search_agent("domain_google_search_agent")
             ),
@@ -190,12 +192,12 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "- For real-time or current information not in Elastic (e.g. upcoming intake dates, current application deadlines, "
             "recent faculty news), call domain_google_search_agent directly — do NOT ask the user for URLs.\n"
             "- MEMORY: After any interaction where the user reveals important information about themselves, "
-            "call save_memory1 to persist it for future sessions. Save: research interests, academic background, "
+            "call save_memory to persist it for future sessions. Save: research interests, academic background, "
             "target programs or faculty, application strategy decisions, SOP framing choices, funding constraints, "
             "timeline goals, or any explicitly stated preference. Write facts in third person: "
             "'User is targeting NLP programs with a focus on healthcare AI.' "
-            "Use search_memory1 when the user references past decisions or you need background context not in this session. "
-            "Use delete_memory1 when the user explicitly asks to forget something.\n"
+            "Use search_memory when the user references past decisions or you need background context not in this session. "
+            "Use delete_memory when the user explicitly asks to forget something.\n"
             "- Treat outward-facing actions, CRM writes, and any irreversible change as requiring explicit user confirmation.\n"
             "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"

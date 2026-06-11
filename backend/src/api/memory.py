@@ -1,23 +1,17 @@
 """
 memory.py
 ─────────────────────
-FastAPI endpoints that Kibana's Elastic Agent Builder calls as custom connectors.
+Optional REST surface over the user's long-term memory bank.
 
-Each endpoint maps to one MCP tool registered in Kibana:
-  save_memory1    → POST /api/memory/save
-  search_memory1  → POST /api/memory/search
-  delete_memory1  → DELETE /api/memory/{memory_id}
+These endpoints are a thin HTTP wrapper around MemoryService for use by the
+frontend (e.g. a "Memories" settings page where a user can view/forget facts).
 
-The `user_id` is passed by the agent as a parameter (the agent knows it from
-session state).  This keeps the connector interface simple and stateless.
-
-Kibana connector registration (one-time setup per deployment):
-  1. Kibana → Stack Management → Connectors → Create connector → Webhook
-  2. Name: save_memory1 / search_memory1 / delete_memory1
-  3. URL: <BACKEND_URL>/api/memory/save (or /search, /{memory_id})
-  4. Method: POST / POST / DELETE
-  5. Add connector to your Agent Builder agent
-  6. Add tool name to ELASTIC_MCP_TOOL_FILTER in .env
+NOTE: Agents do NOT use these endpoints. The agent reaches memory directly
+through native ADK tools (agents/memory_tools.py → MemoryService) and the root
+proactive-injection callback — no Elastic Agent Builder MCP round-trip. Keeping
+memory orchestration in-process avoids a pointless agent → Kibana → webhook →
+backend hop, and lets us run the multi-step embed/dedup logic that an Agent
+Builder tool cannot express.
 """
 
 from fastapi import APIRouter, Query
@@ -50,7 +44,7 @@ async def save_memory(body: SaveMemoryRequest) -> dict:
     exists for this user, the existing document is updated in-place rather than
     creating a duplicate.
 
-    Called by the Kibana MCP connector registered as save_memory1.
+
     """
     result = await MemoryService.save_memory(
         user_id=body.user_id,
@@ -69,7 +63,7 @@ async def search_memory(body: SearchMemoryRequest) -> dict:
     Uses hybrid kNN (semantic) + BM25 (keyword) search with recency boost.
     When query is empty, returns the most recently updated memories.
 
-    Called by the Kibana MCP connector registered as search_memory1.
+
     """
     memories = await MemoryService.search_memory(
         user_id=body.user_id,
@@ -84,10 +78,7 @@ async def delete_memory(
     memory_id: str,
     user_id: str = Query(..., description="Authenticated user ID — verified against memory owner before deletion."),
 ) -> dict:
-    """Delete a specific memory by ID, verifying user ownership first.
-
-    Called by the Kibana MCP connector registered as delete_memory1.
-    """
+    """Delete a specific memory by ID, verifying user ownership first."""
     result = await MemoryService.delete_memory(
         user_id=user_id,
         memory_id=memory_id,
