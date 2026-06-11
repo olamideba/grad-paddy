@@ -142,6 +142,45 @@ class TestRecommender:
         assert rec.calls == [(("user_1", "app_1", "Dr. Ng", "received"), {})]
 
 
+class TestDuplicateGateSuppression:
+    """Backstop: the agent re-opening an already-resolved gate must not show a
+    second approval card."""
+
+    async def test_identical_resolved_gate_is_duplicate(self, monkeypatch):
+        from src.api import chat as chat_mod
+
+        payload = {"entity": "shortlist", "action": "delete", "ref_id": "f_1",
+                   "fields": {"name": "Prof. Andrew Ng"}}
+        prior = _Recorder(result=[{"status": "approved", "payload": dict(payload)}])
+        monkeypatch.setattr(chat_mod.HITLService, "list_hitl", prior)
+
+        assert await chat_mod._is_duplicate_of_resolved("u", "s", payload) is True
+
+    async def test_pending_gate_is_not_a_duplicate(self, monkeypatch):
+        from src.api import chat as chat_mod
+
+        payload = {"entity": "shortlist", "action": "delete", "ref_id": "f_1"}
+        prior = _Recorder(result=[{"status": "pending", "payload": dict(payload)}])
+        monkeypatch.setattr(chat_mod.HITLService, "list_hitl", prior)
+
+        assert await chat_mod._is_duplicate_of_resolved("u", "s", payload) is False
+
+    async def test_different_target_is_not_a_duplicate(self, monkeypatch):
+        from src.api import chat as chat_mod
+
+        prior = _Recorder(result=[{"status": "approved",
+                                   "payload": {"entity": "shortlist", "action": "delete", "ref_id": "OTHER"}}])
+        monkeypatch.setattr(chat_mod.HITLService, "list_hitl", prior)
+
+        payload = {"entity": "shortlist", "action": "delete", "ref_id": "f_1"}
+        assert await chat_mod._is_duplicate_of_resolved("u", "s", payload) is False
+
+    def test_signature_none_when_entity_missing(self):
+        from src.api import chat as chat_mod
+
+        assert chat_mod._payload_signature({"action": "delete"}) is None
+
+
 class TestGuards:
     async def test_missing_ref_id_skips_delete(self, monkeypatch):
         rec = _Recorder()
