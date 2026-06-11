@@ -84,6 +84,22 @@ class TestApprovedDeletePersists:
         await HITLService._apply_change("user_1", _rec("draft", "delete", ref_id="d_7"), None)
         assert rec.calls == [(("user_1", "d_7"), {})]
 
+    async def test_bulk_delete_via_ref_ids(self, monkeypatch):
+        """The 20:13 transcript shape: ref_ids array, empty fields — both must delete."""
+        rec = _Recorder()
+        monkeypatch.setattr(tracker_mod.TrackerService, "delete_application", rec)
+        record = {
+            "id": "hitl_1",
+            "payload": {
+                "entity": "tracker",
+                "action": "delete",
+                "ref_ids": ["app_a", "app_b"],
+                "fields": {},
+            },
+        }
+        await HITLService._apply_change("user_1", record, None)
+        assert rec.calls == [(("user_1", "app_a"), {}), (("user_1", "app_b"), {})]
+
 
 class TestApprovedUpdatePersists:
     async def test_tracker_update_passes_fields(self, monkeypatch):

@@ -53,13 +53,19 @@ def _payload_signature(payload: dict) -> str | None:
     if not entity or not action:
         return None
     ref_id = str(payload.get("ref_id") or "").strip()
+    raw_ref_ids = payload.get("ref_ids")
+    ref_ids = sorted(
+        str(r).strip()
+        for r in (raw_ref_ids if isinstance(raw_ref_ids, list) else [])
+        if str(r or "").strip()
+    )
     fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
     content = str(payload.get("content") or "").strip()
     try:
         fields_sig = json.dumps(fields, sort_keys=True, default=str)
     except Exception:  # noqa: BLE001
         fields_sig = str(fields)
-    return "|".join([entity, action, ref_id, fields_sig, content])
+    return "|".join([entity, action, ref_id, ",".join(ref_ids), fields_sig, content])
 
 
 async def _is_duplicate_of_resolved(user_id: str, session_id: str, payload: dict) -> bool:

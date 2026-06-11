@@ -130,8 +130,21 @@ class HITLService:
         payload = record.get("payload") or {}
         entity = str(payload.get("entity") or "").lower()
         action = str(payload.get("action") or "create").lower()
-        ref_id = str(payload.get("ref_id") or "").strip()
         hitl_id = record.get("id")
+
+        # Target ids: singular ref_id, plus the agent sometimes batches several
+        # records into one gate as a ref_ids array (e.g. "delete both entries").
+        ref_id = str(payload.get("ref_id") or "").strip()
+        raw_ref_ids = payload.get("ref_ids")
+        ref_ids = [
+            str(r).strip()
+            for r in (raw_ref_ids if isinstance(raw_ref_ids, list) else [])
+            if str(r or "").strip()
+        ]
+        if ref_id and ref_id not in ref_ids:
+            ref_ids.insert(0, ref_id)
+        if not ref_id and ref_ids:
+            ref_id = ref_ids[0]
 
         # Proposed fields, with the human's review-card edits layered on top.
         fields = HITLService._payload_fields(payload)
@@ -146,8 +159,8 @@ class HITLService:
             content = str(payload.get("content") or "").strip()
 
         def _require_ref() -> bool:
-            if not ref_id:
-                logger.error("HITL %s %s on '%s' missing ref_id — skipped", hitl_id, action, entity)
+            if not ref_ids:
+                logger.error("HITL %s %s on '%s' missing ref_id(s) — skipped", hitl_id, action, entity)
                 return False
             return True
 
@@ -175,7 +188,8 @@ class HITLService:
 
             if action == "delete":
                 if _require_ref():
-                    await DraftsService.delete_draft(user_id, ref_id)
+                    for rid in ref_ids:
+                        await DraftsService.delete_draft(user_id, rid)
                 return
             if action == "update":
                 if not _require_ref():
@@ -213,7 +227,8 @@ class HITLService:
 
             if action == "delete":
                 if _require_ref():
-                    await ShortlistService.delete_faculty(user_id, ref_id)
+                    for rid in ref_ids:
+                        await ShortlistService.delete_faculty(user_id, rid)
                 return
             if action == "update":
                 if not _require_ref():
@@ -235,7 +250,8 @@ class HITLService:
 
             if action == "delete":
                 if _require_ref():
-                    await TrackerService.delete_application(user_id, ref_id)
+                    for rid in ref_ids:
+                        await TrackerService.delete_application(user_id, rid)
                 return
             if action == "update":
                 if _require_ref():
