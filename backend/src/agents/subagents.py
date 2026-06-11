@@ -2,6 +2,7 @@ from google.adk.agents import LlmAgent
 from google.adk.tools import agent_tool, url_context
 from google.adk.tools.google_search_tool import GoogleSearchTool
 
+from src.agents.callbacks import enforce_hitl_policy_callback
 from src.agents.tools import (
     ACCOUNT_TOOLS,
     APPLICATION_TOOLS,
@@ -127,6 +128,10 @@ def build_account_agent() -> LlmAgent:
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
+        # HITL must be enforced on the agent that actually invokes the tools.
+        # before_tool_callback does NOT propagate from a parent router to its
+        # sub-agents, so guarding only internal_app_agent left these unguarded.
+        before_tool_callback=enforce_hitl_policy_callback,
         tools=ACCOUNT_TOOLS + GOVERNANCE_TOOLS,
     )
 
@@ -149,6 +154,7 @@ def build_application_agent() -> LlmAgent:
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
+        before_tool_callback=enforce_hitl_policy_callback,
         tools=APPLICATION_TOOLS + GOVERNANCE_TOOLS,
     )
 
@@ -188,5 +194,6 @@ def build_operations_agent() -> LlmAgent:
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
+        before_tool_callback=enforce_hitl_policy_callback,
         tools=OPERATIONS_TOOLS,
     )
