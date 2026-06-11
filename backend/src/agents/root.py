@@ -113,7 +113,10 @@ def _enable_thinking(agent: object, _seen: set[int] | None = None) -> None:
     _seen.add(id(agent))
     if isinstance(agent, LlmAgent):
         agent.planner = BuiltInPlanner(
-            thinking_config=types.ThinkingConfig(include_thoughts=True)
+            thinking_config=types.ThinkingConfig(
+                include_thoughts=True,
+                thinking_budget=-1,
+            )
         )
     for sub in getattr(agent, "sub_agents", None) or []:
         _enable_thinking(sub, _seen)
