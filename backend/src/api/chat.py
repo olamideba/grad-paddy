@@ -7,16 +7,10 @@ from uuid6 import uuid7
 
 from ag_ui.core import EventType, RunAgentInput, ToolMessage
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
-# Key under which ag_ui_adk stores the paused invocation id for ADK-native
-# resumability. We clear it defensively (see _clear_stale_resume_state).
-# Imported guardedly so an unexpected ag_ui_adk version degrades gracefully.
 try:  # pragma: no cover - depends on installed ag_ui_adk version
     from ag_ui_adk.session_manager import INVOCATION_ID_STATE_KEY
 except Exception:  # noqa: BLE001
     INVOCATION_ID_STATE_KEY = None  # type: ignore[assignment]
-# Step events let us surface each suppressed reasoning stage as an activity card
-# without leaking its prose. Imported defensively so an unexpected class name in
-# this ag_ui version degrades to "no step cards" instead of crashing the app.
 try:  # pragma: no cover - depends on installed ag_ui version
     from ag_ui.core import StepStartedEvent, StepFinishedEvent
 except Exception:  # noqa: BLE001
@@ -118,10 +112,6 @@ router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(veri
 
 REQUEST_HITL_TOOL_NAME = "request_hitl"
 
-# Human-readable labels for the reasoning stages surfaced as activity cards.
-# Keyed by the ADK sub-agent name. These describe the activity to the user
-# without leaking internal agent/tool names (see NO_LEAK_RULE). Unknown names
-# fall back to the heuristic in _stage_label below.
 STAGE_LABELS: dict[str, str] = {
     # SOP translation chain
     "sop_translation_intake": "Reviewing your notes",
@@ -158,7 +148,6 @@ class PersistentChatAgent(ADKAgent):
     """ADK agent wrapper that persists AG-UI message streams and HITL interrupts."""
 
     async def _prepare_input(self, input: RunAgentInput, user_id: str) -> tuple[RunAgentInput, bool]:
-        """Apply forwardedProps.resume by injecting a tool result for the suspended call."""
         state = dict(input.state) if isinstance(input.state, dict) else {}
         state["current_run_id"] = input.run_id
         # Surface the user's auto-approve preference so agents know whether to
@@ -397,15 +386,13 @@ class PersistentChatAgent(ADKAgent):
         current_text_parts: list[str] = []
         current_message_events: list[dict[str, Any]] = []
         current_message_complete = False
-        # request_hitl is a long-running tool: ag_ui_adk forwards the call to the
-        # client instead of executing the Python body, so the HITL record is
-        # never written. We reconstruct it from the tool-call stream here.
+        # request_hitl is a LongRunningFunctionTool: ag_ui_adk forwards the call to the
+        # client without executing the Python body, so we reconstruct the HITL record
+        # from the tool-call stream here.
         hitl_arg_buffers: dict[str, list[str]] = {}
-        # Assistant text is buffered, never streamed live: intermediate chain-stage
-        # prose must not leak. We hold each message's events and, at RUN_FINISHED,
-        # release ONLY the final message — and nothing at all if the run opened a
-        # request_hitl gate (a drafting/approval flow whose draft lives in the
-        # review card, not the chat).
+        # Text is buffered and released only at RUN_FINISHED so intermediate chain-stage
+        # prose doesn't leak; suppressed entirely when the run opened a HITL gate
+        # (draft lives in the review card, not the chat).
         run_has_hitl = False
         buffered_msg_events: list[Any] = []   # in-progress message's event objects
         final_msg_events: list[Any] = []      # last completed message (release if no gate)
@@ -450,10 +437,8 @@ class PersistentChatAgent(ADKAgent):
                     pending = await HITLService.get_pending_hitl(user_id, session_id)
                     status = "interrupted" if pending else "completed"
 
-                    # NOTE: do NOT emit a custom HITL_REQUIRED event — the AG-UI client
-                    # rejects unknown event types (invalid_union_discriminator) and
-                    # aborts the stream. The frontend surfaces the gate by polling
-                    # GET /api/hitl/.../pending once the run finishes/interrupts.
+                    # Do NOT emit a custom event — AG-UI client rejects unknown types and
+                    # aborts the stream. Frontend polls GET /api/hitl/.../pending instead.
 
                     if status == "completed" and current_message_id and current_message_complete:
                         content = "".join(current_text_parts).strip()
@@ -477,10 +462,8 @@ class PersistentChatAgent(ADKAgent):
                                 exc_info=True,
                             )
                     elif status == "interrupted":
-                        # An interrupted (HITL gate) run isn't a completed message, but
-                        # its activity (reasoning + steps) should survive a reload so the
-                        # thought-process card returns. Persist only the non-text events;
-                        # the suppressed answer/draft text is never stored.
+                        # Persist non-text events only so the reasoning activity card
+                        # survives a reload; draft text is never stored.
                         activity = [
                             e
                             for e in pending_events
@@ -511,9 +494,7 @@ class PersistentChatAgent(ADKAgent):
                                     exc_info=True,
                                 )
 
-                    # Release the final assistant message now (buffered, never streamed
-                    # live). Suppress entirely if the run opened a gate — the draft is
-                    # in the review card, not the chat.
+                    # Release buffered final message; suppress if HITL gate was opened.
                     if not run_has_hitl:
                         for buffered in final_msg_events:
                             yield buffered
@@ -633,8 +614,7 @@ class PersistentChatAgent(ADKAgent):
                     final_msg_name = current_message_name
                     buffered_msg_events = []
 
-                # Never stream assistant text live — it's released (or suppressed) at
-                # RUN_FINISHED. Everything else (tools, steps) streams normally.
+                # Text is held and released at RUN_FINISHED; tools and steps stream live.
                 if event_type in (
                     EventType.TEXT_MESSAGE_START,
                     EventType.TEXT_MESSAGE_CONTENT,

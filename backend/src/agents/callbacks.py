@@ -21,19 +21,8 @@ def enforce_hitl_policy_callback(
     args: dict[str, Any],
     tool_context: ToolContext,
 ) -> dict | None:
-    """Single safety chokepoint for write actions.
-
-    There is exactly ONE approval gate in the system: the request_hitl tool. The
-    agent opens it, the human approves, and the backend applies the change
-    deterministically (HITLService._apply_change). This callback does NOT open a
-    second gate — it is a passive backstop that blocks a sensitive tool from
-    being called *directly* (bypassing request_hitl). The only time a direct call
-    is allowed is under auto_approve, and even then never for destructive ops.
-
-    Returning a dict short-circuits the tool (the dict becomes its result), so a
-    blocked call surfaces as a normal tool error the agent can recover from by
-    opening the gate — it never executes the write.
-    """
+    # Passive backstop: blocks sensitive tools called directly (bypassing request_hitl).
+    # Returning a dict short-circuits the tool so the agent recovers by opening the gate.
     settings = get_settings()
 
     tool_name: str = getattr(tool, "name", "")
@@ -60,14 +49,9 @@ def enforce_hitl_policy_callback(
     }
 
 
-# ── Output leak guardrail ─────────────────────────────────────────────────────
-# Last line of defense: tool errors are already sanitized at the tool boundary
-# and the system prompt forbids disclosing internals, but anything that slips
-# through (e.g. an unsanitized tool, a prompt-injected instruction) is caught
-# here before it reaches the chat or the live reasoning feed.
-
-# Case-insensitive phrases that have no legitimate place in a grad-school
-# assistant's replies. Kept narrow to avoid redacting honest answers.
+# Last line of defense against leaks — catches anything that slips past tool-boundary
+# sanitization or the system prompt (e.g. prompt injection). Kept narrow to avoid
+# false positives on legitimate replies.
 _LEAK_PHRASES_RE = re.compile(
     r"(?i)(?:"
     r"api[\s_-]?key"
@@ -98,12 +82,7 @@ def redact_sensitive_output_callback(
     callback_context: Any,
     llm_response: Any,
 ) -> None:
-    """after_model callback: redact responses that leak infrastructure details.
-
-    Scans every text part — including thought parts, which the frontend
-    surfaces in the live reasoning feed — and replaces leaking text with a
-    generic message. The full offending text goes to server logs only.
-    """
+    # Scans thought parts too — they surface in the frontend's live reasoning feed.
     content = getattr(llm_response, "content", None)
     parts = getattr(content, "parts", None) or []
 

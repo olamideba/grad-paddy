@@ -1,25 +1,3 @@
-"""
-memory_service.py
-─────────────────────
-Elastic-backed long-term memory for Grad Paddy agents.
-
-Each user gets a collection of atomic fact memories stored in the
-`user-memories` Elasticsearch index.  Embeddings are generated *natively by
-Elasticsearch* via a Google Vertex AI inference endpoint attached to a
-`semantic_text` field — no embedding calls are made from this service.  Elastic
-auto-embeds the fact on write and auto-embeds the query on search.
-
-Retrieval uses hybrid semantic + BM25 search so the most semantically and
-textually relevant memories surface first, with a recency boost so stale facts
-rank lower.
-
-Orchestration (dedup, tag-merge, ownership checks) lives here in the backend
-because it is procedural multi-step logic that an Elastic Agent Builder tool
-cannot express.  Agents reach this service through native ADK tools
-(see agents/memory_tools.py) and the root proactive-injection callback —
-NOT through an Elastic Agent Builder MCP round-trip.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -39,8 +17,7 @@ from src.repositories.elastic_repo import get_es
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Allowed tags — kept in sync with the save_memory tool docstring so extracted
-# facts carry the same taxonomy as agent-saved ones.
+# Must stay in sync with the save_memory tool docstring taxonomy.
 _MEMORY_TAGS = (
     "research_interests",
     "academic_background",
@@ -71,10 +48,8 @@ _EXTRACTION_PROMPT = (
     "{assistant_text}\n"
 )
 
-# `fact_semantic` is a semantic_text field: Elasticsearch embeds it on ingest
-# (and embeds queries on search) using the Vertex inference endpoint referenced
-# by MEMORY_INFERENCE_ID. `fact` is kept as a plain text field so we retain a
-# BM25 lexical signal for hybrid search and a clean value for display/dedup.
+# fact_semantic: Elastic embeds on ingest/search via Vertex inference (MEMORY_INFERENCE_ID).
+# fact: plain text retained for BM25 signal in hybrid search and dedup display.
 _INDEX_MAPPING = {
     "mappings": {
         "properties": {
@@ -99,15 +74,7 @@ class MemoryService:
 
     @staticmethod
     async def ensure_index() -> None:
-        """Idempotently create the user-memories Elasticsearch index.
-
-        Uses get_mapping instead of indices.exists — Elastic Serverless does not
-        support indices.exists() (same pattern as the scraper pipeline).
-
-        The semantic_text mapping references the Vertex inference endpoint, so
-        that endpoint must exist before the index is created.  See the project
-        README / deployment notes for the one-time `PUT _inference/...` setup.
-        """
+        # Uses get_mapping not indices.exists — Elastic Serverless doesn't support the latter.
         es = get_es()
         try:
             await es.indices.get_mapping(index=settings.MEMORY_ES_INDEX)

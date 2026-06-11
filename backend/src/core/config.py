@@ -31,11 +31,8 @@ class Settings(BaseSettings):
     ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL: bool = Field(default=True)
     ADK_LOG_PROMPT_CONTENT: bool = Field(default=True)
 
-    # HITL Settings
-    # Names MUST match the tool function names exactly — the HITL callback keys
-    # off `tool.name`. Email tools are intentionally excluded: create_email only
-    # makes a 'draft' (the email gate is opened separately) and send_email runs
-    # post-approval from the canvas.
+    # Names must match tool function names exactly — HITL callback keys off tool.name.
+    # Email tools excluded: create_email makes a draft only; send_email runs post-approval.
     SENSITIVE_TOOLS: list[str] = Field(
         default=[
             "update_profile",
@@ -60,7 +57,6 @@ class Settings(BaseSettings):
     # Firestore
     FIRESTORE_DATABASE_ID: str = Field(default="grad-paddy-db")
 
-    # Elastic Agent Builder MCP
     ELASTIC_MCP_URL: str = Field(default="")
     ELASTIC_API_KEY: str = Field(default="")
     ELASTIC_MCP_TIMEOUT_SECONDS: int = Field(default=60)
@@ -87,7 +83,6 @@ class Settings(BaseSettings):
         )
     )
 
-    # Collection names
     COLLECTION_USERS: str = Field(default="users")
     COLLECTION_SESSIONS: str = Field(default="sessions")
     COLLECTION_MESSAGES: str = Field(default="messages")
@@ -102,12 +97,10 @@ class Settings(BaseSettings):
     COLLECTION_EMAILS: str = Field(default="emails")
     COLLECTION_INGESTION_JOBS: str = Field(default="ingestion_jobs")
 
-    # Named document keys (single documents, not collections)
     DOC_PROFILE: str = Field(default="profile")
     DOC_PREFERENCES: str = Field(default="preferences")
     DOC_GOOGLE_INTEGRATION: str = Field(default="google")
 
-    # Elastic Search
     ES_URL: str = Field(default="")
     PROGRAM_ES_INDEX: str = Field(default="grad-programs")
     FACULTY_ES_INDEX: str = Field(default="faculty-profiles")
