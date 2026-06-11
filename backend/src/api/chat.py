@@ -7,6 +7,13 @@ from uuid6 import uuid7
 
 from ag_ui.core import EventType, RunAgentInput, ToolMessage
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
+# Key under which ag_ui_adk stores the paused invocation id for ADK-native
+# resumability. We clear it defensively (see _clear_stale_resume_state).
+# Imported guardedly so an unexpected ag_ui_adk version degrades gracefully.
+try:  # pragma: no cover - depends on installed ag_ui_adk version
+    from ag_ui_adk.session_manager import INVOCATION_ID_STATE_KEY
+except Exception:  # noqa: BLE001
+    INVOCATION_ID_STATE_KEY = None  # type: ignore[assignment]
 # Step events let us surface each suppressed reasoning stage as an activity card
 # without leaking its prose. Imported defensively so an unexpected class name in
 # this ag_ui version degrades to "no step cards" instead of crashing the app.
@@ -115,6 +122,8 @@ class PersistentChatAgent(ADKAgent):
         forwarded = input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
         resume = forwarded.get("resume") if isinstance(forwarded.get("resume"), dict) else None
         if not resume:
+            # An ordinary message must never re-enter a paused HITL invocation.
+            await self._clear_stale_resume_state(input, user_id, input.thread_id)
             return input, False
 
         hitl_id = resume.get("hitlId") or resume.get("hitl_id")
@@ -151,6 +160,35 @@ class PersistentChatAgent(ADKAgent):
             content=tool_content,
         )
         return input.model_copy(update={"messages": [*input.messages, tool_message]}), False
+
+    async def _clear_stale_resume_state(
+        self, input: RunAgentInput, user_id: str, session_id: str
+    ) -> None:
+        """Drop a leftover ADK-resumable invocation id when no gate is open.
+
+        Native resumability (App(resumability_config=...)) stores
+        ``_ag_ui_invocation_id`` when ``request_hitl`` pauses a turn and normally
+        clears it once the resumed run completes. Our ``run`` wrapper cancels the
+        underlying execution on completion, which can cut off that cleanup and
+        leave the id behind. The *next* ordinary message then reads the stale id
+        and ADK tries to resume the dead invocation, raising "No agent to
+        transfer to for resuming agent ...". When there is no pending HITL the id
+        is stale, so we clear it before a non-resume turn runs.
+        """
+        if INVOCATION_ID_STATE_KEY is None:
+            return
+        try:
+            if await HITLService.get_pending_hitl(user_id, session_id):
+                return  # a gate is genuinely open — keep the resume id
+            app_name = self._get_app_name(input)
+            state = await self._session_manager.get_session_state(session_id, app_name, user_id)
+            if state and state.get(INVOCATION_ID_STATE_KEY):
+                await self._session_manager.update_session_state(
+                    session_id, app_name, user_id, {INVOCATION_ID_STATE_KEY: None}
+                )
+                logger.info("Cleared stale resume invocation_id for session %s", session_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to clear stale resume state for session %s: %s", session_id, exc)
 
     @staticmethod
     async def _create_hitl_from_args(
