@@ -392,23 +392,69 @@ h6,
 @keyframes logoBeat {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 0px rgba(232, 71, 42, 0.7);
+    box-shadow:
+      0 0 0 0px rgba(232, 71, 42, 0.55),
+      0 0 0 0px rgba(232, 71, 42, 0.35);
   }
-  40% {
-    transform: scale(1.09);
-    box-shadow: 0 0 0 8px rgba(232, 71, 42, 0.15);
+  35% {
+    transform: scale(1.1);
+    box-shadow:
+      0 0 0 6px rgba(232, 71, 42, 0.18),
+      0 0 0 2px rgba(232, 71, 42, 0.3);
   }
-  80% {
+  70% {
     transform: scale(1);
-    box-shadow: 0 0 0 14px rgba(232, 71, 42, 0);
+    box-shadow:
+      0 0 0 13px rgba(232, 71, 42, 0),
+      0 0 0 9px rgba(232, 71, 42, 0);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0px rgba(232, 71, 42, 0);
+    box-shadow:
+      0 0 0 0px rgba(232, 71, 42, 0),
+      0 0 0 0px rgba(232, 71, 42, 0);
   }
 }
 .logo-beat {
-  animation: logoBeat 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: logoBeat 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Subtle tassel sway on the graduation cap glyph, offset from the ring beat. */
+@keyframes capSway {
+  0%,
+  100% {
+    transform: rotate(-7deg) translateY(0);
+  }
+  50% {
+    transform: rotate(7deg) translateY(-0.5px);
+  }
+}
+.cap-sway {
+  display: inline-block;
+  transform-origin: 50% 60%;
+  animation: capSway 1.5s ease-in-out infinite;
+}
+
+/* Soft fade/rise when the rotating thinking status swaps. */
+@keyframes statusSwap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.status-swap {
+  animation: statusSwap 320ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cap-sway,
+  .status-swap {
+    animation: none;
+  }
 }
 
 .msg-enter {
