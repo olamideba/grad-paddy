@@ -108,3 +108,10 @@ async def delete_memory(
 
 
 MEMORY_TOOLS = [save_memory, search_memory, delete_memory]
+
+# Read/explicit-delete only. save_memory is deliberately excluded from the agent
+# surface: persistence now happens in the root after_agent_callback so it never
+# competes with the app's CRUD/HITL tools for the model's attention. search and
+# delete are safe to expose — they don't write app state and aren't confusable
+# with a "save to my shortlist/tracker" action.
+MEMORY_READ_TOOLS = [search_memory, delete_memory]

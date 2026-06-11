@@ -8,7 +8,7 @@ from src.agents.domain.chains import (
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
 from src.agents.tools import SCRAPER_TOOLS, HYBRID_SEARCH_TOOLS, FACULTY_DEEP_DIVE_TOOLS
-from src.agents.memory_tools import MEMORY_TOOLS
+from src.agents.memory_tools import MEMORY_READ_TOOLS
 from src.agents.subagents import build_web_search_agent
 from src.services.ingestion_service import IngestionService
 
@@ -55,7 +55,7 @@ def build_program_deep_dive_agent() -> LlmAgent:
     
     return LlmAgent(
         name="program_deep_dive_agent",
-        model="gemini-2.5-pro",
+        model="gemini-3.1-pro-preview",
         description=(
             "Queries and synthesizes university graduate program deadlines, fees, and requirements."
         ),
@@ -124,12 +124,15 @@ def build_application_tracker_agent() -> LlmAgent:
     return LlmAgent(
         name="application_tracker_agent",
         model="gemini-3.1-flash-lite-preview",
-        description="Tracks deadlines, status, and weekly summaries using Elastic evidence and ES|QL.",
+        description="Read-only analysis of already-saved tracker data: deadlines, status, and weekly summaries via Elastic ES|QL.",
         instruction=(
-            "You are the application tracker specialist.\n"
-            "- Use Elastic MCP tools when available to search tracker evidence and run ES|QL deadline/readiness summaries.\n"
+            "You are the application tracker ANALYSIS specialist. You are READ-ONLY.\n"
+            "- Use Elastic MCP tools to search ALREADY-SAVED tracker evidence and run ES|QL deadline/readiness summaries.\n"
             "- Surface deadlines, stale items, missing steps, and next actions.\n"
             "- Keep weekly summaries concise and operational.\n"
+            "- You CANNOT create, update, or delete tracker records, and you have no tools to do so. If the user "
+            "asks to add or change a tracked application, do NOT attempt it and do NOT claim it was saved — say the "
+            "change will be made via the application layer and hand back.\n"
             "- Do not invent statuses; if data is incomplete, surface gaps.\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
@@ -220,7 +223,7 @@ def build_domain_orchestrator_agent() -> LlmAgent:
         description="Routes domain work to the correct Grad Paddy specialist agent.",
         tools=[
             *build_elastic_mcp_tools(),
-            *MEMORY_TOOLS,
+            *MEMORY_READ_TOOLS,
             agent_tool.AgentTool(
                 agent=build_web_search_agent("domain_google_search_agent")
             ),
@@ -258,21 +261,17 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "and indexed into the database. Do not route general research questions here.\n"
             "- For real-time or current information not in Elastic (e.g. upcoming intake dates, current application deadlines, "
             "recent faculty news), call domain_google_search_agent directly — do NOT ask the user for URLs.\n"
-            "- MEMORY: After any interaction where the user reveals important information about themselves, "
-            "call save_memory to persist it for future sessions. Save: research interests, academic background, "
-            "target programs or faculty, application strategy decisions, SOP framing choices, funding constraints, "
-            "timeline goals, or any explicitly stated preference. Write facts in third person: "
-            "'User is targeting NLP programs with a focus on healthcare AI.' "
-            "Use search_memory when the user references past decisions or you need background context not in this session. "
-            "Use delete_memory when the user explicitly asks to forget something.\n"
-            "- NEVER call any tool that writes, creates, or modifies data without first stopping and presenting "
-            "the user with a confirmation message showing exactly what will be written. Wait for the user to "
-            "explicitly say 'yes', 'confirm', or 'approve' before proceeding.\n"
-            "- This applies to ALL writes including: adding to shortlist, adding to tracker, saving drafts, "
-            "sending emails, and updating CRM records.\n"
-            "- If the user gives you data to save (names, emails, programs), prepare a summary of what you are "
-            "about to write and ask: 'Shall I go ahead and save this?' — do not save until confirmed.\n"
-            "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
+            "- MEMORY: Saved facts about the user are already injected into your context at session start, so you "
+            "rarely need to fetch them. Call search_memory only when the user references a past decision you don't "
+            "see, or asks what you remember. Call delete_memory only when the user explicitly asks to forget "
+            "something. You have NO tool to save memories — that happens automatically; never tell the user you "
+            "saved or will save a memory.\n"
+            "- WRITES: You are READ-ONLY for app state. You do NOT have, and must NOT attempt, tools that create, "
+            "update, or delete the user's shortlist, tracker, drafts, recommenders, emails, profile, or preferences. "
+            "When a request concludes with such a write (e.g. 'add this professor to my shortlist', 'log this program "
+            "in my tracker', 'save this draft'), do the domain reasoning first, then hand the user back so the "
+            "application layer can perform the write behind its human-approval gate. NEVER persist app data to Elastic "
+            "or anywhere else yourself, and NEVER claim a record was saved — you cannot save records.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"
             "- Never mention internal agent names, tool names, routing steps, or implementation details to the user. Speak as one assistant."
         ),
