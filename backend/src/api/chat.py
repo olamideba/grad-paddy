@@ -36,30 +36,42 @@ logger = logging.getLogger(__name__)
 
 
 def _payload_signature(payload: dict) -> str | None:
-    """Stable identity of a gated action: (entity, action, ref_id, fields, content).
+    """Stable identity of a gated action — for matching a re-emitted duplicate.
 
-    Two gates with the same signature represent the SAME decision. Returns None
-    when entity/action are absent (can't safely dedupe an unidentifiable gate)."""
+    Returns None when entity/action are absent (can't safely dedupe). For
+    delete/update the identity is (entity, action, set of target ids): the agent
+    fills descriptive `fields` inconsistently between the original gate and the
+    re-emitted one (and flips between `ref_id` and `ref_ids`), so keying on the
+    target id set is what actually matches the duplicate. For create (no target
+    id) the identity comes from the proposed fields/content instead."""
     if not isinstance(payload, dict):
         return None
     entity = str(payload.get("entity") or "").lower().strip()
     action = str(payload.get("action") or "").lower().strip()
     if not entity or not action:
         return None
-    ref_id = str(payload.get("ref_id") or "").strip()
+
+    # All target ids, regardless of ref_id (singular) vs ref_ids (array).
+    ids = set()
+    if str(payload.get("ref_id") or "").strip():
+        ids.add(str(payload["ref_id"]).strip())
     raw_ref_ids = payload.get("ref_ids")
-    ref_ids = sorted(
-        str(r).strip()
-        for r in (raw_ref_ids if isinstance(raw_ref_ids, list) else [])
-        if str(r or "").strip()
-    )
+    if isinstance(raw_ref_ids, list):
+        ids.update(str(r).strip() for r in raw_ref_ids if str(r or "").strip())
+    ids_sig = ",".join(sorted(ids))
+
+    # Delete/update targeting specific records: identity = target id set only.
+    if action in {"delete", "update"} and ids:
+        return "|".join([entity, action, ids_sig])
+
+    # Create (or id-less action): identity = proposed fields + content.
     fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
     content = str(payload.get("content") or "").strip()
     try:
         fields_sig = json.dumps(fields, sort_keys=True, default=str)
     except Exception:  # noqa: BLE001
         fields_sig = str(fields)
-    return "|".join([entity, action, ref_id, ",".join(ref_ids), fields_sig, content])
+    return "|".join([entity, action, ids_sig, fields_sig, content])
 
 
 async def _is_duplicate_of_resolved(user_id: str, session_id: str, payload: dict) -> bool:
