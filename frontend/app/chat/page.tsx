@@ -316,8 +316,9 @@ type ChatItem =
       id: string;
       title: string;
       subtitle: string;
-      route: string;
-      label: string;
+      route?: string;
+      label?: string;
+      error?: boolean;
     };
 
 // Reconstruct phase/step items from persisted AG-UI events for a restored session.
@@ -1240,14 +1241,20 @@ function ResultCard({
           <div className="text-sm font-bold font-space truncate" style={{ color: "#0D0D0D" }}>
             {item.title}
           </div>
-          <div className="text-[11px] font-dm" style={{ color: "#9CA3AF" }}>
-            {item.subtitle} · {item.label}
+          <div
+            className="text-[11px] font-dm"
+            style={{ color: item.error ? "#E8472A" : "#9CA3AF" }}
+          >
+            {item.subtitle}
+            {item.label ? ` · ${item.label}` : ""}
           </div>
         </div>
-        <button onClick={onOpen} className="btn-black btn-sm text-xs shrink-0">
-          Open in {item.label}
-          <Icon icon="solar:arrow-right-up-bold" width={13} />
-        </button>
+        {item.route && item.label ? (
+          <button onClick={onOpen} className="btn-black btn-sm text-xs shrink-0">
+            Open in {item.label}
+            <Icon icon="solar:arrow-right-up-bold" width={13} />
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -2242,7 +2249,23 @@ export default function ChatPage() {
       // Continue the same turn: resume the run with the human decision.
       resumeRun(id, decision, response);
     } catch (err) {
+      // The backend leaves the gate pending if the change failed to persist, so
+      // do NOT flip it or show "Saved" — surface the failure and keep the gate
+      // actionable so the user can retry.
       console.error("[chat] resolve HITL error", err);
+      setStream((prev) => {
+        const gate = prev.find((i) => i.id === id && i.type === "approval");
+        return [
+          ...prev,
+          {
+            type: "result" as const,
+            id: `error-${id}-${Date.now()}`,
+            title: gate && gate.type === "approval" ? gate.title : "Couldn't apply change",
+            subtitle: "Couldn't save — please try approving again",
+            error: true,
+          },
+        ];
+      });
     }
   }
 
@@ -2594,7 +2617,7 @@ export default function ChatPage() {
               if (item.type === "result")
                 return (
                   <div key={item.id} className="py-1">
-                    <ResultCard item={item} onOpen={() => router.push(item.route)} />
+                    <ResultCard item={item} onOpen={() => item.route && router.push(item.route)} />
                   </div>
                 );
             }
