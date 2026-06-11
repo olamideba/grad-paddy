@@ -517,6 +517,10 @@ function Hero({ cta, scrollRef }: { cta: string; scrollRef: RefObject<HTMLDivEle
 }
 
 // ── Demo ────────────────────────────────────────────────────────────────────
+// YouTube video id (the part after `v=` in the URL). Set NEXT_PUBLIC_DEMO_VIDEO_ID
+// in the environment; inlined at build time since this is a client component.
+const DEMO_VIDEO_ID = process.env.NEXT_PUBLIC_DEMO_VIDEO_ID || "Je6jsfGuVA4";
+
 function Demo({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
   return (
     <section id="demo" className="relative px-5 py-28">
@@ -537,105 +541,29 @@ function Demo({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
         </Reveal>
         <ScaleIn scrollRef={scrollRef}>
           <Float x={4} y={8} dur={8}>
-            <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-white/[0.04] p-3 backdrop-blur-xl shadow-[0_40px_120px_-20px_rgba(232,71,42,0.4)]">
+            <div className="mx-auto max-w-5xl rounded-2xl border border-white/10 bg-white/[0.04] p-3 backdrop-blur-xl shadow-[0_40px_120px_-20px_rgba(232,71,42,0.4)]">
               <div className="flex items-center gap-1.5 px-3 py-2">
                 <span className="size-3 rounded-full bg-[#ff5f57]" />
                 <span className="size-3 rounded-full bg-[#febc2e]" />
                 <span className="size-3 rounded-full bg-[#28c840]" />
-                <span className="ml-3 text-xs text-white/40 font-mono">grad-paddy · chat</span>
+                <span className="ml-3 text-xs text-white/40 font-mono">grad-paddy · demo</span>
               </div>
-              <ChatMockup />
+              <div className="aspect-video w-full overflow-hidden rounded-xl border border-white/10">
+                <iframe
+                  className="size-full"
+                  src={`https://www.youtube-nocookie.com/embed/${DEMO_VIDEO_ID}`}
+                  title="Grad Paddy demo"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+              </div>
             </div>
           </Float>
         </ScaleIn>
       </div>
     </section>
-  );
-}
-
-function ChatMockup() {
-  const [step, setStep] = useState(0);
-  const started = useRef(false);
-  function start() {
-    if (started.current) return;
-    started.current = true;
-    [400, 1100, 1900, 2700, 3600].forEach((t, i) => setTimeout(() => setStep(i + 1), t));
-  }
-  return (
-    <motion.div
-      onViewportEnter={start}
-      viewport={{ once: true, amount: 0.4 }}
-      className="rounded-xl p-5 space-y-4 min-h-[420px] border border-white/5"
-      style={{ background: "rgba(255,255,255,0.02)" }}
-    >
-      {step >= 1 && (
-        <motion.div
-          initial={{ opacity: 0, x: 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex justify-end"
-        >
-          <div className="max-w-[78%] rounded-xl bg-gradient-to-r from-cyan-500/80 to-[#e8472a]/80 text-white px-4 py-2.5 text-sm font-medium border border-white/10">
-            Find NLP professors at MIT and Stanford taking PhD students
-          </div>
-        </motion.div>
-      )}
-      {step >= 2 && (
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl overflow-hidden border border-white/10 bg-white/[0.03]"
-        >
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 text-white">
-            <Brain className="size-4 text-[#4ecdc4]" strokeWidth={2.5} />
-            <span className="font-bold text-sm">Agent · Thinking</span>
-            {step >= 4 && (
-              <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-[#4ecdc4]/20 text-[#4ecdc4] text-[10px] font-bold px-2 py-0.5 border border-[#4ecdc4]/30">
-                <Check className="size-3" /> Done
-              </span>
-            )}
-          </div>
-          <div className="p-3 space-y-1.5">
-            {[
-              "Planning the search",
-              "Searching the web",
-              "Reading faculty profiles",
-              "Checking open positions",
-            ].map((t, i) => (
-              <motion.div
-                key={t}
-                initial={{ opacity: 0, x: -10 }}
-                animate={step >= 3 ? { opacity: 1, x: 0 } : {}}
-                transition={{ delay: i * 0.18 }}
-                className="flex items-center gap-2 text-xs font-medium text-white/80"
-              >
-                <span className="size-3.5 grid place-items-center rounded bg-[#4ecdc4]/20 border border-[#4ecdc4]/40 shrink-0">
-                  <Check className="size-2.5 text-[#4ecdc4]" strokeWidth={3} />
-                </span>
-                {t}
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      )}
-      {step >= 5 && (
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex gap-3"
-        >
-          <span className="size-8 shrink-0 grid place-items-center rounded-lg bg-gradient-to-br from-[#4ecdc4] to-[#e8472a]">
-            <Sparkles className="size-4 text-white" strokeWidth={2.5} />
-          </span>
-          <div className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/85 leading-relaxed">
-            Found <b className="text-white">6 strong matches</b>. Top picks:{" "}
-            <b className="text-[#4ecdc4]">Prof. Jurafsky (Stanford)</b> — fit 94%, actively
-            recruiting; <b className="text-[#4ecdc4]">Prof. Andreas (MIT)</b> — fit 91%. Want me to
-            draft outreach or add them to your shortlist?
-            <span className="typewriter-caret" />
-          </div>
-        </motion.div>
-      )}
-    </motion.div>
   );
 }
 
