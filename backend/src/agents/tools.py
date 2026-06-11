@@ -26,6 +26,7 @@ from src.services.hitl_service import HITLService
 from src.services.shortlist_service import ShortlistService
 from src.services.tracker_service import TrackerService
 from src.services.users_service import UserService
+from src.services.ingestion_service import IngestionService
 
 
 def _response(data: object, message: str = "") -> dict[str, object]:
@@ -1355,6 +1356,61 @@ async def send_email(email_id: str, tool_context: ToolContext) -> dict[str, obje
 send_email = FunctionTool(send_email)
 
 
+# ── Ingestion ───────────────────────────────────────────────────────────────
+async def check_url(url: str) -> dict:
+    """
+    Check if a URL has already been indexed in ES.
+    Call this before ingest_url to avoid re-scraping.
+
+    Args:
+        url: The URL to check.
+
+    Returns:
+        Dict with 'indexed' bool and 'chunks' count if found.
+    """
+    check_url = await IngestionService.check_url_indexed(url)
+    return _response(check_url, "URL checked successfully")
+
+
+async def ingest_url(url: str, url_type: str, tool_context: ToolContext) -> dict:
+    """
+    Scrape a URL and index its content into Elasticsearch.
+    Use this when the student provides a new program or faculty URL
+    that isn't already in the database.
+
+    Args:
+        url: The program or faculty directory URL to scrape.
+            e.g. "https://oge.mit.edu/programs/eecs/"
+        url_type: "program" for grad program pages,
+            "faculty" for faculty directory pages.
+
+    Returns:
+        Dict with status, chunks_indexed, and a summary of what was found.
+    """
+    user_id = require_user_id(tool_context)
+    result = await IngestionService.ingest_url_background(url, url_type, user_id)
+    return _response(result, "Ingestion started in background")
+
+
+async def check_ingestion_status(job_id: str, tool_context: ToolContext) -> dict:
+    """
+    Check the status of a background ingestion job.
+
+    Args:
+        user_id: The user's ID
+        job_id: The job ID returned by ingest_url
+
+    Returns:
+        Dict with status: "running", "complete", or "failed"
+    """
+    user_id = require_user_id(tool_context)
+    result = await IngestionService.get_ingestion_status(user_id, job_id)
+    return _response(result, "Status retrieved")
+
+check_url = FunctionTool(check_url)
+ingest_url = FunctionTool(ingest_url)
+check_ingestion_status = FunctionTool(check_ingestion_status)
+
 # ── Tool groups ───────────────────────────────────────────────────────────────
 
 ACCOUNT_TOOLS = [
@@ -1401,7 +1457,13 @@ EMAIL_TOOLS = [
     send_email,
 ]
 
+SCRAPER_TOOLS = [
+    check_url,
+    ingest_url,
+    check_ingestion_status
+]
+
 GOVERNANCE_TOOLS = [get_pending_hitl, REQUEST_HITL_TOOL]
 
-APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS + EMAIL_TOOLS
+APPLICATION_TOOLS = SHORTLIST_TOOLS + TRACKER_TOOLS + DRAFT_TOOLS + EMAIL_TOOLS + SCRAPER_TOOLS
 OPERATIONS_TOOLS = ACCOUNT_TOOLS + APPLICATION_TOOLS + GOVERNANCE_TOOLS

@@ -217,6 +217,48 @@ function getToolDescription(toolName: string): { label: string; emoji: string } 
   return { label: toolName.replace(/_/g, " "), emoji: "⚙️" };
 }
 
+// Shown while the agent is thinking but not running a named tool. Cycles so the
+// wait feels alive — themed around preparing context and grad-school work.
+// Generic processing states — these do NOT infer the user's intent or claim a
+// specific action on their data. Lightly grad-school flavored, but safe to show
+// for any request the agent happens to be working on.
+const THINKING_MESSAGES = [
+  "Working...",
+  "Thinking...",
+  "Reasoning...",
+  "Processing...",
+  "Analyzing...",
+  "Synthesizing...",
+  "Considering...",
+  "Researching...",
+  "Reviewing...",
+  "Reflecting...",
+  "Connecting the dots...",
+  "Gathering context...",
+  "Preparing context...",
+  "Loading information...",
+  "Organizing thoughts...",
+  "Piecing things together...",
+  "Weighing the options...",
+  "Lining up the details...",
+  "Sorting through the details...",
+  "Mapping things out...",
+  "Putting the pieces together...",
+  "Crunching the details...",
+  "Working through it...",
+  "Sharpening the response...",
+  "Consulting the playbook...",
+  "Doing the homework...",
+  "Hitting the books...",
+  "Studying the details...",
+  "Checking the fine print...",
+  "Thinking it through...",
+  "Pulling it all together...",
+  "Refining the approach...",
+  "Joining the threads...",
+  "Making sense of it...",
+];
+
 type ChatItem =
   | { type: "user"; id: string; content: string; timestamp: Date }
   | {
@@ -1603,6 +1645,7 @@ export default function ChatPage() {
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<{ id: string; content: string }[]>([]);
   const [running, setLocalRunning] = useState(false);
+  const [thinkingIdx, setThinkingIdx] = useState(0);
   const {
     sessions,
     setSessions,
@@ -1629,11 +1672,23 @@ export default function ChatPage() {
   );
   const agentStatusText = runningStep?.tool
     ? `${getToolDescription(runningStep.tool).label}...`
-    : "Working...";
+    : THINKING_MESSAGES[thinkingIdx % THINKING_MESSAGES.length];
   const pendingApproval = stream.some(
     (i) => i.type === "approval" && !i.resolved && !(i.expiresAt && Date.parse(i.expiresAt) < now)
   );
   const inputBlocked = isAgentRunning || pendingApproval;
+
+  // Rotate the generic "thinking" status while the agent runs (no-op once a
+  // named tool step takes over the label). Random start so repeat turns vary.
+  useEffect(() => {
+    if (!isAgentRunning) return;
+    setThinkingIdx(Math.floor(Math.random() * THINKING_MESSAGES.length));
+    const id = setInterval(
+      () => setThinkingIdx((i) => (i + 1) % THINKING_MESSAGES.length),
+      2600
+    );
+    return () => clearInterval(id);
+  }, [isAgentRunning]);
 
   useEffect(() => {
     setRunning(isAgentRunning);
@@ -2475,9 +2530,13 @@ export default function ChatPage() {
                 className="w-7 h-7 shrink-0 flex items-center justify-center logo-beat"
                 style={{ background: "#E8472A", border: "2px solid #C8381F", borderRadius: "50%" }}
               >
-                <span className="text-xs leading-none">🎓</span>
+                <span className="text-xs leading-none cap-sway">🎓</span>
               </div>
-              <span className="text-xs font-dm" style={{ color: "#9CA3AF" }}>
+              <span
+                key={agentStatusText}
+                className="text-xs font-dm status-swap"
+                style={{ color: "#9CA3AF" }}
+              >
                 {agentStatusText}
               </span>
             </div>

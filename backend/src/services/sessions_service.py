@@ -9,14 +9,14 @@ from src.repositories.groups_repo import GroupRepository
 logger = logging.getLogger(__name__)
 
 # The cheapest/fastest model — title generation is a tiny task.
-_TITLE_MODEL = "gemini-2.5-flash-lite"
+_TITLE_MODEL = "gemini-3.1-flash-lite"
 _genai_client = Client()
 
 MAX_TITLE_LEN = 200
 
 
 class SessionService:
-    
+
     @staticmethod
     async def _generate_title(first_message: str) -> str:
         """Use a cheap LLM call to generate a concise session title. Falls back to truncation."""
@@ -30,11 +30,13 @@ class SessionService:
                 model=_TITLE_MODEL,
                 contents=prompt,
             )
-            title = (response.text or "").strip().strip('"\'')
+            title = (response.text or "").strip().strip("\"'")
             if title:
                 return title[:MAX_TITLE_LEN]
         except Exception as exc:
-            logger.warning("Title generation failed, falling back to truncation: %s", exc)
+            logger.warning(
+                "Title generation failed, falling back to truncation: %s", exc
+            )
 
         # Fallback: simple truncation
         title = first_message[:60].strip()
@@ -50,10 +52,14 @@ class SessionService:
         session = await SessionRepository.create_session(user_id, title)
 
         # Add the first message
-        await SessionRepository.create_message(user_id, session["id"], {
-            "role": "user",
-            "content": first_message,
-        })
+        await SessionRepository.create_message(
+            user_id,
+            session["id"],
+            {
+                "role": "user",
+                "content": first_message,
+            },
+        )
 
         return session
 
@@ -82,7 +88,9 @@ class SessionService:
         if not clean:
             raise ValueError("Title cannot be empty")
         try:
-            return await SessionRepository.update_session(user_id, session_id, {"title": clean})
+            return await SessionRepository.update_session(
+                user_id, session_id, {"title": clean}
+            )
         except NotFound as e:
             raise ValueError("Session not found") from e
 
@@ -113,13 +121,19 @@ class SessionService:
             raise ValueError("Session not found") from e
 
     @staticmethod
-    async def create_message(user_id: str, session_id: str, role: str, content: str) -> dict:
+    async def create_message(
+        user_id: str, session_id: str, role: str, content: str
+    ) -> dict:
         """Append a message to a session and touch the session."""
         try:
-            return await SessionRepository.create_message(user_id, session_id, {
-                "role": role,
-                "content": content,
-            })
+            return await SessionRepository.create_message(
+                user_id,
+                session_id,
+                {
+                    "role": role,
+                    "content": content,
+                },
+            )
         except NotFound as e:
             raise ValueError("Session not found") from e
 
