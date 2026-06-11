@@ -43,7 +43,6 @@ _memory_tasks: set[object] = set()
 
 
 def _content_text(content: object) -> str:
-    """Flatten a types.Content's text parts into a single string."""
     parts = getattr(content, "parts", None) or []
     return " ".join(
         p.text for p in parts if getattr(p, "text", None)
@@ -51,15 +50,8 @@ def _content_text(content: object) -> str:
 
 
 def _persist_memory(callback_context: CallbackContext) -> None:
-    """Fires after the root agent's turn — distils durable user facts and saves
-    them off the model's critical path.
-
-    Memory persistence used to be a tool the orchestrator was told to call after
-    every interaction, which made it compete with (and often win over) the app's
-    CRUD/HITL tools for the model's attention. Moving it here removes that
-    competition entirely: the model only ever sees task tools, and memory is
-    extracted in the background once the turn is done.
-    """
+    # Runs as after_agent_callback, not a tool — keeps memory writes off the model's
+    # attention so they don't compete with CRUD/HITL tool calls.
     user_id = callback_context.state.get("user_id")
     if not user_id:
         return
@@ -98,19 +90,9 @@ def _persist_memory(callback_context: CallbackContext) -> None:
 
 
 async def _load_user_context(callback_context: CallbackContext) -> None:
-    """Fires before the root agent runs.
-
-    Sets the date every turn, and loads the user's cross-session MEMORIES once
-    per session (cached in state via USER_CONTEXT_LOADED_KEY) — within-session
-    context is already carried by the chat history, so re-fetching each turn adds
-    only latency. The injection itself happens in _inject_user_context (no I/O).
-
-    Profile/preferences are deliberately NOT preloaded here. The agents already
-    fetch them via tools when relevant (reliably, as observed), and the Firestore
-    read is the expensive part we want OFF the time-to-first-token path. Memory is
-    injected instead because it has no reliable tool trigger, and its empty-query
-    recall is cheap over the pooled, startup-warmed Elastic connection.
-    """
+    # Profile/preferences are NOT preloaded — agents fetch them via tools, keeping
+    # the Firestore read off the time-to-first-token path. Memory IS injected here
+    # because it has no reliable tool trigger and the Elastic recall is cheap.
     callback_context.state["current_date"] = datetime.now(timezone.utc).strftime(
         "%A, %d %B %Y"
     )
@@ -149,17 +131,8 @@ async def _load_user_context(callback_context: CallbackContext) -> None:
 def _inject_user_context(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> LlmResponse | None:
-    """Append date + user-context to an agent's system prompt before every call.
-
-    No I/O — reads state set by _load_user_context, so it is cheap to run before
-    every model call across the whole agent tree.
-
-    The CURRENT_DATE block grounds EVERY agent (not just the root, whose
-    instruction interpolates {current_date}). Sub-agents like application_agent
-    write deadlines, and without an explicit date they default to a stale
-    training-prior year (e.g. resolving 'July 1st' to 2025 in 2026). Injecting it
-    here fixes the grounding at the source rather than relying on thinking budget.
-    """
+    # Date injected on every sub-agent call, not just root — sub-agents writing
+    # deadlines would otherwise default to a stale training-prior year.
     current_date = callback_context.state.get("current_date")
     memories = callback_context.state.get(USER_CONTEXT_STATE_KEY) or ""
 
@@ -184,9 +157,6 @@ def _inject_user_context(
 
 
 def _enable_context_injection(agent: object, _seen: set[int] | None = None) -> None:
-    """Attach _inject_user_context as the before_model callback on every LlmAgent
-    in the tree, so sub-agents (faculty discovery, SOP, etc.) are grounded too —
-    reusing the state loaded once at the root, with no extra I/O."""
     _seen = _seen if _seen is not None else set()
     if id(agent) in _seen:
         return
@@ -198,9 +168,6 @@ def _enable_context_injection(agent: object, _seen: set[int] | None = None) -> N
 
 
 def _enable_output_guardrail(agent: object, _seen: set[int] | None = None) -> None:
-    """Attach the leak-redaction callback as the after_model callback on every
-    LlmAgent in the tree, so no branch can relay raw infrastructure details to
-    the chat or the live reasoning feed."""
     _seen = _seen if _seen is not None else set()
     if id(agent) in _seen:
         return
@@ -223,16 +190,6 @@ INTERNAL_THINKING_BUDGET = 512
 def _configure_thinking(
     agent: object, budget: int, _seen: set[int] | None = None
 ) -> None:
-    """Apply a thinking budget to every LlmAgent in a subtree.
-
-    budget == 0 disables thinking entirely (no thought tokens, no live reasoning
-    feed) — right for the coordinator and the internal CRUD/HITL agents, where
-    routing and structured writes need no reasoning trace. A positive budget caps
-    thinking and surfaces thought summaries (REASONING_* events) for the reasoning
-    branch. We never use -1 (unlimited) anymore.
-
-    ag_ui_adk translates thought parts into REASONING_* events for the chat feed.
-    """
     _seen = _seen if _seen is not None else set()
     if id(agent) in _seen:
         return

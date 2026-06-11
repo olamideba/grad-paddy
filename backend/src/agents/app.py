@@ -8,8 +8,6 @@ from google.adk.models.registry import LLMRegistry
 
 from src.agents.root import root_agent
 
-# gemini-3.1-flash-lite: cheapest non-deprecated Gemini model, adequate for
-# conversation summarisation (no deep reasoning needed here).
 _summarizer = LlmEventSummarizer(llm=LLMRegistry.new_llm("gemini-3.1-flash-lite"))
 
 with warnings.catch_warnings():

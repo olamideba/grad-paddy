@@ -1,16 +1,3 @@
-"""
-memory_tools.py
-───────────────
-ADK tool functions for agent-driven memory management.
-
-save_memory  — agent persists a meaningful fact about the user to Elastic.
-search_memory — agent retrieves relevant past context for the current query.
-delete_memory — agent removes a specific memory by ID (e.g. user says "forget that").
-
-These are Memory-as-a-Tool: the agent decides when to call them, which keeps
-memory writes intentional and scoped to genuinely useful information.
-"""
-
 from google.adk.tools import ToolContext
 
 from src.agents.context import require_user_id
@@ -109,9 +96,6 @@ async def delete_memory(
 
 MEMORY_TOOLS = [save_memory, search_memory, delete_memory]
 
-# Read/explicit-delete only. save_memory is deliberately excluded from the agent
-# surface: persistence now happens in the root after_agent_callback so it never
-# competes with the app's CRUD/HITL tools for the model's attention. search and
-# delete are safe to expose — they don't write app state and aren't confusable
-# with a "save to my shortlist/tracker" action.
+# save_memory excluded: persistence happens in the root after_agent_callback to avoid
+# competing with CRUD/HITL tools for model attention.
 MEMORY_READ_TOOLS = [search_memory, delete_memory]

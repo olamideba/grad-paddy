@@ -47,16 +47,8 @@ def _response(data: object, message: str = "") -> dict[str, object]:
 
 
 def _tool_error(error_code: str, message: str) -> dict[str, object]:
-    """Sanitized failure payload returned to the LLM.
-
-    Never put raw upstream errors (status bodies, exception text, stack
-    traces) in here — anything in this payload lands in the model context
-    and can be relayed to the end user.
-    """
+    # Never put raw upstream errors here — this payload lands in model context.
     return {"success": False, "error_code": error_code, "message": message}
-
-
-# ── Account ───────────────────────────────────────────────────────────────────
 
 
 async def get_profile(tool_context: ToolContext) -> dict[str, object]:
@@ -75,19 +67,6 @@ async def get_profile(tool_context: ToolContext) -> dict[str, object]:
                 'avatar_url': str | None — URL to the user's profile photo.
                 'onboarded': bool — whether the user has completed onboarding.
             'message': str — empty string on read operations.
-
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'uid_abc123',
-                    'email': 'jane@example.com',
-                    'name': 'Jane Doe',
-                    'avatar_url': 'https://example.com/avatars/jane.png',
-                    'onboarded': True
-                },
-                'message': ''
-            }
 
     Raises:
         ValueError: If the user profile does not exist.
@@ -115,19 +94,6 @@ async def update_profile(
             'success': bool — True on success.
             'data': dict — the full updated profile (same shape as get_profile).
             'message': str — 'Profile updated successfully'.
-
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'uid_abc123',
-                    'email': 'jane@example.com',
-                    'name': 'Jane Smith',
-                    'avatar_url': 'https://example.com/avatars/jane_new.png',
-                    'onboarded': True
-                },
-                'message': 'Profile updated successfully'
-            }
 
     Raises:
         ValueError: If the user profile does not exist.
@@ -162,18 +128,6 @@ async def get_preferences(tool_context: ToolContext) -> dict[str, object]:
                 'funding_required': bool — whether the user needs funding.
             'message': str — empty string on read operations.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'research_interests': ['machine learning', 'NLP'],
-                    'target_countries': ['USA', 'Canada'],
-                    'target_universities': ['MIT', 'Stanford'],
-                    'degree_type': 'PhD',
-                    'funding_required': True
-                },
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     preferences = await UserService.get_preferences(user_id)
@@ -214,19 +168,6 @@ async def update_preferences(
                 (same shape as get_preferences).
             'message': str — 'Preferences updated successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'research_interests': ['machine learning', 'robotics'],
-                    'target_countries': ['USA', 'Canada'],
-                    'target_universities': ['MIT', 'Stanford'],
-                    'degree_type': 'PhD',
-                    'funding_required': True
-                },
-                'message': 'Preferences updated successfully'
-            }
-
     Raises:
         ValueError: If the preferences document does not exist.
     """
@@ -240,7 +181,6 @@ async def update_preferences(
 update_preferences = FunctionTool(update_preferences)
 
 
-# ── Shortlist ─────────────────────────────────────────────────────────────────
 
 
 async def add_shortlist_faculty(
@@ -276,24 +216,6 @@ async def add_shortlist_faculty(
                 'outreach_status', 'created_at': str (ISO timestamp).
             'message': str — 'Faculty member added successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'fac_xyz789',
-                    'name': 'Prof. Andrew Ng',
-                    'university': 'Stanford University',
-                    'department': 'Computer Science',
-                    'email': 'ang@stanford.edu',
-                    'webpage': 'https://www.andrewng.org/',
-                    'research_summary': 'Deep learning, ML education.',
-                    'fit_score': 9.2,
-                    'position_status': 'open',
-                    'outreach_status': 'not_contacted',
-                    'created_at': '2025-11-01T10:00:00Z'
-                },
-                'message': 'Faculty member added successfully'
-            }
     """
     user_id = require_user_id(tool_context)
     faculty = await ShortlistService.add_faculty(user_id, payload.model_dump())
@@ -327,22 +249,6 @@ async def list_shortlist(
                 by fit_score descending.
             'message': str — empty string.
 
-        Example:
-            {
-                'success': True,
-                'data': [
-                    {
-                        'id': 'fac_xyz789',
-                        'name': 'Prof. Andrew Ng',
-                        'university': 'Stanford University',
-                        'department': 'Computer Science',
-                        'fit_score': 9.2,
-                        'position_status': 'open',
-                        'outreach_status': 'not_contacted'
-                    }
-                ],
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     faculty_list = await ShortlistService.list_shortlist(
@@ -372,25 +278,6 @@ async def get_shortlist_faculty(faculty_id: str, tool_context: ToolContext) -> d
             'data': dict — the full shortlist entry (same shape as
                 add_shortlist_faculty's return value).
             'message': str — empty string.
-
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'fac_xyz789',
-                    'name': 'Prof. Andrew Ng',
-                    'university': 'Stanford University',
-                    'department': 'Computer Science',
-                    'email': 'ang@stanford.edu',
-                    'webpage': 'https://www.andrewng.org/',
-                    'research_summary': 'Deep learning, ML education.',
-                    'fit_score': 9.2,
-                    'position_status': 'open',
-                    'outreach_status': 'not_contacted',
-                    'created_at': '2025-11-01T10:00:00Z'
-                },
-                'message': ''
-            }
 
     Raises:
         ValueError: If no shortlist entry with that ID exists for this user.
@@ -467,13 +354,6 @@ async def update_shortlist_outreach_status(
             'data': dict — {'status': 'success'}.
             'message': str — 'Outreach status updated successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Outreach status updated successfully'
-            }
-
     Raises:
         ValueError: If the shortlist entry is not found.
     """
@@ -501,13 +381,6 @@ async def delete_shortlist_faculty(faculty_id: str, tool_context: ToolContext) -
             'data': dict — {'status': 'success'}.
             'message': str — 'Faculty member deleted successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Faculty member deleted successfully'
-            }
-
     Raises:
         ValueError: If the shortlist entry is not found.
     """
@@ -532,23 +405,12 @@ async def get_shortlist_stats(tool_context: ToolContext) -> dict[str, object]:
                 'contacted': int — entries whose outreach_status is 'email_sent'.
             'message': str — empty string.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'total': 12,
-                    'open_positions': 4,
-                    'contacted': 7
-                },
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     stats = await ShortlistService.get_stats(user_id)
     return _response(stats)
 
 
-# ── Tracker ───────────────────────────────────────────────────────────────────
 
 
 async def create_application(
@@ -585,25 +447,6 @@ async def create_application(
                 All input fields plus 'created_at': str (ISO timestamp).
             'message': str — 'Application program created successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'app_abc001',
-                    'university': 'MIT',
-                    'program': 'PhD Computer Science',
-                    'department': 'EECS',
-                    'deadline': '2025-12-15T00:00:00Z',
-                    'status': 'tracking',
-                    'sop_status': 'not_started',
-                    'cv_status': 'not_started',
-                    'recommenders': [],
-                    'funded': 'unknown',
-                    'notes': None,
-                    'created_at': '2025-11-01T10:00:00Z'
-                },
-                'message': 'Application program created successfully'
-            }
     """
     user_id = require_user_id(tool_context)
     application = await TrackerService.create_application(user_id, payload.model_dump())
@@ -628,23 +471,6 @@ async def list_applications(tool_context: ToolContext) -> dict[str, object]:
                 has the same shape as create_application's return value.
             'message': str — empty string.
 
-        Example:
-            {
-                'success': True,
-                'data': [
-                    {
-                        'id': 'app_abc001',
-                        'university': 'MIT',
-                        'program': 'PhD Computer Science',
-                        'deadline': '2025-12-15T00:00:00Z',
-                        'status': 'tracking',
-                        'sop_status': 'in_progress',
-                        'cv_status': 'ready',
-                        'funded': 'unknown'
-                    }
-                ],
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     applications = await TrackerService.list_applications(user_id)
@@ -708,21 +534,6 @@ async def update_application(
             'data': dict — the full updated tracker entry.
             'message': str — 'Application program updated successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'app_abc001',
-                    'university': 'MIT',
-                    'program': 'PhD Computer Science',
-                    'status': 'submitted',
-                    'sop_status': 'ready',
-                    'cv_status': 'ready',
-                    'funded': 'applied'
-                },
-                'message': 'Application program updated successfully'
-            }
-
     Raises:
         ValueError: If the application is not found.
     """
@@ -760,12 +571,6 @@ async def add_application_recommender(
             'data': dict — {'status': 'success'}.
             'message': str — 'Recommender added successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Recommender added successfully'
-            }
     """
     user_id = require_user_id(tool_context)
     recommender = {"name": payload.name, "status": payload.status, "email": payload.email or ""}
@@ -801,13 +606,6 @@ async def update_application_recommender_status(
             'data': dict — {'status': 'success'}.
             'message': str — 'Recommender status updated successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Recommender status updated successfully'
-            }
-
     Raises:
         ValueError: If the application is not found.
     """
@@ -836,13 +634,6 @@ async def delete_application(application_id: str, tool_context: ToolContext) -> 
             'data': dict — {'status': 'success'}.
             'message': str — 'Application program deleted successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Application program deleted successfully'
-            }
-
     Raises:
         ValueError: If the application is not found.
     """
@@ -870,24 +661,12 @@ async def get_tracker_stats(tool_context: ToolContext) -> dict[str, object]:
                     whose status is 'confirmed' or 'submitted' across all apps.
             'message': str — empty string.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'total': 8,
-                    'sop_ready': 3,
-                    'funded_programs': 2,
-                    'recs_confirmed': 5
-                },
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     stats = await TrackerService.get_stats(user_id)
     return _response(stats)
 
 
-# ── Drafts ────────────────────────────────────────────────────────────────────
 
 
 async def create_draft(payload: DraftCreateToolRequest, tool_context: ToolContext) -> dict[str, object]:
@@ -922,24 +701,6 @@ async def create_draft(payload: DraftCreateToolRequest, tool_context: ToolContex
                 'created_at': str — ISO timestamp.
             'message': str — 'Draft created successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'id': 'drft_001',
-                    'type': 'sop',
-                    'title': 'MIT PhD SOP — Draft 1',
-                    'content': 'My research journey began...',
-                    'status': 'draft',
-                    'word_count': 4,
-                    'ai_generated': False,
-                    'source_tags': [],
-                    'linked_faculty_id': 'fac_xyz789',
-                    'linked_application_id': 'app_abc001',
-                    'created_at': '2025-11-01T10:00:00Z'
-                },
-                'message': 'Draft created successfully'
-            }
     """
     user_id = require_user_id(tool_context)
     draft = await DraftsService.create_draft(user_id, payload.model_dump())
@@ -970,21 +731,6 @@ async def list_drafts(payload: DraftListToolRequest, tool_context: ToolContext) 
                 field (use get_draft to retrieve full content).
             'message': str — empty string.
 
-        Example:
-            {
-                'success': True,
-                'data': [
-                    {
-                        'id': 'drft_001',
-                        'type': 'sop',
-                        'title': 'MIT PhD SOP — Draft 1',
-                        'status': 'draft',
-                        'word_count': 542,
-                        'created_at': '2025-11-01T10:00:00Z'
-                    }
-                ],
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     drafts = await DraftsService.list_drafts(user_id, payload.type, payload.status)
@@ -1075,13 +821,6 @@ async def update_draft_status(
             'data': dict — {'status': 'success'}.
             'message': str — 'Draft status updated successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Draft status updated successfully'
-            }
-
     Raises:
         ValueError: If the draft is not found.
     """
@@ -1108,13 +847,6 @@ async def delete_draft(draft_id: str, tool_context: ToolContext) -> dict[str, ob
             'data': dict — {'status': 'success'}.
             'message': str — 'Draft deleted successfully'.
 
-        Example:
-            {
-                'success': True,
-                'data': {'status': 'success'},
-                'message': 'Draft deleted successfully'
-            }
-
     Raises:
         ValueError: If the draft is not found.
     """
@@ -1138,23 +870,12 @@ async def get_draft_stats(tool_context: ToolContext) -> dict[str, object]:
                 'need_review': int — drafts whose status is 'in_review'.
             'message': str — empty string.
 
-        Example:
-            {
-                'success': True,
-                'data': {
-                    'total': 6,
-                    'approved': 2,
-                    'need_review': 1
-                },
-                'message': ''
-            }
     """
     user_id = require_user_id(tool_context)
     stats = await DraftsService.get_stats(user_id)
     return _response(stats)
 
 
-# ── HITL ──────────────────────────────────────────────────────────────────────
 
 
 async def get_pending_hitl(session_id: str, tool_context: ToolContext) -> dict[str, object]:
@@ -1254,13 +975,6 @@ async def request_hitl(
             'hitl_id': str — ID of the created HITL record (for reference).
             'message': str — 'Awaiting human response'.
 
-        Example:
-            {
-                'status': 'pending',
-                'hitl_id': 'hitl_001',
-                'message': 'Awaiting human response'
-            }
-
     Raises:
         ValueError: If options are missing for kind 'approval'/'choice', or
             input_schema is missing for kind 'input', or any JSON argument
@@ -1311,7 +1025,6 @@ async def request_hitl(
 REQUEST_HITL_TOOL = LongRunningFunctionTool(request_hitl)
 
 
-# ── Emails (Gmail) ──────────────────────────────────────────────────────────────
 
 
 async def create_email(payload: EmailCreateToolRequest, tool_context: ToolContext) -> dict[str, object]:
@@ -1379,7 +1092,6 @@ async def send_email(email_id: str, tool_context: ToolContext) -> dict[str, obje
 send_email = FunctionTool(send_email)
 
 
-# ── Ingestion ───────────────────────────────────────────────────────────────
 async def check_url(url: str) -> dict:
     """
     Check if a URL has already been indexed in ES.
@@ -1434,7 +1146,6 @@ check_url = FunctionTool(check_url)
 ingest_url = FunctionTool(ingest_url)
 check_ingestion_status = FunctionTool(check_ingestion_status)
 
-# ── Hybrid Search ───────────────────────────────────────────────────────────────
 _SEARCH_UNAVAILABLE_MESSAGE = (
     "The search service is temporarily unavailable due to an internal issue. "
     "Apologize briefly, suggest the user try again later, and do not retry, "
@@ -1506,7 +1217,6 @@ hybrid_faculty_search = FunctionTool(hybrid_faculty_search)
 hybrid_program_search = FunctionTool(hybrid_program_search)
 
 
-# ── Faculty deep dive helpers ──────────────────────────────────────────
 async def get_faculty_papers(faculty_name: str, limit: int = 5) -> dict:
     """
     Fetch recent papers and publications for a specific faculty member.
@@ -1576,7 +1286,6 @@ get_faculty_papers = FunctionTool(get_faculty_papers)
 score_faculty_fit = FunctionTool(score_faculty_fit)
 get_conversation_angles = FunctionTool(get_conversation_angles)
 
-# ── Tool groups ───────────────────────────────────────────────────────────────
 
 ACCOUNT_TOOLS = [
     get_profile,

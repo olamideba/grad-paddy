@@ -27,7 +27,6 @@ USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 GMAIL_SEND_ENDPOINT = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 CALENDAR_EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 
-# openid + email so we can record which Google account connected.
 SCOPES = [
     "openid",
     "email",
@@ -73,8 +72,6 @@ def _send(req: urllib.request.Request) -> dict:
         raise GoogleAuthError(f"Google API request failed: {e}") from e
 
 
-# ── OAuth ──────────────────────────────────────────────────────────────────────
-
 def build_auth_url(state: str) -> str:
     settings = get_settings()
     params = {
@@ -82,8 +79,8 @@ def build_auth_url(state: str) -> str:
         "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
         "response_type": "code",
         "scope": " ".join(SCOPES),
-        "access_type": "offline",       # request a refresh token
-        "prompt": "consent",            # force refresh-token issuance on re-consent
+        "access_type": "offline",
+        "prompt": "consent",            # forces refresh token on re-consent
         "include_granted_scopes": "true",
         "state": state,
     }
@@ -91,8 +88,6 @@ def build_auth_url(state: str) -> str:
 
 
 def exchange_code(code: str) -> dict:
-    """Exchange an authorization code for tokens. Returns the raw token dict
-    (access_token, refresh_token, id_token, expires_in, scope)."""
     settings = get_settings()
     return _post_form(TOKEN_ENDPOINT, {
         "code": code,
@@ -104,7 +99,6 @@ def exchange_code(code: str) -> dict:
 
 
 def refresh_access_token(refresh_token: str) -> str:
-    """Mint a fresh access token from a stored refresh token."""
     settings = get_settings()
     tok = _post_form(TOKEN_ENDPOINT, {
         "refresh_token": refresh_token,
@@ -119,12 +113,10 @@ def refresh_access_token(refresh_token: str) -> str:
 
 
 def get_userinfo(access_token: str) -> dict:
-    """Return the connected account's profile (incl. email)."""
     return _get(USERINFO_ENDPOINT, access_token)
 
 
 def revoke(token: str) -> None:
-    """Best-effort revoke of a refresh/access token."""
     try:
         _post_form(REVOKE_ENDPOINT, {"token": token})
     except GoogleAuthError:
@@ -132,10 +124,7 @@ def revoke(token: str) -> None:
         pass
 
 
-# ── Gmail ────────────────────────────────────────────────────────────────────
-
 def _markdown_to_html(body: str) -> str | None:
-    """Render Markdown to HTML. Returns None if no renderer is available."""
     try:
         from markdown_it import MarkdownIt
     except Exception:
@@ -144,8 +133,6 @@ def _markdown_to_html(body: str) -> str | None:
 
 
 def _markdown_to_plain(body: str) -> str:
-    """A clean plain-text fallback: drop markdown bold markers and unescape
-    backslash-escaped characters (e.g. '\\[name\\]' -> '[name]')."""
     import re
 
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", body)
@@ -177,8 +164,6 @@ def gmail_send(access_token: str, *, to: str, subject: str, body: str) -> dict:
     return _post_json(GMAIL_SEND_ENDPOINT, {"raw": raw}, access_token)
 
 
-# ── Calendar ─────────────────────────────────────────────────────────────────
-
 def calendar_insert_event(
     access_token: str,
     *,
@@ -189,7 +174,6 @@ def calendar_insert_event(
     reminder_minutes: list[int],
     time_zone: str = "UTC",
 ) -> dict:
-    """Create a timed event with email + popup reminder overrides."""
     overrides = []
     for minutes in reminder_minutes:
         overrides.append({"method": "email", "minutes": minutes})
