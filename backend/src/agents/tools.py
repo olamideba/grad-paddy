@@ -1455,7 +1455,7 @@ async def hybrid_program_search(program_query: str, tool_context: ToolContext) -
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{settings.ES_URL}/graduate-programs/_search", 
+            f"{settings.ES_URL}/grad-programs/_search", 
             headers={
                 "Authorization": f"ApiKey {settings.ELASTIC_API_KEY}",
                 "Content-Type": "application/json",
