@@ -34,8 +34,61 @@ from src.services.users_service import UserService
 
 logger = logging.getLogger(__name__)
 
-# Propagate ADK event author to TextMessageStartEvent so step cards show descriptive
-# labels (e.g. "Drafting your SOP") instead of generic "Step 1", "Step 2".
+
+def _payload_signature(payload: dict) -> str | None:
+    """Stable identity of a gated action: (entity, action, ref_id, fields, content).
+
+    Two gates with the same signature represent the SAME decision. Returns None
+    when entity/action are absent (can't safely dedupe an unidentifiable gate)."""
+    if not isinstance(payload, dict):
+        return None
+    entity = str(payload.get("entity") or "").lower().strip()
+    action = str(payload.get("action") or "").lower().strip()
+    if not entity or not action:
+        return None
+    ref_id = str(payload.get("ref_id") or "").strip()
+    raw_ref_ids = payload.get("ref_ids")
+    ref_ids = sorted(
+        str(r).strip()
+        for r in (raw_ref_ids if isinstance(raw_ref_ids, list) else [])
+        if str(r or "").strip()
+    )
+    fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
+    content = str(payload.get("content") or "").strip()
+    try:
+        fields_sig = json.dumps(fields, sort_keys=True, default=str)
+    except Exception:  # noqa: BLE001
+        fields_sig = str(fields)
+    return "|".join([entity, action, ref_id, ",".join(ref_ids), fields_sig, content])
+
+
+async def _is_duplicate_of_resolved(user_id: str, session_id: str, payload: dict) -> bool:
+    """True if an already-RESOLVED gate in this session has the same signature.
+
+    Backstop for the duplicate-approval bug: after a gate is approved (and the
+    change applied by HITLService._apply_change), the agent sometimes re-opens an
+    identical gate on resume. The human already decided this action — suppress the
+    redundant card deterministically rather than relying on the model not to re-ask."""
+    sig = _payload_signature(payload)
+    if sig is None:
+        return False
+    try:
+        records = await HITLService.list_hitl(user_id, session_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("HITL dedupe lookup failed (session=%s): %s", session_id, exc)
+        return False
+    for rec in records:
+        if rec.get("status") in {"approved", "rejected"} and (
+            _payload_signature(rec.get("payload") or {}) == sig
+        ):
+            return True
+    return False
+
+
+# Monkey-patch EventTranslator to propagate the author name of the ADK Event
+# to the TextMessageStartEvent. This allows chat.py to identify which sub-agent
+# produced intermediate reasoning so it can render descriptive activity step cards
+# (e.g. "Intake", "Strategy", "Draft") instead of generic "Step 1", "Step 2".
 try:
     import ag_ui_adk.event_translator
     original_translate_text_content = ag_ui_adk.event_translator.EventTranslator._translate_text_content
@@ -111,6 +164,18 @@ class PersistentChatAgent(ADKAgent):
         if not resume:
             # An ordinary message must never re-enter a paused HITL invocation.
             await self._clear_stale_resume_state(input, user_id, input.thread_id)
+            # Abandon any unanswered gate: leaving it pending would block every
+            # future gate via the one-pending-per-session guard.
+            try:
+                expired = await HITLService.cancel_pending(user_id, input.thread_id)
+                if expired:
+                    logger.info(
+                        "Expired %d abandoned pending gate(s) on new message (session=%s)",
+                        expired,
+                        input.thread_id,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to cancel pending gates (session=%s): %s", input.thread_id, exc)
             return input, False
 
         hitl_id = resume.get("hitlId") or resume.get("hitl_id")
@@ -179,8 +244,20 @@ class PersistentChatAgent(ADKAgent):
 
     @staticmethod
     async def _create_hitl_from_args(
-        user_id: str, session_id: str, run_id: str, tool_call_id: str, raw_args: str
+        user_id: str,
+        session_id: str,
+        run_id: str,
+        tool_call_id: str,
+        raw_args: str,
+        dedupe_resolved: bool = False,
     ) -> None:
+        """Persist a HITL record from the request_hitl tool-call args.
+
+        dedupe_resolved: pass True only for RESUME runs (the continuation after a
+        human resolves a gate). In that window the agent sometimes re-emits the
+        gate it just had approved — suppress it. On fresh user turns it must stay
+        False: an identical request later in the session (e.g. "add Waterloo
+        again") is new intent and deserves a new gate."""
         if not raw_args or not raw_args.strip():
             return
         args = json.loads(raw_args)
@@ -199,6 +276,22 @@ class PersistentChatAgent(ADKAgent):
         options = _maybe_json(args.get("options_json")) or args.get("options")
         input_schema = _maybe_json(args.get("input_schema_json")) or args.get("input_schema")
         payload = _maybe_json(args.get("payload_json")) or args.get("payload") or {}
+
+        # Backstop (resume runs only): if the agent re-opens a gate for the action
+        # the human just resolved, do not create a second card — the change was
+        # already applied on approval (HITLService._apply_change).
+        if (
+            dedupe_resolved
+            and isinstance(payload, dict)
+            and await _is_duplicate_of_resolved(user_id, session_id, payload)
+        ):
+            logger.info(
+                "Suppressed duplicate HITL gate for already-resolved action (session=%s, entity=%s, action=%s)",
+                session_id,
+                payload.get("entity"),
+                payload.get("action"),
+            )
+            return
         try:
             await HITLService.create_hitl(
                 user_id=user_id,
@@ -213,13 +306,22 @@ class PersistentChatAgent(ADKAgent):
                 input_schema=input_schema if isinstance(input_schema, dict) else None,
                 expires_in_seconds=args.get("expires_in_seconds") or None,
             )
-        except ValueError:
-            # One-pending guard, or the long-running body already created it.
-            pass
+        except ValueError as exc:
+            # One-pending guard (a gate is already pending for this session) or the
+            # long-running body already created the record. Not fatal, but log it —
+            # silently swallowing this is how a blocked gate became an invisible
+            # "already pending" with no card for the user.
+            logger.warning(
+                "request_hitl gate not created (session=%s): %s", session_id, exc
+            )
 
     async def run(self, input: Any) -> AsyncGenerator[Any, None]:
         user_id = self._get_user_id(input)
         session_id = input.thread_id
+        # Resume continuation (post-approval)? Only then do we dedupe re-emitted
+        # gates against already-resolved ones — see _create_hitl_from_args.
+        _fwd = input.forwarded_props if isinstance(input.forwarded_props, dict) else {}
+        is_resume_run = isinstance(_fwd.get("resume"), dict)
 
         try:
             prepared, resume_noop = await self._prepare_input(input, user_id)
@@ -461,7 +563,10 @@ class PersistentChatAgent(ADKAgent):
                     tcid = str(getattr(event, "tool_call_id", ""))
                     raw = "".join(hitl_arg_buffers.pop(tcid, []))
                     try:
-                        await self._create_hitl_from_args(user_id, session_id, input.run_id, tcid, raw)
+                        await self._create_hitl_from_args(
+                            user_id, session_id, input.run_id, tcid, raw,
+                            dedupe_resolved=is_resume_run,
+                        )
                     except Exception as exc:
                         logger.error("Failed to create HITL from tool args: %s", exc, exc_info=True)
 

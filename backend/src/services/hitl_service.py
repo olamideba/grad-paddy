@@ -67,38 +67,46 @@ class HITLService:
         return await HITLRepository.list_hitl_for_session(user_id, session_id)
 
     @staticmethod
+    async def cancel_pending(user_id: str, session_id: str) -> int:
+        """Abandon any unanswered gate in a session (returns count expired)."""
+        return await HITLRepository.cancel_pending_for_session(user_id, session_id)
+
+    @staticmethod
     async def resolve_hitl(
         user_id: str,
         hitl_id: str,
         decision: str,
         response: dict | None = None,
     ) -> tuple[dict, bool]:
-        """Resolve a HITL record. Returns (record, newly_resolved)."""
+        """Resolve a HITL record. Returns (record, newly_resolved).
+
+        On approval the change is applied BEFORE the record is marked resolved, so
+        "resolved" always means "actually persisted". If the write fails the gate
+        stays pending and the exception propagates to the caller — the UI must not
+        show "Saved" for a write that did not happen.
+        """
         if decision not in {"approved", "rejected"}:
             raise ValueError("decision must be 'approved' or 'rejected'")
+
+        record = await HITLRepository.get_hitl(user_id, hitl_id)
+        if not record:
+            raise ValueError("HITL record not found")
+        if record.get("status") in {"approved", "rejected", "resolved", "expired"}:
+            return record, False  # idempotent — already resolved/abandoned
+
+        # Single persistence path. Deterministic and server-side, from the payload
+        # (plus the human's edits). Raises on failure → propagates, gate stays
+        # pending, nothing is marked resolved.
+        if decision == "approved":
+            await HITLService._apply_change(user_id, record, response)
+
         try:
-            record, newly_resolved = await HITLRepository.resolve_hitl(
+            resolved, newly_resolved = await HITLRepository.resolve_hitl(
                 user_id, hitl_id, decision, response
             )
         except KeyError as e:
             raise ValueError("HITL record not found") from e
-
-        # Apply the approved change deterministically, server-side. The proposed
-        # values are already in the HITL payload (and the human's edits in
-        # `response`), so we execute the write here — for create, update, AND
-        # delete — rather than relying on the agent to re-call the write tool on
-        # resume (that re-call is blocked by the safety callback and is
-        # unreliable, which left approved writes unsaved). This is the single
-        # persistence path for the single approval gate.
-        if newly_resolved and decision == "approved":
-            try:
-                await HITLService._apply_change(user_id, record, response)
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "Failed to apply approved change for HITL %s: %s", hitl_id, exc, exc_info=True
-                )
-
-        return record, newly_resolved
+        return resolved, newly_resolved
 
     @staticmethod
     def _payload_fields(payload: dict) -> dict:
@@ -130,8 +138,21 @@ class HITLService:
         payload = record.get("payload") or {}
         entity = str(payload.get("entity") or "").lower()
         action = str(payload.get("action") or "create").lower()
-        ref_id = str(payload.get("ref_id") or "").strip()
         hitl_id = record.get("id")
+
+        # Target ids: singular ref_id, plus the agent sometimes batches several
+        # records into one gate as a ref_ids array (e.g. "delete both entries").
+        ref_id = str(payload.get("ref_id") or "").strip()
+        raw_ref_ids = payload.get("ref_ids")
+        ref_ids = [
+            str(r).strip()
+            for r in (raw_ref_ids if isinstance(raw_ref_ids, list) else [])
+            if str(r or "").strip()
+        ]
+        if ref_id and ref_id not in ref_ids:
+            ref_ids.insert(0, ref_id)
+        if not ref_id and ref_ids:
+            ref_id = ref_ids[0]
 
         # Proposed fields, with the human's review-card edits layered on top.
         fields = HITLService._payload_fields(payload)
@@ -146,8 +167,8 @@ class HITLService:
             content = str(payload.get("content") or "").strip()
 
         def _require_ref() -> bool:
-            if not ref_id:
-                logger.error("HITL %s %s on '%s' missing ref_id — skipped", hitl_id, action, entity)
+            if not ref_ids:
+                logger.error("HITL %s %s on '%s' missing ref_id(s) — skipped", hitl_id, action, entity)
                 return False
             return True
 
@@ -175,7 +196,8 @@ class HITLService:
 
             if action == "delete":
                 if _require_ref():
-                    await DraftsService.delete_draft(user_id, ref_id)
+                    for rid in ref_ids:
+                        await DraftsService.delete_draft(user_id, rid)
                 return
             if action == "update":
                 if not _require_ref():
@@ -213,7 +235,8 @@ class HITLService:
 
             if action == "delete":
                 if _require_ref():
-                    await ShortlistService.delete_faculty(user_id, ref_id)
+                    for rid in ref_ids:
+                        await ShortlistService.delete_faculty(user_id, rid)
                 return
             if action == "update":
                 if not _require_ref():
@@ -235,7 +258,8 @@ class HITLService:
 
             if action == "delete":
                 if _require_ref():
-                    await TrackerService.delete_application(user_id, ref_id)
+                    for rid in ref_ids:
+                        await TrackerService.delete_application(user_id, rid)
                 return
             if action == "update":
                 if _require_ref():

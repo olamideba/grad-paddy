@@ -23,8 +23,9 @@ APPROVAL_RULE = (
     '("tracker", "shortlist", "draft", "profile", "preferences", or "recommender"), an "action" key '
     '("create", "update", or "delete"), and the proposed values as a "fields" object (for a draft, put the '
     'long text in "content" instead). For update/delete also include "ref_id" (the target id; for a '
-    'recommender, ref_id is the application id and fields carry "name" and "status"). Then WAIT for the '
-    "human's decision.\n"
+    'recommender, ref_id is the application id and fields carry "name" and "status"). To delete SEVERAL '
+    'records of the same entity at once, open ONE gate with a "ref_ids" JSON array of all target ids. '
+    "Then WAIT for the human's decision.\n"
     "For shortlist faculty, tracker applications, drafts, profile, and preferences — for CREATE, UPDATE, and "
     "DELETE alike — do NOT call the create/update/delete tool yourself. When the human approves, the system "
     "performs the change deterministically from the payload (entity, action, ref_id, fields/content) plus any "

@@ -84,6 +84,22 @@ class TestApprovedDeletePersists:
         await HITLService._apply_change("user_1", _rec("draft", "delete", ref_id="d_7"), None)
         assert rec.calls == [(("user_1", "d_7"), {})]
 
+    async def test_bulk_delete_via_ref_ids(self, monkeypatch):
+        """The 20:13 transcript shape: ref_ids array, empty fields — both must delete."""
+        rec = _Recorder()
+        monkeypatch.setattr(tracker_mod.TrackerService, "delete_application", rec)
+        record = {
+            "id": "hitl_1",
+            "payload": {
+                "entity": "tracker",
+                "action": "delete",
+                "ref_ids": ["app_a", "app_b"],
+                "fields": {},
+            },
+        }
+        await HITLService._apply_change("user_1", record, None)
+        assert rec.calls == [(("user_1", "app_a"), {}), (("user_1", "app_b"), {})]
+
 
 class TestApprovedUpdatePersists:
     async def test_tracker_update_passes_fields(self, monkeypatch):
@@ -140,6 +156,84 @@ class TestRecommender:
             "user_1", _rec("recommender", "update", ref_id="app_1", name="Dr. Ng", status="received"), None
         )
         assert rec.calls == [(("user_1", "app_1", "Dr. Ng", "received"), {})]
+
+
+class TestDuplicateGateSuppression:
+    """Backstop: the agent re-opening an already-resolved gate must not show a
+    second approval card."""
+
+    async def test_identical_resolved_gate_is_duplicate(self, monkeypatch):
+        from src.api import chat as chat_mod
+
+        payload = {"entity": "shortlist", "action": "delete", "ref_id": "f_1",
+                   "fields": {"name": "Prof. Andrew Ng"}}
+        prior = _Recorder(result=[{"status": "approved", "payload": dict(payload)}])
+        monkeypatch.setattr(chat_mod.HITLService, "list_hitl", prior)
+
+        assert await chat_mod._is_duplicate_of_resolved("u", "s", payload) is True
+
+    async def test_pending_gate_is_not_a_duplicate(self, monkeypatch):
+        from src.api import chat as chat_mod
+
+        payload = {"entity": "shortlist", "action": "delete", "ref_id": "f_1"}
+        prior = _Recorder(result=[{"status": "pending", "payload": dict(payload)}])
+        monkeypatch.setattr(chat_mod.HITLService, "list_hitl", prior)
+
+        assert await chat_mod._is_duplicate_of_resolved("u", "s", payload) is False
+
+    async def test_different_target_is_not_a_duplicate(self, monkeypatch):
+        from src.api import chat as chat_mod
+
+        prior = _Recorder(result=[{"status": "approved",
+                                   "payload": {"entity": "shortlist", "action": "delete", "ref_id": "OTHER"}}])
+        monkeypatch.setattr(chat_mod.HITLService, "list_hitl", prior)
+
+        payload = {"entity": "shortlist", "action": "delete", "ref_id": "f_1"}
+        assert await chat_mod._is_duplicate_of_resolved("u", "s", payload) is False
+
+    def test_signature_none_when_entity_missing(self):
+        from src.api import chat as chat_mod
+
+        assert chat_mod._payload_signature({"action": "delete"}) is None
+
+
+class TestApplyBeforeResolve:
+    """resolve_hitl must apply the change BEFORE marking resolved, and must NOT
+    mark resolved (no false 'Saved') if the apply fails."""
+
+    async def test_apply_failure_leaves_gate_unresolved_and_raises(self, monkeypatch):
+        from src.services.hitl_service import HITLService as Svc
+
+        record = {"id": "h1", "status": "pending",
+                  "payload": {"entity": "tracker", "action": "delete", "ref_id": "app_1"}}
+        get = _Recorder(result=record)
+        marked = _Recorder(result=(record, True))
+        monkeypatch.setattr("src.services.hitl_service.HITLRepository.get_hitl", get)
+        monkeypatch.setattr("src.services.hitl_service.HITLRepository.resolve_hitl", marked)
+
+        async def _boom(*a, **k):
+            raise RuntimeError("service down")
+
+        monkeypatch.setattr(tracker_mod.TrackerService, "delete_application", _boom)
+
+        with pytest.raises(RuntimeError):
+            await Svc.resolve_hitl("u", "h1", "approved", None)
+        assert marked.calls == []  # never marked resolved
+
+    async def test_already_resolved_is_idempotent_no_reapply(self, monkeypatch):
+        from src.services.hitl_service import HITLService as Svc
+
+        record = {"id": "h1", "status": "approved",
+                  "payload": {"entity": "tracker", "action": "delete", "ref_id": "app_1"}}
+        monkeypatch.setattr(
+            "src.services.hitl_service.HITLRepository.get_hitl", _Recorder(result=record)
+        )
+        delete = _Recorder()
+        monkeypatch.setattr(tracker_mod.TrackerService, "delete_application", delete)
+
+        rec, newly = await Svc.resolve_hitl("u", "h1", "approved", None)
+        assert newly is False
+        assert delete.calls == []  # not re-applied
 
 
 class TestGuards:

@@ -200,6 +200,37 @@ class HITLRepository:
         return _normalize_hitl(updated.to_dict()), True
 
     @staticmethod
+    async def cancel_pending_for_session(user_id: str, session_id: str) -> int:
+        """Mark every pending gate in a session as 'expired'. Returns the count.
+
+        Called when a fresh (non-resume) user message arrives: an unanswered gate
+        is abandoned, so it must not linger and block new gates via the
+        one-pending-per-session guard."""
+        db = get_db()
+        settings = get_settings()
+        query = (
+            db.collection(settings.COLLECTION_USERS)
+            .document(user_id)
+            .collection(settings.COLLECTION_HITL)
+            .where(filter=firestore.FieldFilter("session_id", "==", session_id))
+            .where(filter=firestore.FieldFilter("status", "==", "pending"))
+        )
+        docs = await query.get()
+        now = datetime.now(timezone.utc)
+        count = 0
+        for doc in docs:
+            rec = doc.to_dict()
+            await (
+                db.collection(settings.COLLECTION_USERS)
+                .document(user_id)
+                .collection(settings.COLLECTION_HITL)
+                .document(rec["id"])
+                .update({"status": "expired", "resolved_at": now})
+            )
+            count += 1
+        return count
+
+    @staticmethod
     async def mark_continued(user_id: str, hitl_id: str, run_id: str) -> dict:
         """Record that a HITL resume run has started (idempotency guard)."""
         db = get_db()

@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, Request, HTTPException
 from src.core.firebase import verify_firebase_auth
@@ -35,3 +36,10 @@ async def resolve_hitl(request: Request, hitl_id: str, body: HITLResolveRequest)
         return {"success": True, "data": resolved, "message": "HITL resolved successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        # The approved change failed to persist. The gate is left pending (see
+        # resolve_hitl), so the client must NOT show "Saved" — surface the failure.
+        logging.getLogger(__name__).error(
+            "Failed to apply approved HITL %s: %s", hitl_id, e, exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Failed to apply the approved change.")
