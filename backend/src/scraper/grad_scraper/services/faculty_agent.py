@@ -2,15 +2,21 @@ import json
 import asyncio
 import logging
 import re
+import os
 
-from src.core.config import get_settings
-from src.repositories.elastic_repo import get_es
-from src.services.users_service import UserService
+from dotenv import load_dotenv
 from grad_scraper.services.paper_retrieval import fetch_papers
 
-settings = get_settings()
+load_dotenv(dotenv_path="/app/.env")
 logger = logging.getLogger(__name__)
 
+class _S:
+    GOOGLE_CLOUD_PROJECT  = os.getenv("GOOGLE_CLOUD_PROJECT")
+    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
+    GEMINI_MODEL          = os.getenv("GEMINI_MODEL")
+    GEMINI_ENABLED        = os.getenv("GEMINI_ENABLED", "false")
+
+settings = _S()
 
 async def _gemini_analyze(faculty: dict, papers: list) -> dict:
     """

@@ -9,7 +9,7 @@ Scrapes university graduate program pages for **deadlines, funding, faculty, and
 | Scraping engine | Scrapy |
 | JS rendering | Playwright (via scrapy-playwright) |
 | Chunking | LangChain RecursiveCharacterTextSplitter |
-| Embeddings | `all-MiniLM-L6-v2` (local) or OpenAI `text-embedding-3-small` |
+| Embeddings | Gemini `text-embedding-004` |
 | Vector store | Elasticsearch 8+ (kNN + BM25 hybrid) |
 
 ## Project Structure

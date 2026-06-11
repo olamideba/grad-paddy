@@ -11,6 +11,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
+RUN /app/.venv/bin/playwright install chromium --with-deps
 
 COPY . .
 

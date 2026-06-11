@@ -6,26 +6,32 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - GEMINI_MODEL=${GEMINI_MODEL}
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI}
       - ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL=${ADK_ENABLE_JSON_SCHEMA_FOR_FUNC_DECL}
       - ADK_LOG_PROMPT_CONTENT=${ADK_LOG_PROMPT_CONTENT}
-      - ES_URL=${ES_URL}
       - ELASTIC_MCP_URL=${ELASTIC_MCP_URL}
       - ELASTIC_API_KEY=${ELASTIC_API_KEY}
       - ELASTIC_MCP_TIMEOUT_SECONDS=${ELASTIC_MCP_TIMEOUT_SECONDS:-30}
       - ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS=${ELASTIC_MCP_SSE_READ_TIMEOUT_SECONDS:-300}
-      - ELASTIC_MCP_TOOL_FILTER=${ELASTIC_MCP_TOOL_FILTER:-platform.core.index_explorer,platform.core.list_indices,platform.core.get_index_mapping,platform.core.search,platform.core.generate_esql,platform.core.execute_esql,platform.core.get_document_by_id,platform.core.create_visualization}
+      - ELASTIC_MCP_TOOL_FILTER=${ELASTIC_MCP_TOOL_FILTER:-platform.core.index_explorer,platform.core.list_indices,platform.core.get_index_mapping,platform.core.search,platform.core.generate_esql,platform.core.execute_esql,platform.core.get_document_by_id,platform.core.create_visualization,find_faculty_by_research, find_faculty_by_research_and_schools, find_universities_by_program, check_program_deadlines_and_application_fees, find_faculty_by_university}
       - ELASTIC_MCP_EXTRA_TOOL_FILTER=${ELASTIC_MCP_EXTRA_TOOL_FILTER}
       - STORAGE_BUCKET=${STORAGE_BUCKET}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
       - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      
+
       # This points to the path INSIDE the container
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/service-account.json
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ELASTIC_API_KEY=${ELASTIC_API_KEY}
+      - ES_URL=${ES_URL}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - FACULTY_ES_INDEX=${FACULTY_ES_INDEX}
+      - PROGRAM_ES_INDEX=${PROGRAM_ES_INDEX}
     volumes:
       # Mounted from local env to the internal container path (for local testing with docker), it is not actually in the container for security
       - ./grad-paddy-firebase-adminsdk-fbsvc-5c475865e8.json:/app/secrets/service-account.json:ro
