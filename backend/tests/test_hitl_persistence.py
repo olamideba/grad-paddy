@@ -196,6 +196,23 @@ class TestDuplicateGateSuppression:
 
         assert chat_mod._payload_signature({"action": "delete"}) is None
 
+    def test_delete_signature_ignores_ref_id_vs_ref_ids_and_fields(self):
+        """The real-world duplicate: gate 1 uses ref_id + fields, gate 2 uses
+        ref_ids + empty fields. Same target → same signature."""
+        from src.api import chat as chat_mod
+
+        g1 = {"entity": "tracker", "action": "delete", "ref_id": "app_1",
+              "fields": {"university": "Waterloo", "program": "MMath"}}
+        g2 = {"entity": "tracker", "action": "delete", "ref_ids": ["app_1"], "fields": {}}
+        assert chat_mod._payload_signature(g1) == chat_mod._payload_signature(g2)
+
+    def test_create_signature_uses_fields(self):
+        from src.api import chat as chat_mod
+
+        a = {"entity": "tracker", "action": "create", "fields": {"university": "MIT"}}
+        b = {"entity": "tracker", "action": "create", "fields": {"university": "Stanford"}}
+        assert chat_mod._payload_signature(a) != chat_mod._payload_signature(b)
+
 
 class TestApplyBeforeResolve:
     """resolve_hitl must apply the change BEFORE marking resolved, and must NOT
