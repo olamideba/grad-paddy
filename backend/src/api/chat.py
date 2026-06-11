@@ -21,7 +21,7 @@ from google.adk.runners import Runner
 from src.services.firestore_adk_session import FirestoreSessionService
 from google.genai import types
 
-from src.agents.root import root_agent
+from src.agents.app import grad_paddy_app
 from src.agents import run_registry
 from src.api.hitl_events import RunFinishedWithStatusEvent
 from src.api.schemas.responses import StopChatResponse, StandardResponse
@@ -518,9 +518,8 @@ async def _extract_chat_state(request: Request, _input_data: Any) -> dict[str, A
 
 def build_chat_agent() -> ADKAgent:
     settings = get_settings()
-    return PersistentChatAgent(
-        adk_agent=root_agent,
-        app_name=settings.AG_UI_APP_NAME,
+    return PersistentChatAgent.from_app(
+        grad_paddy_app,
         user_id_extractor=lambda input_data: (
             input_data.state.get("user_id")
             if isinstance(input_data.state, dict)
@@ -584,8 +583,7 @@ async def debug_chat(payload: DebugChatRequest) -> DebugChatResponse:
     settings = get_settings()
     session_service = FirestoreSessionService()
     runner = Runner(
-        app_name=settings.AG_UI_APP_NAME,
-        agent=root_agent,
+        app=grad_paddy_app,
         session_service=session_service,
     )
 

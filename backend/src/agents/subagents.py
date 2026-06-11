@@ -17,19 +17,19 @@ NO_LEAK_RULE = (
 APPROVAL_RULE = (
     "APPROVAL POLICY: Before any create, update, or delete action (shortlist, tracker, drafts, "
     "profile, preferences, sessions, groups), you MUST first call request_hitl with kind='approval', "
-    "options_json='[{\"id\":\"yes\",\"label\":\"Approve\"},{\"id\":\"no\",\"label\":\"Reject\"}]', and a title/"
-    "description stating exactly what you will change. In payload_json always include: an \"entity\" key "
-    "(\"tracker\", \"shortlist\", or \"draft\"), an \"action\" key (\"create\", \"update\", or \"delete\"), and "
-    "the proposed values as a \"fields\" object (for a draft, put the long text in \"content\" instead). For "
-    "update/delete also include \"ref_id\" (the target id). Then WAIT for the human's decision.\n"
+    'options_json=\'[{"id":"yes","label":"Approve"},{"id":"no","label":"Reject"}]\', and a title/'
+    'description stating exactly what you will change. In payload_json always include: an "entity" key '
+    '("tracker", "shortlist", or "draft"), an "action" key ("create", "update", or "delete"), and '
+    'the proposed values as a "fields" object (for a draft, put the long text in "content" instead). For '
+    'update/delete also include "ref_id" (the target id). Then WAIT for the human\'s decision.\n'
     "CREATING a shortlist faculty, a tracker application, or a draft: do NOT call the create tool yourself. "
     "When the human approves, the system saves the record from the payload fields (and the user's edits). "
-    "Just open the gate with complete \"fields\"/\"content\". For UPDATE or DELETE, and for any OTHER create "
+    'Just open the gate with complete "fields"/"content". For UPDATE or DELETE, and for any OTHER create '
     "(profile, preferences, groups), perform the write yourself after approval using the (possibly edited) "
     "response values; if rejected, do not write.\n"
     "EMAILS: to email a professor or a recommender, first call create_email (status stays 'draft') — it "
     "returns an email id. Then call request_hitl with kind='approval', entity=\"email\", and payload_json "
-    "including \"ref_id\" (the create_email id), \"to\" (the recipient address), \"subject\", and \"content\" "
+    'including "ref_id" (the create_email id), "to" (the recipient address), "subject", and "content" '
     "(the email body), so the human reviews, edits, and sends it from the email canvas. Do NOT call send_email "
     "yourself — the human sends from the canvas with the Send via Gmail button. Always open this email gate "
     "even when auto_approve is true, because sending an email is irreversible. "
@@ -42,7 +42,7 @@ def build_web_search_agent(name: str) -> LlmAgent:
     """Agent specialized in web search."""
     return LlmAgent(
         name=name,
-        model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite-preview",
         description="Agent specialized in performing Google searches.",
         sub_agents=[],
         instruction="Use the GoogleSearchTool to find information on the web.",
@@ -54,7 +54,7 @@ def build_url_context_agent(name: str) -> LlmAgent:
     """Agent specialized in fetching content from URLs."""
     return LlmAgent(
         name=name,
-        model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite-preview",
         description="Agent specialized in fetching content from URLs.",
         sub_agents=[],
         instruction="Use the UrlContextTool to retrieve content from provided URLs.",
@@ -66,7 +66,7 @@ def build_planner_agent() -> LlmAgent:
     """Agent that decomposes user requests into actionable plans."""
     return LlmAgent(
         name="planner",
-        model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite-preview",
         description="Plans the trajectory needed to accomplish a user task.",
         sub_agents=[],
         instruction=(
@@ -77,8 +77,12 @@ def build_planner_agent() -> LlmAgent:
             f"{NO_LEAK_RULE}"
         ),
         tools=[
-            agent_tool.AgentTool(agent=build_web_search_agent("planner_google_search_agent")),
-            agent_tool.AgentTool(agent=build_url_context_agent("planner_url_context_agent")),
+            agent_tool.AgentTool(
+                agent=build_web_search_agent("planner_google_search_agent")
+            ),
+            agent_tool.AgentTool(
+                agent=build_url_context_agent("planner_url_context_agent")
+            ),
         ],
     )
 
@@ -87,7 +91,7 @@ def build_researcher_agent() -> LlmAgent:
     """Agent that gathers evidence and options."""
     return LlmAgent(
         name="researcher",
-        model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite-preview",
         description="Researches and verifies information for the application workflow.",
         sub_agents=[],
         instruction=(
@@ -96,8 +100,12 @@ def build_researcher_agent() -> LlmAgent:
             f"{NO_LEAK_RULE}"
         ),
         tools=[
-            agent_tool.AgentTool(agent=build_web_search_agent("researcher_google_search_agent")),
-            agent_tool.AgentTool(agent=build_url_context_agent("researcher_url_context_agent")),
+            agent_tool.AgentTool(
+                agent=build_web_search_agent("researcher_google_search_agent")
+            ),
+            agent_tool.AgentTool(
+                agent=build_url_context_agent("researcher_url_context_agent")
+            ),
         ],
     )
 
@@ -106,7 +114,7 @@ def build_account_agent() -> LlmAgent:
     """Agent for user account and preferences management."""
     return LlmAgent(
         name="account_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Manages user profiles and preferences.",
         sub_agents=[],
         instruction=(
@@ -127,7 +135,7 @@ def build_application_agent() -> LlmAgent:
     """Agent for shortlist, tracker, and drafts."""
     return LlmAgent(
         name="application_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Manages shortlist, tracker, and draft workflows.",
         sub_agents=[],
         instruction=(
@@ -135,8 +143,8 @@ def build_application_agent() -> LlmAgent:
             "Use the tools to keep these records in sync with the user's current application workflow. "
             "To email a recommender, first call get_application (or list_applications) to read that "
             "recommender's stored email on the named application, then set create_email's \"to\" to that "
-            "address, kind=\"recommender\", linked_application_id to the application id, and ref_id to the "
-            "recommender's name. If the recommender has no stored email, leave \"to\" blank so the user can "
+            'address, kind="recommender", linked_application_id to the application id, and ref_id to the '
+            'recommender\'s name. If the recommender has no stored email, leave "to" blank so the user can '
             "fill it in the email canvas. "
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
@@ -149,7 +157,7 @@ def build_governance_agent() -> LlmAgent:
     """Agent for human approval and HITL flows."""
     return LlmAgent(
         name="governance_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Handles human-in-the-loop approval requests and their resolution.",
         sub_agents=[],
         instruction=(
@@ -166,7 +174,7 @@ def build_operations_agent() -> LlmAgent:
     """Agent that exposes the complete application capability surface."""
     return LlmAgent(
         name="operations_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Universal operations agent for all application data manipulation.",
         sub_agents=[],
         instruction=(
@@ -175,12 +183,10 @@ def build_operations_agent() -> LlmAgent:
             "If a task spans multiple domains, execute the smallest safe step first and hand off to the appropriate specialist when needed. "
             "To email a recommender, first call get_application (or list_applications) to read that "
             "recommender's stored email on the named application, then set create_email's \"to\" to that "
-            "address, kind=\"recommender\", linked_application_id to the application id, and ref_id to the "
-            "recommender's name. If there is no stored email, leave \"to\" blank for the user to fill. "
+            'address, kind="recommender", linked_application_id to the application id, and ref_id to the '
+            'recommender\'s name. If there is no stored email, leave "to" blank for the user to fill. '
             f"{APPROVAL_RULE} "
             f"{NO_LEAK_RULE}"
         ),
         tools=OPERATIONS_TOOLS,
     )
-
-

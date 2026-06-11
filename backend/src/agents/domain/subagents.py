@@ -1,4 +1,5 @@
 from google.adk.agents import LlmAgent, SequentialAgent
+from google.adk.tools import agent_tool
 
 from src.agents.domain.chains import (
     build_outreach_prep_chain,
@@ -7,6 +8,9 @@ from src.agents.domain.chains import (
 )
 from src.agents.elastic_mcp import build_elastic_mcp_tools
 from src.agents.tools import SCRAPER_TOOLS, HYBRID_SEARCH_TOOLS, FACULTY_DEEP_DIVE_TOOLS
+from src.agents.memory_tools import MEMORY_TOOLS
+from src.agents.subagents import build_web_search_agent
+from src.services.ingestion_service import IngestionService
 
 NO_LEAK_RULE = (
     "Never mention sensitive data like the user's id and job id."
@@ -23,7 +27,7 @@ def build_faculty_discovery_agent() -> LlmAgent:
         description=(
             "Finds and ranks faculty using Elastic hybrid search and evidence retrieval."
         ),
-        instruction=(
+        static_instruction=(
             "You are the faculty discovery specialist.\n"
             "- ALWAYS prefer using the 'hybrid_faculty_search' tool when a user describes an academic research domain or asks for specific types of professors.\n"
             "- Prefer Elastic search and ES|QL evidence over unsupported recall.\n"
@@ -70,7 +74,7 @@ def build_faculty_profile_deep_dive_agent() -> LlmAgent:
         description=(
             "Performs paper retrieval, fit scoring, and conversation-angle generation for a faculty profile."
         ),
-        instruction=(
+        static_instruction=(
             "You are the faculty profile deep-dive specialist.\n"
             "- Use Elastic MCP tools alongside the get_faculty_papers when available to retrieve faculty profiles, publications, program pages, and prior user decisions.\n"
             "- ALWAYS prefer using the get_faculty_papers, score_faculty_fit, get_conversation_angles tools when a user asks for matching scores, custom advisors, or personalized outreach talking points.\n"
@@ -98,7 +102,7 @@ def build_application_tracker_agent() -> LlmAgent:
     elastic_tools = build_elastic_mcp_tools()
     return LlmAgent(
         name="application_tracker_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Tracks deadlines, status, and weekly summaries using Elastic evidence and ES|QL.",
         instruction=(
             "You are the application tracker specialist.\n"
@@ -117,7 +121,7 @@ def build_funding_requirement_flag_detection_agent() -> LlmAgent:
     elastic_tools = build_elastic_mcp_tools()
     return LlmAgent(
         name="funding_requirement_flag_detection_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description="Flags funding and requirement issues from ES-backed application data.",
         instruction=(
             "You are the funding and requirement flag detection specialist.\n"
@@ -135,14 +139,14 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
     """
     Agent that handles the full scrape → chunk → embed → index pipeline.
     Called when the user provides a URL that needs to be ingested into ES.
-    
+
     Flow:
       1. check_url_indexed  — avoid re-scraping already indexed URLs
       2. ingest_url         — scrape → clean → chunk → embed → index
     """
     return LlmAgent(
         name="ingestion_pipeline_agent",
-        model="gemini-3.1-pro-preview",
+        model="gemini-3.1-flash-lite-preview",
         description=(
             "Handles the full data ingestion pipeline for grad program and faculty URLs. "
             "Scrapes the URL, chunks and embeds the content, and indexes it into "
@@ -160,7 +164,6 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
             "   - If already indexed: inform the user that the the data exists in the database"
             "   and ask what they would like to know about the data.\n"
             "   - If not indexed: proceed to step 2\n\n"
-
             "2. Determine url_type:\n"
             "   - 'faculty' if the URL contains /people/, /faculty/, /role/faculty, "
             "     or /directory/faculty\n"
@@ -182,6 +185,7 @@ def build_ingestion_pipeline_agent() -> LlmAgent:
         tools=SCRAPER_TOOLS
     )
 
+
 def build_research_narrative_framing_agent() -> SequentialAgent:
     """Prompt-chain agent for research narrative framing."""
     return build_research_narrative_framing_chain()
@@ -193,6 +197,13 @@ def build_domain_orchestrator_agent() -> LlmAgent:
         name="domain_orchestrator_agent",
         model="gemini-3.1-pro-preview",
         description="Routes domain work to the correct Grad Paddy specialist agent.",
+        tools=[
+            *build_elastic_mcp_tools(),
+            *MEMORY_TOOLS,
+            agent_tool.AgentTool(
+                agent=build_web_search_agent("domain_google_search_agent")
+            ),
+        ],
         sub_agents=[
             build_faculty_discovery_agent(),
             build_program_deep_dive_agent(),
@@ -202,9 +213,9 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             build_application_tracker_agent(),
             build_funding_requirement_flag_detection_agent(),
             build_research_narrative_framing_agent(),
-            build_ingestion_pipeline_agent()
+            build_ingestion_pipeline_agent(),
         ],
-        instruction=(
+        static_instruction=(
             "You are the domain orchestrator for Grad Paddy.\n"
             "- Route user intent to the correct specialist agent.\n"
             "- If the request is ambiguous, ask one clarifying question before selecting a branch.\n"
@@ -224,6 +235,15 @@ def build_domain_orchestrator_agent() -> LlmAgent:
             "- Use research narrative framing when the user needs the story that connects their evidence to the program or faculty.\n"
             "- Use ingestion pipeline only when the user provides a URL that needs to be scraped "
             "and indexed into the database. Do not route general research questions here.\n"
+            "- For real-time or current information not in Elastic (e.g. upcoming intake dates, current application deadlines, "
+            "recent faculty news), call domain_google_search_agent directly — do NOT ask the user for URLs.\n"
+            "- MEMORY: After any interaction where the user reveals important information about themselves, "
+            "call save_memory to persist it for future sessions. Save: research interests, academic background, "
+            "target programs or faculty, application strategy decisions, SOP framing choices, funding constraints, "
+            "timeline goals, or any explicitly stated preference. Write facts in third person: "
+            "'User is targeting NLP programs with a focus on healthcare AI.' "
+            "Use search_memory when the user references past decisions or you need background context not in this session. "
+            "Use delete_memory when the user explicitly asks to forget something.\n"
             "- Treat outward-facing actions, CRM writes, and any irreversible change as requiring explicit user confirmation.\n"
             "- Do not perform writes without an approval gate. Prepare the payload, explain the consequence, and wait for confirmation.\n"
             "- Keep responses structured and tell the user which specialist owns the current step.\n"
